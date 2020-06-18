@@ -4,5 +4,8 @@
   "main": "index.js",
   "repository": "git@github.com:mapbender/openlayers6-es5.git",
   "author": "Paul Schmidt <paul.schmidt@wheregroup.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "ol": "6.3.1"
+  }
 }
