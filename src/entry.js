@@ -135,4 +135,5 @@ let ol = {
   style: nsStyle
 };
 
-export default ol;
+window.ol = ol;
+// export default ol;

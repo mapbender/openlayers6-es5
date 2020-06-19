@@ -76075,7 +76075,7 @@ return RBush;
 /*!**********************!*\
   !*** ./src/entry.js ***!
   \**********************/
-/*! exports provided: default */
+/*! no exports provided */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -76257,7 +76257,8 @@ let ol = {
   style: nsStyle
 };
 
-/* harmony default export */ __webpack_exports__["default"] = (ol);
+window.ol = ol;
+// export default ol;
 
 /***/ }),
 
