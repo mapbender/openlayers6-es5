@@ -1,0 +1,24 @@
+{
+    "name": "mapbender/openlayers6-es5",
+    "version": "0.1.0",
+    "type": "component",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Paul Schmidt",
+            "email": "paul.schmidt@wheregroup.com"
+        }
+    ],
+    "require": {},
+    "config": {
+        "bin-dir": "bin",
+        "component-dir": "web/assets"
+    },
+    "extra": {
+        "component": {
+            "scripts": [
+                "dist/*.js"
+            ]
+        }
+    }
+}
