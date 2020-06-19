@@ -38,11 +38,11 @@ import * as nsExtent from "ol/extent.js";
 import * as nsGeom from "ol/geom.js";
 // namespace "format": cherry-pick classes; skip, particularly, broken MVT format (imports don't work)
 import {
-  GeoJSON as format_GeoJSON,
-  GML as format_GML,
-  KML as format_KML,
-  WFS as format_WFS,
-  WKT as format_WKT
+    GeoJSON as format_GeoJSON,
+    GML as format_GML,
+    KML as format_KML,
+    WFS as format_WFS,
+    WKT as format_WKT
 } from "ol/format.js";
 import * as interaction0 from "ol/interaction.js";
 import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
@@ -66,74 +66,79 @@ nsInteraction.Draw.createBox = interaction_Draw_createBox;
 
 var nsProj = {};
 Object.assign(nsProj, proj0, {
-  proj4: proj_proj4,
-  Units: proj_Units
+    proj4: proj_proj4,
+    Units: proj_Units
 });
 
 var nsStyle = {};
 Object.assign(nsStyle, style0, {
-  expressions: style_expressions,
-  IconAnchorUnits: style_IconAnchorUnits,
-  IconOrigin: style_IconOrigin,
-  TextPlacement: style_TextPlacement
+    expressions: style_expressions,
+    IconAnchorUnits: style_IconAnchorUnits,
+    IconOrigin: style_IconOrigin,
+    TextPlacement: style_TextPlacement
 });
 Object.assign(nsStyle.Style, {
-  createDefaultStyle: style_Style_createDefaultStyle,
-  createEditingStyle: style_Style_createEditingStyle
+    createDefaultStyle: style_Style_createDefaultStyle,
+    createEditingStyle: style_Style_createEditingStyle
 });
 
 
 var ol = {
-  // top-level classes
-  AssertionError: AssertionError,
-  Collection: Collection,
-  Disposable: Disposable,
-  Feature: Feature,
-  Geolocation: Geolocation,
-  Graticule: Graticule,
-  Image: Image,
-  ImageBase: ImageBase,
-  ImageCanvas: ImageCanvas,
-  ImageTile: ImageTile,
-  Kinetic: Kinetic,
-  Map: Map,
-  MapBrowserEvent: MapBrowserEvent,
-  MapBrowserEventHandler: MapBrowserEventHandler,
-  MapBrowserPointerEvent: MapBrowserPointerEvent,
-  MapEvent: MapEvent,
-  Object: olObject,
-  Observable: Observable,
-  Overlay: Overlay,
-  PluggableMap: PluggableMap,
-  Tile: Tile,
-  TileCache: TileCache,
-  TileQueue: TileQueue,
-  TileRange: TileRange,
-  VectorRenderTile: VectorRenderTile,
-  VectorTile: VectorTile,
-  View: View,
-  // globals (from util)
-  getUid: getUid,
-  VERSION: VERSION,
-  // sub-namespaces
-  coordinate: nsCoordinate,
-  control: nsControl,
-  extent: nsExtent,
-  format: {
-    GeoJSON: format_GeoJSON,
-    GML: format_GML,
-    KML: format_KML,
-    WFS: format_WFS,
-    WKT: format_WKT
-  },
-  geom: nsGeom,
-  interaction: nsInteraction,
-  layer: nsLayer,
-  proj: nsProj,
-  source: nsSource,
-  sphere: nsSphere,
-  style: nsStyle
+    // top-level classes
+    AssertionError: AssertionError,
+    Collection: Collection,
+    Disposable: Disposable,
+    Feature: Feature,
+    Geolocation: Geolocation,
+    Graticule: Graticule,
+    Image: Image,
+    ImageBase: ImageBase,
+    ImageCanvas: ImageCanvas,
+    ImageTile: ImageTile,
+    Kinetic: Kinetic,
+    Map: Map,
+    MapBrowserEvent: MapBrowserEvent,
+    MapBrowserEventHandler: MapBrowserEventHandler,
+    MapBrowserPointerEvent: MapBrowserPointerEvent,
+    MapEvent: MapEvent,
+    Object: olObject,
+    Observable: Observable,
+    Overlay: Overlay,
+    PluggableMap: PluggableMap,
+    Tile: Tile,
+    TileCache: TileCache,
+    TileQueue: TileQueue,
+    TileRange: TileRange,
+    VectorRenderTile: VectorRenderTile,
+    VectorTile: VectorTile,
+    View: View,
+    // globals (from util)
+    getUid: getUid,
+    VERSION: VERSION,
+    // sub-namespaces
+    coordinate: nsCoordinate,
+    control: nsControl,
+    extent: nsExtent,
+    format: {
+        GeoJSON: format_GeoJSON,
+        GML: format_GML,
+        KML: format_KML,
+        WFS: format_WFS,
+        WKT: format_WKT
+    },
+    geom: nsGeom,
+    interaction: nsInteraction,
+    layer: nsLayer,
+    proj: nsProj,
+    source: nsSource,
+    sphere: nsSphere,
+    style: nsStyle
 };
+// dirty solution?
+if (window.ol) {
+    window.console.error('"ol" already exists');
+} else {
+    window.ol = ol;
+}
 
-window.ol = ol;
 export default ol;

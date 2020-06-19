@@ -75469,7 +75469,7 @@ try {
   hasImageData = false;
 }
 
-var context; // = document.createElement('canvas').getContext('2d');
+var context;// = document.createElement('canvas').getContext('2d');
 
 function newImageData(data, width, height) {
   if (hasImageData) {
@@ -76075,7 +76075,7 @@ return RBush;
 /*!**********************!*\
   !*** ./src/entry.js ***!
   \**********************/
-/*! no exports provided */
+/*! exports provided: default */
 /***/ (function(module, __webpack_exports__, __webpack_require__) {
 
 "use strict";
@@ -76183,82 +76183,87 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
-let nsInteraction = {};
+var nsInteraction = {};
 Object.assign(nsInteraction, ol_interaction_js__WEBPACK_IMPORTED_MODULE_33__);
 nsInteraction.Draw.createBox = ol_interaction_Draw_js__WEBPACK_IMPORTED_MODULE_34__["createBox"];
 
-let nsProj = {};
+var nsProj = {};
 Object.assign(nsProj, ol_proj_js__WEBPACK_IMPORTED_MODULE_36__, {
-  proj4: ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_37__,
-  Units: ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_38__["default"]
+    proj4: ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_37__,
+    Units: ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_38__["default"]
 });
 
-let nsStyle = {};
+var nsStyle = {};
 Object.assign(nsStyle, ol_style_js__WEBPACK_IMPORTED_MODULE_41__, {
-  expressions: ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_43__,
-  IconAnchorUnits: ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_44__["default"],
-  IconOrigin: ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_45__["default"],
-  TextPlacement: ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_46__["default"]
+    expressions: ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_43__,
+    IconAnchorUnits: ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_44__["default"],
+    IconOrigin: ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_45__["default"],
+    TextPlacement: ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_46__["default"]
 });
 Object.assign(nsStyle.Style, {
-  createDefaultStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_42__["createDefaultStyle"],
-  createEditingStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_42__["createEditingStyle"]
+    createDefaultStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_42__["createDefaultStyle"],
+    createEditingStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_42__["createEditingStyle"]
 });
 
-let ol = {
-  // top-level classes
-  AssertionError: ol_AssertionError_js__WEBPACK_IMPORTED_MODULE_0__["default"],
-  Collection: ol_Collection_js__WEBPACK_IMPORTED_MODULE_1__["default"],
-  Disposable: ol_Disposable_js__WEBPACK_IMPORTED_MODULE_2__["default"],
-  Feature: ol_Feature_js__WEBPACK_IMPORTED_MODULE_3__["default"],
-  Geolocation: ol_Geolocation_js__WEBPACK_IMPORTED_MODULE_4__["default"],
-  Graticule: ol_layer_Graticule_js__WEBPACK_IMPORTED_MODULE_5__["default"],
-  Image: ol_Image_js__WEBPACK_IMPORTED_MODULE_6__["default"],
-  ImageBase: ol_ImageBase_js__WEBPACK_IMPORTED_MODULE_7__["default"],
-  ImageCanvas: ol_ImageCanvas_js__WEBPACK_IMPORTED_MODULE_8__["default"],
-  ImageTile: ol_ImageTile_js__WEBPACK_IMPORTED_MODULE_9__["default"],
-  Kinetic: ol_Kinetic_js__WEBPACK_IMPORTED_MODULE_10__["default"],
-  Map: ol_Map_js__WEBPACK_IMPORTED_MODULE_11__["default"],
-  MapBrowserEvent: ol_MapBrowserEvent_js__WEBPACK_IMPORTED_MODULE_12__["default"],
-  MapBrowserEventHandler: ol_MapBrowserEventHandler_js__WEBPACK_IMPORTED_MODULE_13__["default"],
-  MapBrowserPointerEvent: ol_MapBrowserPointerEvent_js__WEBPACK_IMPORTED_MODULE_14__["default"],
-  MapEvent: ol_MapEvent_js__WEBPACK_IMPORTED_MODULE_15__["default"],
-  Object: ol_Object_js__WEBPACK_IMPORTED_MODULE_16__["default"],
-  Observable: ol_Observable_js__WEBPACK_IMPORTED_MODULE_17__["default"],
-  Overlay: ol_Overlay_js__WEBPACK_IMPORTED_MODULE_18__["default"],
-  PluggableMap: ol_PluggableMap_js__WEBPACK_IMPORTED_MODULE_19__["default"],
-  Tile: ol_Tile_js__WEBPACK_IMPORTED_MODULE_20__["default"],
-  TileCache: ol_TileCache_js__WEBPACK_IMPORTED_MODULE_21__["default"],
-  TileQueue: ol_TileQueue_js__WEBPACK_IMPORTED_MODULE_22__["default"],
-  TileRange: ol_TileRange_js__WEBPACK_IMPORTED_MODULE_23__["default"],
-  VectorRenderTile: ol_VectorRenderTile_js__WEBPACK_IMPORTED_MODULE_24__["default"],
-  VectorTile: ol_VectorTile_js__WEBPACK_IMPORTED_MODULE_25__["default"],
-  View: ol_View_js__WEBPACK_IMPORTED_MODULE_26__["default"],
-  // globals (from util)
-  getUid: ol_util_js__WEBPACK_IMPORTED_MODULE_27__["getUid"],
-  VERSION: ol_util_js__WEBPACK_IMPORTED_MODULE_27__["VERSION"],
-  // sub-namespaces
-  coordinate: ol_coordinate_js__WEBPACK_IMPORTED_MODULE_28__,
-  control: ol_control_js__WEBPACK_IMPORTED_MODULE_29__,
-  extent: ol_extent_js__WEBPACK_IMPORTED_MODULE_30__,
-  format: {
-    GeoJSON: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["GeoJSON"],
-    GML: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["GML"],
-    KML: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["KML"],
-    WFS: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WFS"],
-    WKT: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WKT"]
-  },
-  geom: ol_geom_js__WEBPACK_IMPORTED_MODULE_31__,
-  interaction: nsInteraction,
-  layer: ol_layer_js__WEBPACK_IMPORTED_MODULE_35__,
-  proj: nsProj,
-  source: ol_source_js__WEBPACK_IMPORTED_MODULE_39__,
-  sphere: ol_sphere_js__WEBPACK_IMPORTED_MODULE_40__,
-  style: nsStyle
+var ol = {
+    // top-level classes
+    AssertionError: ol_AssertionError_js__WEBPACK_IMPORTED_MODULE_0__["default"],
+    Collection: ol_Collection_js__WEBPACK_IMPORTED_MODULE_1__["default"],
+    Disposable: ol_Disposable_js__WEBPACK_IMPORTED_MODULE_2__["default"],
+    Feature: ol_Feature_js__WEBPACK_IMPORTED_MODULE_3__["default"],
+    Geolocation: ol_Geolocation_js__WEBPACK_IMPORTED_MODULE_4__["default"],
+    Graticule: ol_layer_Graticule_js__WEBPACK_IMPORTED_MODULE_5__["default"],
+    Image: ol_Image_js__WEBPACK_IMPORTED_MODULE_6__["default"],
+    ImageBase: ol_ImageBase_js__WEBPACK_IMPORTED_MODULE_7__["default"],
+    ImageCanvas: ol_ImageCanvas_js__WEBPACK_IMPORTED_MODULE_8__["default"],
+    ImageTile: ol_ImageTile_js__WEBPACK_IMPORTED_MODULE_9__["default"],
+    Kinetic: ol_Kinetic_js__WEBPACK_IMPORTED_MODULE_10__["default"],
+    Map: ol_Map_js__WEBPACK_IMPORTED_MODULE_11__["default"],
+    MapBrowserEvent: ol_MapBrowserEvent_js__WEBPACK_IMPORTED_MODULE_12__["default"],
+    MapBrowserEventHandler: ol_MapBrowserEventHandler_js__WEBPACK_IMPORTED_MODULE_13__["default"],
+    MapBrowserPointerEvent: ol_MapBrowserPointerEvent_js__WEBPACK_IMPORTED_MODULE_14__["default"],
+    MapEvent: ol_MapEvent_js__WEBPACK_IMPORTED_MODULE_15__["default"],
+    Object: ol_Object_js__WEBPACK_IMPORTED_MODULE_16__["default"],
+    Observable: ol_Observable_js__WEBPACK_IMPORTED_MODULE_17__["default"],
+    Overlay: ol_Overlay_js__WEBPACK_IMPORTED_MODULE_18__["default"],
+    PluggableMap: ol_PluggableMap_js__WEBPACK_IMPORTED_MODULE_19__["default"],
+    Tile: ol_Tile_js__WEBPACK_IMPORTED_MODULE_20__["default"],
+    TileCache: ol_TileCache_js__WEBPACK_IMPORTED_MODULE_21__["default"],
+    TileQueue: ol_TileQueue_js__WEBPACK_IMPORTED_MODULE_22__["default"],
+    TileRange: ol_TileRange_js__WEBPACK_IMPORTED_MODULE_23__["default"],
+    VectorRenderTile: ol_VectorRenderTile_js__WEBPACK_IMPORTED_MODULE_24__["default"],
+    VectorTile: ol_VectorTile_js__WEBPACK_IMPORTED_MODULE_25__["default"],
+    View: ol_View_js__WEBPACK_IMPORTED_MODULE_26__["default"],
+    // globals (from util)
+    getUid: ol_util_js__WEBPACK_IMPORTED_MODULE_27__["getUid"],
+    VERSION: ol_util_js__WEBPACK_IMPORTED_MODULE_27__["VERSION"],
+    // sub-namespaces
+    coordinate: ol_coordinate_js__WEBPACK_IMPORTED_MODULE_28__,
+    control: ol_control_js__WEBPACK_IMPORTED_MODULE_29__,
+    extent: ol_extent_js__WEBPACK_IMPORTED_MODULE_30__,
+    format: {
+        GeoJSON: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["GeoJSON"],
+        GML: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["GML"],
+        KML: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["KML"],
+        WFS: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WFS"],
+        WKT: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WKT"]
+    },
+    geom: ol_geom_js__WEBPACK_IMPORTED_MODULE_31__,
+    interaction: nsInteraction,
+    layer: ol_layer_js__WEBPACK_IMPORTED_MODULE_35__,
+    proj: nsProj,
+    source: ol_source_js__WEBPACK_IMPORTED_MODULE_39__,
+    sphere: ol_sphere_js__WEBPACK_IMPORTED_MODULE_40__,
+    style: nsStyle
 };
+// dirty solution?
+if (window.ol) {
+    window.console.error('"ol" already exists');
+} else {
+    window.ol = ol;
+}
 
-window.ol = ol;
-// export default ol;
+/* harmony default export */ __webpack_exports__["default"] = (ol);
 
 /***/ }),
 
