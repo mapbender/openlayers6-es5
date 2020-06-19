@@ -60,17 +60,17 @@ import {default as style_IconAnchorUnits} from "ol/style/IconAnchorUnits.js";
 import {default as style_IconOrigin} from "ol/style/IconOrigin.js";
 import {default as style_TextPlacement} from "ol/style/TextPlacement.js";
 
-let nsInteraction = {};
+var nsInteraction = {};
 Object.assign(nsInteraction, interaction0);
 nsInteraction.Draw.createBox = interaction_Draw_createBox;
 
-let nsProj = {};
+var nsProj = {};
 Object.assign(nsProj, proj0, {
   proj4: proj_proj4,
   Units: proj_Units
 });
 
-let nsStyle = {};
+var nsStyle = {};
 Object.assign(nsStyle, style0, {
   expressions: style_expressions,
   IconAnchorUnits: style_IconAnchorUnits,
@@ -83,7 +83,7 @@ Object.assign(nsStyle.Style, {
 });
 
 
-let ol = {
+var ol = {
   // top-level classes
   AssertionError: AssertionError,
   Collection: Collection,
@@ -136,4 +136,4 @@ let ol = {
 };
 
 window.ol = ol;
-// export default ol;
+export default ol;
