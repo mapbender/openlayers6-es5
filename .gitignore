@@ -2,3 +2,5 @@
 .idea/
 # node modules
 /node_modules/
+
+yarn.lock
