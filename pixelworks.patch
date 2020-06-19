@@ -1,0 +1,17 @@
+--- ../node_modules/pixelworks/lib/util.js.original	2020-06-05 10:17:24.755668818 +0200
++++ ../node_modules/pixelworks/lib/util.js	2020-06-05 10:18:27.487757907 +0200
+@@ -5,12 +5,13 @@
+   hasImageData = false;
+ }
+ 
+-var context = document.createElement('canvas').getContext('2d');
++var context;
+ 
+ function newImageData(data, width, height) {
+   if (hasImageData) {
+     return new ImageData(data, width, height);
+   } else {
++    context = context || document.createElement('canvas').getContext('2d');
+     var imageData = context.createImageData(width, height);
+     imageData.data.set(data);
+     return imageData;
