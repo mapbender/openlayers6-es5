@@ -59,6 +59,7 @@ import * as style_expressions from "ol/style/expressions.js";
 import {default as style_IconAnchorUnits} from "ol/style/IconAnchorUnits.js";
 import {default as style_IconOrigin} from "ol/style/IconOrigin.js";
 import {default as style_TextPlacement} from "ol/style/TextPlacement.js";
+import * as geom_Polygon from "ol/geom/Polygon.js";
 
 var nsInteraction = {};
 Object.assign(nsInteraction, interaction0);
@@ -126,7 +127,9 @@ var ol = {
         WFS: format_WFS,
         WKT: format_WKT
     },
-    geom: nsGeom,
+    geom: Object.assign({}, nsGeom, {
+        Polygon: geom_Polygon
+    }),
     interaction: nsInteraction,
     layer: nsLayer,
     proj: nsProj,
