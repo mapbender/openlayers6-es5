@@ -75469,13 +75469,12 @@ try {
   hasImageData = false;
 }
 
-var context;// = document.createElement('canvas').getContext('2d');
+var context = document.createElement('canvas').getContext('2d');
 
 function newImageData(data, width, height) {
   if (hasImageData) {
     return new ImageData(data, width, height);
   } else {
-    context = context || document.createElement('canvas').getContext('2d');
     var imageData = context.createImageData(width, height);
     imageData.data.set(data);
     return imageData;
@@ -76127,6 +76126,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ol/style/IconAnchorUnits.js */ "./node_modules/ol/style/IconAnchorUnits.js");
 /* harmony import */ var ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_45__ = __webpack_require__(/*! ol/style/IconOrigin.js */ "./node_modules/ol/style/IconOrigin.js");
 /* harmony import */ var ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_46__ = __webpack_require__(/*! ol/style/TextPlacement.js */ "./node_modules/ol/style/TextPlacement.js");
+/* harmony import */ var ol_geom_Polygon_js__WEBPACK_IMPORTED_MODULE_47__ = __webpack_require__(/*! ol/geom/Polygon.js */ "./node_modules/ol/geom/Polygon.js");
 // Import (parts of) Openlayers 6 and reexport them in a ~nested namespace structure similar to Openlayers 4
 
 
@@ -76166,6 +76166,7 @@ __webpack_require__.r(__webpack_exports__);
 
 
 // namespace "format": cherry-pick classes; skip, particularly, broken MVT format (imports don't work)
+
 
 
 
@@ -76248,7 +76249,9 @@ var ol = {
         WFS: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WFS"],
         WKT: ol_format_js__WEBPACK_IMPORTED_MODULE_32__["WKT"]
     },
-    geom: ol_geom_js__WEBPACK_IMPORTED_MODULE_31__,
+    geom: Object.assign({}, ol_geom_js__WEBPACK_IMPORTED_MODULE_31__, {
+        Polygon: ol_geom_Polygon_js__WEBPACK_IMPORTED_MODULE_47__
+    }),
     interaction: nsInteraction,
     layer: ol_layer_js__WEBPACK_IMPORTED_MODULE_35__,
     proj: nsProj,
