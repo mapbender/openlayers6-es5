@@ -36,6 +36,7 @@ import * as nsControl from "ol/control.js";
 
 import * as nsExtent from "ol/extent.js";
 import * as nsGeom from "ol/geom.js";
+import * as geom_Polygon from "ol/geom/Polygon.js";
 // namespace "format": cherry-pick classes; skip, particularly, broken MVT format (imports don't work)
 import {
     GeoJSON as format_GeoJSON,
@@ -44,6 +45,7 @@ import {
     WFS as format_WFS,
     WKT as format_WKT
 } from "ol/format.js";
+
 import * as interaction0 from "ol/interaction.js";
 import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
 import * as nsLayer from "ol/layer.js";
@@ -59,7 +61,7 @@ import * as style_expressions from "ol/style/expressions.js";
 import {default as style_IconAnchorUnits} from "ol/style/IconAnchorUnits.js";
 import {default as style_IconOrigin} from "ol/style/IconOrigin.js";
 import {default as style_TextPlacement} from "ol/style/TextPlacement.js";
-import * as geom_Polygon from "ol/geom/Polygon.js";
+import {default as tilegrid_WMTS} from "ol/tilegrid/WMTS.js";
 
 var nsInteraction = {};
 Object.assign(nsInteraction, interaction0);
@@ -135,7 +137,10 @@ var ol = {
     proj: nsProj,
     source: nsSource,
     sphere: nsSphere,
-    style: nsStyle
+    style: nsStyle,
+    tilegrid: {
+        WMTS: tilegrid_WMTS
+    }
 };
 // dirty solution?
 if (window.ol) {
