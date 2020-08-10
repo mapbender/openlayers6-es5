@@ -39,6 +39,7 @@ import * as nsEvents from "ol/events.js";
 import * as nsEvents_condition from "ol/events/condition.js";
 import * as nsGeom from "ol/geom.js";
 import * as geom_Polygon from "ol/geom/Polygon.js";
+import * as nsLoadingstrategy from 'ol/loadingstrategy';
 // namespace "format": cherry-pick classes; skip, particularly, broken MVT format (imports don't work)
 import {
     GeoJSON as format_GeoJSON,
@@ -145,7 +146,8 @@ var ol = {
     style: nsStyle,
     tilegrid: {
         WMTS: tilegrid_WMTS
-    }
+    },
+	loadingstrategy: nsLoadingstrategy
 };
 // dirty solution?
 if (window.ol) {
