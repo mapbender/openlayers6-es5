@@ -76116,21 +76116,22 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var ol_geom_Polygon_js__WEBPACK_IMPORTED_MODULE_34__ = __webpack_require__(/*! ol/geom/Polygon.js */ "./node_modules/ol/geom/Polygon.js");
 /* harmony import */ var ol_loadingstrategy__WEBPACK_IMPORTED_MODULE_35__ = __webpack_require__(/*! ol/loadingstrategy */ "./node_modules/ol/loadingstrategy.js");
 /* harmony import */ var ol_format_js__WEBPACK_IMPORTED_MODULE_36__ = __webpack_require__(/*! ol/format.js */ "./node_modules/ol/format.js");
-/* harmony import */ var ol_interaction_js__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ol/interaction.js */ "./node_modules/ol/interaction.js");
-/* harmony import */ var ol_interaction_Draw_js__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ol/interaction/Draw.js */ "./node_modules/ol/interaction/Draw.js");
-/* harmony import */ var ol_layer_js__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ol/layer.js */ "./node_modules/ol/layer.js");
-/* harmony import */ var ol_proj_js__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ol/proj.js */ "./node_modules/ol/proj.js");
-/* harmony import */ var ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_41__ = __webpack_require__(/*! ol/proj/proj4.js */ "./node_modules/ol/proj/proj4.js");
-/* harmony import */ var ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_42__ = __webpack_require__(/*! ol/proj/Units.js */ "./node_modules/ol/proj/Units.js");
-/* harmony import */ var ol_source_js__WEBPACK_IMPORTED_MODULE_43__ = __webpack_require__(/*! ol/source.js */ "./node_modules/ol/source.js");
-/* harmony import */ var ol_sphere_js__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ol/sphere.js */ "./node_modules/ol/sphere.js");
-/* harmony import */ var ol_style_js__WEBPACK_IMPORTED_MODULE_45__ = __webpack_require__(/*! ol/style.js */ "./node_modules/ol/style.js");
-/* harmony import */ var ol_style_Style_js__WEBPACK_IMPORTED_MODULE_46__ = __webpack_require__(/*! ol/style/Style.js */ "./node_modules/ol/style/Style.js");
-/* harmony import */ var ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_47__ = __webpack_require__(/*! ol/style/expressions.js */ "./node_modules/ol/style/expressions.js");
-/* harmony import */ var ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_48__ = __webpack_require__(/*! ol/style/IconAnchorUnits.js */ "./node_modules/ol/style/IconAnchorUnits.js");
-/* harmony import */ var ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_49__ = __webpack_require__(/*! ol/style/IconOrigin.js */ "./node_modules/ol/style/IconOrigin.js");
-/* harmony import */ var ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_50__ = __webpack_require__(/*! ol/style/TextPlacement.js */ "./node_modules/ol/style/TextPlacement.js");
-/* harmony import */ var ol_tilegrid_WMTS_js__WEBPACK_IMPORTED_MODULE_51__ = __webpack_require__(/*! ol/tilegrid/WMTS.js */ "./node_modules/ol/tilegrid/WMTS.js");
+/* harmony import */ var ol_format_filter_js__WEBPACK_IMPORTED_MODULE_37__ = __webpack_require__(/*! ol/format/filter.js */ "./node_modules/ol/format/filter.js");
+/* harmony import */ var ol_interaction_js__WEBPACK_IMPORTED_MODULE_38__ = __webpack_require__(/*! ol/interaction.js */ "./node_modules/ol/interaction.js");
+/* harmony import */ var ol_interaction_Draw_js__WEBPACK_IMPORTED_MODULE_39__ = __webpack_require__(/*! ol/interaction/Draw.js */ "./node_modules/ol/interaction/Draw.js");
+/* harmony import */ var ol_layer_js__WEBPACK_IMPORTED_MODULE_40__ = __webpack_require__(/*! ol/layer.js */ "./node_modules/ol/layer.js");
+/* harmony import */ var ol_proj_js__WEBPACK_IMPORTED_MODULE_41__ = __webpack_require__(/*! ol/proj.js */ "./node_modules/ol/proj.js");
+/* harmony import */ var ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_42__ = __webpack_require__(/*! ol/proj/proj4.js */ "./node_modules/ol/proj/proj4.js");
+/* harmony import */ var ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_43__ = __webpack_require__(/*! ol/proj/Units.js */ "./node_modules/ol/proj/Units.js");
+/* harmony import */ var ol_source_js__WEBPACK_IMPORTED_MODULE_44__ = __webpack_require__(/*! ol/source.js */ "./node_modules/ol/source.js");
+/* harmony import */ var ol_sphere_js__WEBPACK_IMPORTED_MODULE_45__ = __webpack_require__(/*! ol/sphere.js */ "./node_modules/ol/sphere.js");
+/* harmony import */ var ol_style_js__WEBPACK_IMPORTED_MODULE_46__ = __webpack_require__(/*! ol/style.js */ "./node_modules/ol/style.js");
+/* harmony import */ var ol_style_Style_js__WEBPACK_IMPORTED_MODULE_47__ = __webpack_require__(/*! ol/style/Style.js */ "./node_modules/ol/style/Style.js");
+/* harmony import */ var ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_48__ = __webpack_require__(/*! ol/style/expressions.js */ "./node_modules/ol/style/expressions.js");
+/* harmony import */ var ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_49__ = __webpack_require__(/*! ol/style/IconAnchorUnits.js */ "./node_modules/ol/style/IconAnchorUnits.js");
+/* harmony import */ var ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_50__ = __webpack_require__(/*! ol/style/IconOrigin.js */ "./node_modules/ol/style/IconOrigin.js");
+/* harmony import */ var ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_51__ = __webpack_require__(/*! ol/style/TextPlacement.js */ "./node_modules/ol/style/TextPlacement.js");
+/* harmony import */ var ol_tilegrid_WMTS_js__WEBPACK_IMPORTED_MODULE_52__ = __webpack_require__(/*! ol/tilegrid/WMTS.js */ "./node_modules/ol/tilegrid/WMTS.js");
 // Import (parts of) Openlayers 6 and reexport them in a ~nested namespace structure similar to Openlayers 4
 
 
@@ -76193,26 +76194,27 @@ __webpack_require__.r(__webpack_exports__);
 
 
 
+
 var nsInteraction = {};
-Object.assign(nsInteraction, ol_interaction_js__WEBPACK_IMPORTED_MODULE_37__);
-nsInteraction.Draw.createBox = ol_interaction_Draw_js__WEBPACK_IMPORTED_MODULE_38__["createBox"];
+Object.assign(nsInteraction, ol_interaction_js__WEBPACK_IMPORTED_MODULE_38__);
+nsInteraction.Draw.createBox = ol_interaction_Draw_js__WEBPACK_IMPORTED_MODULE_39__["createBox"];
 
 var nsProj = {};
-Object.assign(nsProj, ol_proj_js__WEBPACK_IMPORTED_MODULE_40__, {
-    proj4: ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_41__,
-    Units: ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_42__["default"]
+Object.assign(nsProj, ol_proj_js__WEBPACK_IMPORTED_MODULE_41__, {
+    proj4: ol_proj_proj4_js__WEBPACK_IMPORTED_MODULE_42__,
+    Units: ol_proj_Units_js__WEBPACK_IMPORTED_MODULE_43__["default"]
 });
 
 var nsStyle = {};
-Object.assign(nsStyle, ol_style_js__WEBPACK_IMPORTED_MODULE_45__, {
-    expressions: ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_47__,
-    IconAnchorUnits: ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_48__["default"],
-    IconOrigin: ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_49__["default"],
-    TextPlacement: ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_50__["default"]
+Object.assign(nsStyle, ol_style_js__WEBPACK_IMPORTED_MODULE_46__, {
+    expressions: ol_style_expressions_js__WEBPACK_IMPORTED_MODULE_48__,
+    IconAnchorUnits: ol_style_IconAnchorUnits_js__WEBPACK_IMPORTED_MODULE_49__["default"],
+    IconOrigin: ol_style_IconOrigin_js__WEBPACK_IMPORTED_MODULE_50__["default"],
+    TextPlacement: ol_style_TextPlacement_js__WEBPACK_IMPORTED_MODULE_51__["default"]
 });
 Object.assign(nsStyle.Style, {
-    createDefaultStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_46__["createDefaultStyle"],
-    createEditingStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_46__["createEditingStyle"]
+    createDefaultStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_47__["createDefaultStyle"],
+    createEditingStyle: ol_style_Style_js__WEBPACK_IMPORTED_MODULE_47__["createEditingStyle"]
 });
 
 var ol = {
@@ -76259,19 +76261,20 @@ var ol = {
         GML: ol_format_js__WEBPACK_IMPORTED_MODULE_36__["GML"],
         KML: ol_format_js__WEBPACK_IMPORTED_MODULE_36__["KML"],
         WFS: ol_format_js__WEBPACK_IMPORTED_MODULE_36__["WFS"],
-        WKT: ol_format_js__WEBPACK_IMPORTED_MODULE_36__["WKT"]
+        WKT: ol_format_js__WEBPACK_IMPORTED_MODULE_36__["WKT"],
+        filter: ol_format_filter_js__WEBPACK_IMPORTED_MODULE_37__
     },
     geom: Object.assign({}, ol_geom_js__WEBPACK_IMPORTED_MODULE_33__, {
         Polygon: ol_geom_Polygon_js__WEBPACK_IMPORTED_MODULE_34__
     }),
     interaction: nsInteraction,
-    layer: ol_layer_js__WEBPACK_IMPORTED_MODULE_39__,
+    layer: ol_layer_js__WEBPACK_IMPORTED_MODULE_40__,
     proj: nsProj,
-    source: ol_source_js__WEBPACK_IMPORTED_MODULE_43__,
-    sphere: ol_sphere_js__WEBPACK_IMPORTED_MODULE_44__,
+    source: ol_source_js__WEBPACK_IMPORTED_MODULE_44__,
+    sphere: ol_sphere_js__WEBPACK_IMPORTED_MODULE_45__,
     style: nsStyle,
     tilegrid: {
-        WMTS: ol_tilegrid_WMTS_js__WEBPACK_IMPORTED_MODULE_51__["default"]
+        WMTS: ol_tilegrid_WMTS_js__WEBPACK_IMPORTED_MODULE_52__["default"]
     },
     loadingstrategy: ol_loadingstrategy__WEBPACK_IMPORTED_MODULE_35__
 };
