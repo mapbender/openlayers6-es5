@@ -36,7 +36,9 @@ import * as nsControl from "ol/control.js";
 
 import * as nsExtent from "ol/extent.js";
 import * as nsEvents from "ol/events.js";
+import * as nsEvents_Event from "ol/events/Event.js";
 import * as nsEvents_condition from "ol/events/condition.js";
+
 import * as nsGeom from "ol/geom.js";
 import * as geom_Polygon from "ol/geom/Polygon.js";
 import * as nsLoadingstrategy from 'ol/loadingstrategy';
@@ -125,6 +127,11 @@ var ol = {
     coordinate: nsCoordinate,
     control: nsControl,
     events: Object.assign({}, nsEvents, {
+        Event: Object.assign({}, nsEvents_Event, {
+            BaseEvent: nsEvents_Event.default,
+            stopPropagation: nsEvents_Event.stopPropagation,
+            preventDefault: nsEvents_Event.preventDefault
+        }),
         condition: nsEvents_condition
     }),
     extent: nsExtent,
