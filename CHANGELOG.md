@@ -1,3 +1,9 @@
+## 0.3.5
+* Add `ol.events.Event` sub-namespace; contained symbols:
+  * `ol.events.Event.BaseEvent`
+  * `ol.events.Event.preventDefault`
+  * `ol.events.Event.stopPropagation`
+
 ## 0.3.4
 * Add ol.loadingstrategy ([PR#1](https://github.com/mapbender/openlayers6-es5/pull/1))
 
