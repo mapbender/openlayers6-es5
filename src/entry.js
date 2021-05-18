@@ -14,7 +14,6 @@ import {default as Kinetic} from "ol/Kinetic.js";
 import {default as Map} from "ol/Map.js";
 import {default as MapBrowserEvent} from "ol/MapBrowserEvent.js";
 import {default as MapBrowserEventHandler} from "ol/MapBrowserEventHandler.js";
-import {default as MapBrowserPointerEvent} from "ol/MapBrowserPointerEvent.js";
 import {default as MapEvent} from "ol/MapEvent.js";
 import {default as olObject} from "ol/Object.js";
 import {default as Observable} from "ol/Observable.js";
@@ -107,7 +106,6 @@ var ol = {
     Map: Map,
     MapBrowserEvent: MapBrowserEvent,
     MapBrowserEventHandler: MapBrowserEventHandler,
-    MapBrowserPointerEvent: MapBrowserPointerEvent,
     MapEvent: MapEvent,
     Object: olObject,
     Observable: Observable,
