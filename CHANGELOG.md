@@ -1,3 +1,10 @@
+## 0.4.3.1
+* Add `ol.format.filter` sub-namespace for WFS support ([PR#2](https://github.com/mapbender/openlayers6-es5/pull/2))
+* Misc minor package updates for security audit
+
+## 0.4.3
+* Update to [Openlayers 6.4.3](https://github.com/openlayers/openlayers/releases/tag/v6.4.3)
+
 ## 0.3.5
 * Add `ol.events.Event` sub-namespace; contained symbols:
   * `ol.events.Event.BaseEvent`
