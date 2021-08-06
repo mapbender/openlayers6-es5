@@ -49,6 +49,7 @@ import {
     WFS as format_WFS,
     WKT as format_WKT
 } from "ol/format.js";
+import * as nsFormat_filter from "ol/format/filter.js";
 
 import * as interaction0 from "ol/interaction.js";
 import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
@@ -138,7 +139,8 @@ var ol = {
         GML: format_GML,
         KML: format_KML,
         WFS: format_WFS,
-        WKT: format_WKT
+        WKT: format_WKT,
+        filter: nsFormat_filter
     },
     geom: Object.assign({}, nsGeom, {
         Polygon: geom_Polygon
