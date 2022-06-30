@@ -5,7 +5,7 @@ import {terser} from 'rollup-plugin-terser';
 export default {
   input: 'src/entry.js',
   plugins: [
-    node(),
+    node({browser: true}),
     cjs()
   ],
   output: [
@@ -13,6 +13,7 @@ export default {
       format: 'iife',
       file: 'dist/ol-debug.js',
       name: 'ol',
+      inlineDynamicImports: true,
       freeze: false
     },
     {
@@ -22,6 +23,7 @@ export default {
       plugins: [terser()],
       sourcemap: true,
       sourcemapExcludeSources: true,
+      inlineDynamicImports: true,
       freeze: false
     }
   ]
