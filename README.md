@@ -1,15 +1,9 @@
 Openlayers 6 single-file build for ES5
 
-## Build development version
+## Build output
 ```sh
-npm install
-npm run dev
-```
-Output is placed into dist/ol-debug.js + dist/ol-debug.js.map.
-
-## Build production version (minified)
-```
 npm install
 npm run build
 ```
-Output is placed into dist/ol.js
+Output is placed into dist/ol-debug.js (somewhat readable) and dist/ol.js (minified).  
+A sourcemap for the minified version is placed into dist/ol.map.js.
