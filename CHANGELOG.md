@@ -1,3 +1,8 @@
+## 0.14.1.0 + 6.14.1.0
+* Update to [Openlayers 6.14.1](https://github.com/openlayers/openlayers/releases/tag/v6.14.1)
+
+Please see upgrading notes on upstream [v6.5.0](https://github.com/openlayers/openlayers/releases/tag/v6.5.0) and [v6.6.0](https://github.com/openlayers/openlayers/releases/tag/v6.6.0) releases.
+
 ## 0.4.3.2 + 6.4.3.2
 * Drop webpack; switch to rollup build to fix missing "internal" properties in minified build
 * Drop separate `dev` task, build minified / debug output in a single npm task (`build`)
