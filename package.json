@@ -1,6 +1,4 @@
 {
-  "name": "openlayers6-es5",
-  "version": "0.2.0",
   "main": "index.js",
   "repository": "git@github.com:mapbender/openlayers6-es5.git",
   "author": "Paul Schmidt <paul.schmidt@wheregroup.com>",
