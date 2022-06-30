@@ -1,3 +1,7 @@
+## 0.4.3.2 + 6.4.3.2
+* Drop webpack; switch to rollup build to fix missing "internal" properties in minified build
+* Drop separate `dev` task, build minified / debug output in a single npm task (`build`)
+
 ## 0.4.3.1
 * Add `ol.format.filter` sub-namespace for WFS support ([PR#2](https://github.com/mapbender/openlayers6-es5/pull/2))
 * Misc minor package updates for security audit
