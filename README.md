@@ -1,21 +1,15 @@
-# **openlayers6-es5**
+Openlayers 6 single-file build for ES5
 
-## yarn package manager
-#### install / update dependencies
-yarn install
-### add patches
-...
-#### build dev
-yarn dev
-#### build prod
-yarn build
-
-## npm package manager
-#### install / update dependencies
+## Build development version
+```sh
 npm install
-### add patches
-...
-#### build dev
 npm run dev
-#### build prod
+```
+Output is placed into dist/ol-debug.js + dist/ol-debug.js.map.
+
+## Build production version (minified)
+```
+npm install
 npm run build
+```
+Output is placed into dist/ol.js
