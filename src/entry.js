@@ -55,7 +55,6 @@ import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
 import * as nsLayer from "ol/layer.js";
 import * as proj0 from "ol/proj.js";
 import * as proj_proj4 from "ol/proj/proj4.js";
-import {default as proj_Units} from "ol/proj/Units.js";
 import * as nsSource from "ol/source.js";
 import * as nsSphere from "ol/sphere.js";
 import * as style0 from "ol/style.js";
@@ -70,8 +69,7 @@ nsInteraction.Draw.createBox = interaction_Draw_createBox;
 
 var nsProj = {};
 Object.assign(nsProj, proj0, {
-    proj4: proj_proj4,
-    Units: proj_Units
+    proj4: proj_proj4
 });
 
 var nsStyle = {};
