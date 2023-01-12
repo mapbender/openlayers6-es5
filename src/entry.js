@@ -18,7 +18,6 @@ import {default as MapEvent} from "ol/MapEvent.js";
 import {default as olObject} from "ol/Object.js";
 import {default as Observable} from "ol/Observable.js";
 import {default as Overlay} from "ol/Overlay.js";
-import {default as PluggableMap} from "ol/PluggableMap.js";
 import {default as Tile} from "ol/Tile.js";
 import {default as TileCache} from "ol/TileCache.js";
 import {default as TileQueue} from "ol/TileQueue.js";
@@ -111,7 +110,7 @@ var ol = {
     Object: olObject,
     Observable: Observable,
     Overlay: Overlay,
-    PluggableMap: PluggableMap,
+    PluggableMap: Map,      /** Legacy alias; no longer defined in Openlayers 7 */
     Tile: Tile,
     TileCache: TileCache,
     TileQueue: TileQueue,
