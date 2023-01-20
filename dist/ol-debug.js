@@ -18226,8 +18226,11 @@ var ol = (function () {
          * @param {string} src Image source URI.
          * @param {?string} crossOrigin Cross origin.
          * @param {LoadFunction} imageLoadFunction Image load function.
+         * @param {CanvasRenderingContext2D} [context] Canvas context. When provided, the image will be
+         *    drawn into the context's canvas, and `getImage()` will return the canvas once the image
+         *    has finished loading.
          */
-        function ImageWrapper(extent, resolution, pixelRatio, src, crossOrigin, imageLoadFunction) {
+        function ImageWrapper(extent, resolution, pixelRatio, src, crossOrigin, imageLoadFunction, context) {
             var _this = _super.call(this, extent, resolution, pixelRatio, ImageState.IDLE) || this;
             /**
              * @private
@@ -18242,6 +18245,11 @@ var ol = (function () {
             if (crossOrigin !== null) {
                 _this.image_.crossOrigin = crossOrigin;
             }
+            /**
+             * @private
+             * @type {CanvasRenderingContext2D}
+             */
+            _this.context_ = context;
             /**
              * @private
              * @type {?function():void}
@@ -18264,6 +18272,17 @@ var ol = (function () {
          * @api
          */
         ImageWrapper.prototype.getImage = function () {
+            if (
+              this.state == ImageState.LOADED &&
+              this.context_ &&
+              !(this.image_ instanceof HTMLCanvasElement)
+            ) {
+              const canvas = this.context_.canvas;
+              canvas.width = this.image_.width;
+              canvas.height = this.image_.height;
+              this.context_.drawImage(this.image_, 0, 0);
+              this.image_ = this.context_.canvas;
+            }
             return this.image_;
         };
         /**
@@ -56998,7 +57017,7 @@ var ol = (function () {
          * @return {HTMLCanvasElement|HTMLImageElement|HTMLVideoElement} Image.
          */
         CanvasImageLayerRenderer.prototype.getImage = function () {
-            return !this.image_ ? null : this.image_.getImage();
+            return this.image_ ? this.image_.getImage() : null;
         };
         /**
          * Determine whether render should be called.
@@ -57055,7 +57074,7 @@ var ol = (function () {
                 }
             }
             var imageExtent = this.image_.getExtent();
-            var img = this.image_.getImage();
+            var img = this.getImage();
             var imageMapWidth = getWidth(imageExtent);
             var col = Math.floor(img.width * ((coordinate[0] - imageExtent[0]) / imageMapWidth));
             if (col < 0 || col >= img.width) {
@@ -57116,7 +57135,7 @@ var ol = (function () {
                     this.clipUnrotated(context, frameState, layerExtent);
                 }
             }
-            var img = image.getImage();
+            var img = this.getImage();
             var transform = compose(this.tempTransform, width / 2, height / 2, scale, scale, 0, (imagePixelRatio * (imageExtent[0] - viewCenter[0])) / imageResolution, (imagePixelRatio * (viewCenter[1] - imageExtent[3])) / imageResolution);
             this.renderedResolution = (imageResolution * pixelRatio) / imagePixelRatio;
             var dw = img.width * transform[0];
@@ -81195,6 +81214,11 @@ var ol = (function () {
             }) || this;
             /**
              * @private
+             * @type {CanvasRenderingContext2D}
+             */
+            _this.context_ = createCanvasContext2D(1, 1);
+            /**
+             * @private
              * @type {?string}
              */
             _this.crossOrigin_ =
@@ -81303,7 +81327,7 @@ var ol = (function () {
             this.imageSize_[0] = width;
             this.imageSize_[1] = height;
             var url = this.getRequestUrl_(extent, this.imageSize_, pixelRatio, projection, params);
-            this.image_ = new Image$1(extent, resolution, pixelRatio, url, this.crossOrigin_, this.imageLoadFunction_);
+            this.image_ = new Image$1(extent, resolution, pixelRatio, url, this.crossOrigin_, this.imageLoadFunction_, this.context_);
             this.renderedRevision_ = this.getRevision();
             this.image_.addEventListener(EventType.CHANGE, this.handleImageChange.bind(this));
             return this.image_;
@@ -81588,6 +81612,11 @@ var ol = (function () {
             }) || this;
             /**
              * @private
+             * @type {CanvasRenderingContext2D}
+             */
+            _this.context_ = createCanvasContext2D(1, 1);
+            /**
+             * @private
              * @type {?string}
              */
             _this.crossOrigin_ =
@@ -81686,7 +81715,7 @@ var ol = (function () {
             var size = [width * pixelRatio, height * pixelRatio];
             if (this.url_ !== undefined) {
                 var imageUrl = this.getUrl(this.url_, this.params_, extent, size, projection);
-                image = new Image$1(extent, resolution, pixelRatio, imageUrl, this.crossOrigin_, this.imageLoadFunction_);
+                image = new Image$1(extent, resolution, pixelRatio, imageUrl, this.crossOrigin_, this.imageLoadFunction_, this.context_);
                 image.addEventListener(EventType.CHANGE, this.handleImageChange.bind(this));
             }
             else {
@@ -81850,7 +81879,7 @@ var ol = (function () {
              * @private
              * @type {import("../Image.js").default}
              */
-            _this.image_ = new Image$1(_this.imageExtent_, undefined, 1, _this.url_, crossOrigin, imageLoadFunction);
+            _this.image_ = new Image$1(_this.imageExtent_, undefined, 1, _this.url_, crossOrigin, imageLoadFunction, createCanvasContext2D(1, 1));
             /**
              * @private
              * @type {import("../size.js").Size|null}
@@ -82030,6 +82059,11 @@ var ol = (function () {
                 projection: options.projection,
                 resolutions: options.resolutions,
             }) || this;
+            /**
+             * @private
+             * @type {CanvasRenderingContext2D}
+             */
+            _this.context_ = createCanvasContext2D(1, 1);
             /**
              * @private
              * @type {?string}
@@ -82231,7 +82265,7 @@ var ol = (function () {
             this.imageSize_[0] = round(getWidth(requestExtent) / imageResolution, DECIMALS);
             this.imageSize_[1] = round(getHeight(requestExtent) / imageResolution, DECIMALS);
             var url = this.getRequestUrl_(requestExtent, this.imageSize_, pixelRatio, projection, params);
-            this.image_ = new Image$1(requestExtent, resolution, pixelRatio, url, this.crossOrigin_, this.imageLoadFunction_);
+            this.image_ = new Image$1(requestExtent, resolution, pixelRatio, url, this.crossOrigin_, this.imageLoadFunction_, this.context_);
             this.renderedRevision_ = this.getRevision();
             this.image_.addEventListener(EventType.CHANGE, this.handleImageChange.bind(this));
             return this.image_;
