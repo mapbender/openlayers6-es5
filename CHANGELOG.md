@@ -1,3 +1,8 @@
+## 0.15.1.0 + 6.15.1.0
+* Update to [Openlayers 6.15.1](https://github.com/openlayers/openlayers/releases/tag/v6.15.1)
+
+Please see upgrading notes on upstream [v6.15.0](https://github.com/openlayers/openlayers/releases/tag/v6.15.0) release.
+
 ## 0.14.1.0 + 6.14.1.0
 * Update to [Openlayers 6.14.1](https://github.com/openlayers/openlayers/releases/tag/v6.14.1)
 
