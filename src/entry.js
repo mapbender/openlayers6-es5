@@ -18,7 +18,6 @@ import {default as MapEvent} from "ol/MapEvent.js";
 import {default as olObject} from "ol/Object.js";
 import {default as Observable} from "ol/Observable.js";
 import {default as Overlay} from "ol/Overlay.js";
-import {default as PluggableMap} from "ol/PluggableMap.js";
 import {default as Tile} from "ol/Tile.js";
 import {default as TileCache} from "ol/TileCache.js";
 import {default as TileQueue} from "ol/TileQueue.js";
@@ -56,16 +55,12 @@ import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
 import * as nsLayer from "ol/layer.js";
 import * as proj0 from "ol/proj.js";
 import * as proj_proj4 from "ol/proj/proj4.js";
-import {default as proj_Units} from "ol/proj/Units.js";
 import * as nsSource from "ol/source.js";
 import * as nsSphere from "ol/sphere.js";
 import * as style0 from "ol/style.js";
 import {createDefaultStyle as style_Style_createDefaultStyle} from "ol/style/Style.js";
 import {createEditingStyle as style_Style_createEditingStyle} from "ol/style/Style.js";
 import * as style_expressions from "ol/style/expressions.js";
-import {default as style_IconAnchorUnits} from "ol/style/IconAnchorUnits.js";
-import {default as style_IconOrigin} from "ol/style/IconOrigin.js";
-import {default as style_TextPlacement} from "ol/style/TextPlacement.js";
 import {default as tilegrid_WMTS} from "ol/tilegrid/WMTS.js";
 
 var nsInteraction = {};
@@ -74,16 +69,41 @@ nsInteraction.Draw.createBox = interaction_Draw_createBox;
 
 var nsProj = {};
 Object.assign(nsProj, proj0, {
-    proj4: proj_proj4,
-    Units: proj_Units
+    proj4: proj_proj4
 });
 
 var nsStyle = {};
 Object.assign(nsStyle, style0, {
     expressions: style_expressions,
-    IconAnchorUnits: style_IconAnchorUnits,
-    IconOrigin: style_IconOrigin,
-    TextPlacement: style_TextPlacement
+    IconAnchorUnits: {
+        /**
+         * This changed from a separate module to a simple typedef
+         * @see https://github.com/openlayers/openlayers/blob/v6.15.1/src/ol/style/IconAnchorUnits.js
+         * @see https://github.com/openlayers/openlayers/blob/v7.2.2/src/ol/style/Icon.js#L13
+         */
+        FRACTION: 'fraction',
+        PIXELS: 'pixels'
+    },
+    IconOrigin: {
+        /**
+         * This changed from a separate module to a simple typedef
+         * @see https://github.com/openlayers/openlayers/blob/v6.15.1/src/ol/style/IconOrigin.js
+         * @see https://github.com/openlayers/openlayers/blob/v7.2.2/src/ol/style/Icon.js#L18
+         */
+        BOTTOM_LEFT: 'bottom-left',
+        BOTTOM_RIGHT: 'bottom-right',
+        TOP_LEFT: 'top-left',
+        TOP_RIGHT: 'top-right'
+    },
+    TextPlacement: {
+        /**
+         * This changed from a separate module to a simple typedef
+         * @see https://github.com/openlayers/openlayers/blob/v6.15.1/src/ol/style/TextPlacement.js
+         * @see https://github.com/openlayers/openlayers/blob/v7.2.2/src/ol/style/Text.js#L8
+         */
+        POINT: 'point',
+        LINE: 'line'
+    }
 });
 Object.assign(nsStyle.Style, {
     createDefaultStyle: style_Style_createDefaultStyle,
@@ -111,7 +131,7 @@ var ol = {
     Object: olObject,
     Observable: Observable,
     Overlay: Overlay,
-    PluggableMap: PluggableMap,
+    PluggableMap: Map,      /** Legacy alias; no longer defined in Openlayers 7 */
     Tile: Tile,
     TileCache: TileCache,
     TileQueue: TileQueue,

@@ -1,3 +1,8 @@
+## 7.3.0.0
+* Update to [Openlayers 7.3.0](https://github.com/openlayers/openlayers/releases/tag/v7.3.0)
+
+Please see [Openlayers 7.0.0 release notes](https://github.com/openlayers/openlayers/releases/tag/v7.0.0) for BC breaks.
+
 ## 0.15.1.0 + 6.15.1.0
 * Update to [Openlayers 6.15.1](https://github.com/openlayers/openlayers/releases/tag/v6.15.1)
 
