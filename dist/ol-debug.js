@@ -295,6 +295,17 @@ var ol = (function () {
   }
 
   /**
+   * Compare function sorting arrays in descending order.  Safe to use for numeric values.
+   * @param {*} a The first object to be compared.
+   * @param {*} b The second object to be compared.
+   * @return {number} A negative number, zero, or a positive number as the first
+   *     argument is greater than, equal to, or less than the second.
+   */
+  function descending(a, b) {
+    return a < b ? 1 : a > b ? -1 : 0;
+  }
+
+  /**
    * {@link module:ol/tilegrid/TileGrid~TileGrid#getZForResolution} can use a function
    * of this type to determine which nearest resolution to use.
    *
@@ -318,40 +329,58 @@ var ol = (function () {
    * @return {number} Index.
    */
   function linearFindNearest(arr, target, direction) {
-    const n = arr.length;
     if (arr[0] <= target) {
       return 0;
-    } else if (target <= arr[n - 1]) {
+    }
+
+    const n = arr.length;
+    if (target <= arr[n - 1]) {
       return n - 1;
     }
-    let i;
-    if (direction > 0) {
-      for (i = 1; i < n; ++i) {
-        if (arr[i] < target) {
-          return i - 1;
-        }
-      }
-    } else if (direction < 0) {
-      for (i = 1; i < n; ++i) {
-        if (arr[i] <= target) {
+
+    if (typeof direction === 'function') {
+      for (let i = 1; i < n; ++i) {
+        const candidate = arr[i];
+        if (candidate === target) {
           return i;
         }
-      }
-    } else {
-      for (i = 1; i < n; ++i) {
-        if (arr[i] == target) {
-          return i;
-        } else if (arr[i] < target) {
-          if (typeof direction === 'function') {
-            if (direction(target, arr[i - 1], arr[i]) > 0) {
-              return i - 1;
-            }
-            return i;
-          } else if (arr[i - 1] - target < target - arr[i]) {
+        if (candidate < target) {
+          if (direction(target, arr[i - 1], candidate) > 0) {
             return i - 1;
           }
           return i;
         }
+      }
+      return n - 1;
+    }
+
+    if (direction > 0) {
+      for (let i = 1; i < n; ++i) {
+        if (arr[i] < target) {
+          return i - 1;
+        }
+      }
+      return n - 1;
+    }
+
+    if (direction < 0) {
+      for (let i = 1; i < n; ++i) {
+        if (arr[i] <= target) {
+          return i;
+        }
+      }
+      return n - 1;
+    }
+
+    for (let i = 1; i < n; ++i) {
+      if (arr[i] == target) {
+        return i;
+      }
+      if (arr[i] < target) {
+        if (arr[i - 1] - target < target - arr[i]) {
+          return i - 1;
+        }
+        return i;
       }
     }
     return n - 1;
@@ -1088,7 +1117,7 @@ var ol = (function () {
    * OpenLayers version.
    * @type {string}
    */
-  const VERSION = '7.3.0';
+  const VERSION = '7.5.2';
 
   /**
    * @module ol/Object
@@ -3220,6 +3249,9 @@ var ol = (function () {
    * @api
    */
   function applyTransform(extent, transformFn, dest, stops) {
+    if (isEmpty(extent)) {
+      return createOrUpdateEmpty(dest);
+    }
     let coordinates = [];
     if (stops > 1) {
       const width = extent[2] - extent[0];
@@ -3310,13 +3342,15 @@ var ol = (function () {
       if (getWidth(extent) > worldWidth) {
         // the extent wraps around on itself
         return [[projectionExtent[0], extent[1], projectionExtent[2], extent[3]]];
-      } else if (extent[0] < projectionExtent[0]) {
+      }
+      if (extent[0] < projectionExtent[0]) {
         // the extent crosses the anti meridian, so it needs to be sliced
         return [
           [extent[0] + worldWidth, extent[1], projectionExtent[2], extent[3]],
           [projectionExtent[0], extent[1], extent[2], extent[3]],
         ];
-      } else if (extent[2] > projectionExtent[2]) {
+      }
+      if (extent[2] > projectionExtent[2]) {
         // the extent crosses the anti meridian, so it needs to be sliced
         return [
           [extent[0], extent[1], projectionExtent[2], extent[3]],
@@ -4241,7 +4275,8 @@ var ol = (function () {
    */
 
   /**
-   * An array of numbers representing an xy coordinate. Example: `[16, 48]`.
+   * An array of numbers representing an `xy`, `xyz` or `xyzm` coordinate.
+   * Example: `[16, 48]`.
    * @typedef {Array<number>} Coordinate
    * @api
    */
@@ -5218,7 +5253,8 @@ var ol = (function () {
   function createProjection(projection, defaultCode) {
     if (!projection) {
       return get$2(defaultCode);
-    } else if (typeof projection === 'string') {
+    }
+    if (typeof projection === 'string') {
       return get$2(projection);
     }
     return /** @type {Projection} */ (projection);
@@ -5455,7 +5491,8 @@ var ol = (function () {
 
   /**
    * Set the projection for coordinates supplied from and returned by API methods.
-   * This includes all API methods except for those interacting with tile grids.
+   * This includes all API methods except for those interacting with tile grids,
+   * plus {@link import("./Map.js").FrameState} and {@link import("./View.js").State}.
    * @param {ProjectionLike} projection The user projection.
    * @api
    */
@@ -5473,8 +5510,6 @@ var ol = (function () {
 
   /**
    * Get the projection for coordinates supplied from and returned by API methods.
-   * Note that this method is not yet a part of the stable API.  Support for user
-   * projections is not yet complete and should be considered experimental.
    * @return {Projection|null} The user projection (or null if not set).
    * @api
    */
@@ -5483,8 +5518,9 @@ var ol = (function () {
   }
 
   /**
-   * Use geographic coordinates (WGS-84 datum) in API methods.  This includes all API
-   * methods except for those interacting with tile grids.
+   * Use geographic coordinates (WGS-84 datum) in API methods.
+   * This includes all API methods except for those interacting with tile grids,
+   * plus {@link import("./Map.js").FrameState} and {@link import("./View.js").State}.
    * @api
    */
   function useGeographic() {
@@ -5605,8 +5641,8 @@ var ol = (function () {
    * clamped to the validity range.
    * @param {Projection} sourceProj Source projection.
    * @param {Projection} destProj Destination projection.
-   * @param {function(import("./coordinate.js").Coordinate): import("./coordinate.js").Coordinate} transform Transform function (source to destiation).
-   * @return {function(import("./coordinate.js").Coordinate): import("./coordinate.js").Coordinate} Safe transform function (source to destiation).
+   * @param {function(import("./coordinate.js").Coordinate): import("./coordinate.js").Coordinate} transform Transform function (source to destination).
+   * @return {function(import("./coordinate.js").Coordinate): import("./coordinate.js").Coordinate} Safe transform function (source to destination).
    */
   function createSafeCoordinateTransform(sourceProj, destProj, transform) {
     return function (coord) {
@@ -8440,7 +8476,7 @@ var ol = (function () {
    * @param {Array<number>} flatCoordinates Flat coordinates
    * @param {Array<number>} ends Linear ring end indexes
    * @return {Array<Array<number>>} Two dimensional endss array that can
-   * be used to contruct a MultiPolygon
+   * be used to construct a MultiPolygon
    */
   function inflateEnds(flatCoordinates, ends) {
     const endss = [];
@@ -8887,6 +8923,9 @@ var ol = (function () {
    * @api
    */
   function fromExtent(extent) {
+    if (isEmpty(extent)) {
+      throw new Error('Cannot create polygon from empty extent');
+    }
     const minX = extent[0];
     const minY = extent[1];
     const maxX = extent[2];
@@ -9592,7 +9631,8 @@ var ol = (function () {
         return coordinate;
       }
       return null;
-    } else if (flatCoordinates[end - 1] < m) {
+    }
+    if (flatCoordinates[end - 1] < m) {
       if (extrapolate) {
         coordinate = flatCoordinates.slice(end - stride, end);
         coordinate[stride - 1] = m;
@@ -9687,7 +9727,8 @@ var ol = (function () {
       }
       if (m < flatCoordinates[offset + stride - 1]) {
         return null;
-      } else if (m <= flatCoordinates[end - 1]) {
+      }
+      if (m <= flatCoordinates[end - 1]) {
         return lineStringCoordinateAtM(
           flatCoordinates,
           offset,
@@ -11250,7 +11291,7 @@ var ol = (function () {
 
   /**
    * @const
-   * @type {import("../colorlike.js").ColorLike}
+   * @type {string}
    */
   const defaultFillStyle = '#000';
 
@@ -12041,7 +12082,7 @@ var ol = (function () {
       if (lineJoin === 'miter' && miterRatio <= miterLimit) {
         return miterRatio * strokeWidth;
       }
-      // Calculate the distnce from center to the stroke corner where
+      // Calculate the distance from center to the stroke corner where
       // it was cut short because of the miter limit.
       //              l
       //        ----+---- <= distance from center to here is maxr
@@ -12371,7 +12412,7 @@ var ol = (function () {
    * 1. The pixel coordinates of the geometry in GeoJSON notation.
    * 2. The {@link module:ol/render~State} of the layer renderer.
    *
-   * @typedef {function((import("../coordinate.js").Coordinate|Array<import("../coordinate.js").Coordinate>|Array<Array<import("../coordinate.js").Coordinate>>),import("../render.js").State): void} RenderFunction
+   * @typedef {function((import("../coordinate.js").Coordinate|Array<import("../coordinate.js").Coordinate>|Array<Array<import("../coordinate.js").Coordinate>>|Array<Array<Array<import("../coordinate.js").Coordinate>>>),import("../render.js").State): void} RenderFunction
    */
 
   /**
@@ -12798,7 +12839,7 @@ var ol = (function () {
    * @param {number} resolution Resolution.
    * @return {Array<Style>} Style.
    */
-  function createDefaultStyle(feature, resolution) {
+  function createDefaultStyle$1(feature, resolution) {
     // We don't use an immediately-invoked function
     // and a closure so we don't get an error at script evaluation time in
     // browsers that do not support Canvas. (import("./Circle.js").CircleStyle does
@@ -12935,8 +12976,8 @@ var ol = (function () {
    * @property {boolean} [overflow=false] For polygon labels or when `placement` is set to `'line'`, allow text to exceed
    * the width of the polygon at the label position or the length of the path that it follows.
    * @property {TextPlacement} [placement='point'] Text placement.
-   * @property {number} [repeat] Repeat interval in pixels. When set, the text will be repeated at this interval. Only available
-   * when `placement` is set to `'line'`. Overrides 'textAlign'.
+   * @property {number} [repeat] Repeat interval. When set, the text will be repeated at this interval, which specifies
+   * the distance between two text anchors in pixels. Only available when `placement` is set to `'line'`. Overrides 'textAlign'.
    * @property {number|import("../size.js").Size} [scale] Scale.
    * @property {boolean} [rotateWithView=false] Whether to rotate the text with the view.
    * @property {number} [rotation=0] Rotation in radians (positive rotation clockwise).
@@ -12944,7 +12985,7 @@ var ol = (function () {
    * contain line breaks (`\n`). For rich text provide an array of text/font tuples. A tuple consists of the text to
    * render and the font to use (or `''` to use the text style's font). A line break has to be a separate tuple (i.e. `'\n', ''`).
    * **Example:** `['foo', 'bold 10px sans-serif', ' bar', 'italic 10px sans-serif', ' baz', '']` will yield "**foo** *bar* baz".
-   * **Note:** Rich text is not supported for the immediate rendering API.
+   * **Note:** Rich text is not supported for `placement: 'line'` or the immediate rendering API.
    * @property {CanvasTextAlign} [textAlign] Text alignment. Possible values: `'left'`, `'right'`, `'center'`, `'end'` or `'start'`.
    * Default is `'center'` for `placement: 'point'`. For `placement: 'line'`, the default is to let the renderer choose a
    * placement where `maxAngle` is not exceeded.
@@ -12954,7 +12995,7 @@ var ol = (function () {
    * **Note:** `justify` is ignored for immediate rendering and also for `placement: 'line'`.
    * @property {CanvasTextBaseline} [textBaseline='middle'] Text base line. Possible values: `'bottom'`, `'top'`, `'middle'`, `'alphabetic'`,
    * `'hanging'`, `'ideographic'`.
-   * @property {import("./Fill.js").default} [fill] Fill style. If none is provided, we'll use a dark fill-style (#333).
+   * @property {import("./Fill.js").default|null} [fill] Fill style. If none is provided, we'll use a dark fill-style (#333). Specify `null` for no fill.
    * @property {import("./Stroke.js").default} [stroke] Stroke style.
    * @property {import("./Fill.js").default} [backgroundFill] Fill style for the text background when `placement` is
    * `'point'`. Default is no fill.
@@ -13795,8 +13836,9 @@ var ol = (function () {
     }
 
     /**
-     * Return the visibility of the layer (`true` or `false`).
-     * @return {boolean} The visibility of the layer.
+     * Return the value of this layer's `visible` property. To find out whether the layer
+     * is visible on a map, use `isVisible()` instead.
+     * @return {boolean} The value of the `visible` property of the layer.
      * @observable
      * @api
      */
@@ -14571,7 +14613,7 @@ var ol = (function () {
 
   /**
    * @typedef {Object} State
-   * @property {import("./coordinate.js").Coordinate} center Center.
+   * @property {import("./coordinate.js").Coordinate} center Center (in view projection coordinates).
    * @property {import("./proj/Projection.js").default} projection Projection.
    * @property {number} resolution Resolution.
    * @property {import("./coordinate.js").Coordinate} [nextCenter] The next center during an animation series.
@@ -14583,9 +14625,10 @@ var ol = (function () {
 
   /**
    * Like {@link import("./Map.js").FrameState}, but just `viewState` and `extent`.
-   * @typedef {Object} ViewStateAndExtent
+   * @typedef {Object} ViewStateLayerStateExtent
    * @property {State} viewState View state.
-   * @property {import("./extent.js").Extent} extent Extent.
+   * @property {import("./extent.js").Extent} extent Extent (in user projection coordinates).
+   * @property {Array<import("./layer/Layer.js").State>} [layerStatesArray] Layer states.
    */
 
   /**
@@ -15620,7 +15663,7 @@ var ol = (function () {
     }
 
     /**
-     * @return {ViewStateAndExtent} Like `FrameState`, but just `viewState` and `extent`.
+     * @return {ViewStateLayerStateExtent} Like `FrameState`, but just `viewState` and `extent`.
      */
     getViewStateAndExtent() {
       return {
@@ -16464,9 +16507,11 @@ var ol = (function () {
       const constrainRotation = options.constrainRotation;
       if (constrainRotation === undefined || constrainRotation === true) {
         return createSnapToZero();
-      } else if (constrainRotation === false) {
+      }
+      if (constrainRotation === false) {
         return none;
-      } else if (typeof constrainRotation === 'number') {
+      }
+      if (typeof constrainRotation === 'number') {
         return createSnapToN(constrainRotation);
       }
       return none;
@@ -16801,14 +16846,20 @@ var ol = (function () {
     }
 
     /**
-     * The layer is visible in the given view, i.e. within its min/max resolution or zoom and
-     * extent, and `getVisible()` is `true`.
-     * @param {View|import("../View.js").ViewStateAndExtent} view View or {@link import("../Map.js").FrameState}.
-     * @return {boolean} The layer is visible in the current view.
+     * The layer is visible on the map view, i.e. within its min/max resolution or zoom and
+     * extent, not set to `visible: false`, and not inside a layer group that is set
+     * to `visible: false`.
+     * @param {View|import("../View.js").ViewStateLayerStateExtent} [view] View or {@link import("../Map.js").FrameState}.
+     * Only required when the layer is not added to a map.
+     * @return {boolean} The layer is visible in the map view.
      * @api
      */
     isVisible(view) {
       let frameState;
+      const map = this.getMapInternal();
+      if (!view && map) {
+        view = map.getView();
+      }
       if (view instanceof View$1) {
         frameState = {
           viewState: view.getState(),
@@ -16817,17 +16868,30 @@ var ol = (function () {
       } else {
         frameState = view;
       }
+      if (!frameState.layerStatesArray && map) {
+        frameState.layerStatesArray = map.getLayerGroup().getLayerStatesArray();
+      }
+      let layerState;
+      if (frameState.layerStatesArray) {
+        layerState = frameState.layerStatesArray.find(
+          (layerState) => layerState.layer === this
+        );
+      } else {
+        layerState = this.getLayerState();
+      }
+
       const layerExtent = this.getExtent();
+
       return (
-        this.getVisible() &&
-        inView(this.getLayerState(), frameState.viewState) &&
+        inView(layerState, frameState.viewState) &&
         (!layerExtent || intersects$2(layerExtent, frameState.extent))
       );
     }
 
     /**
      * Get the attributions of the source of this layer for the given view.
-     * @param {View|import("../View.js").ViewStateAndExtent} view View or  {@link import("../Map.js").FrameState}.
+     * @param {View|import("../View.js").ViewStateLayerStateExtent} [view] View or {@link import("../Map.js").FrameState}.
+     * Only required when the layer is not added to a map.
      * @return {Array<string>} Attributions for this layer at the given view.
      * @api
      */
@@ -16858,7 +16922,7 @@ var ol = (function () {
      * @param {?import("../Map.js").FrameState} frameState Frame state.
      * @param {HTMLElement} target Target which the renderer may (but need not) use
      * for rendering its content.
-     * @return {HTMLElement} The rendered element.
+     * @return {HTMLElement|null} The rendered element.
      */
     render(frameState, target) {
       const layerRenderer = this.getRenderer();
@@ -16867,6 +16931,7 @@ var ol = (function () {
         this.rendered = true;
         return layerRenderer.renderFrame(frameState, target);
       }
+      return null;
     }
 
     /**
@@ -17810,6 +17875,26 @@ var ol = (function () {
    */
 
   /**
+   * @param {number} width The width.
+   * @param {number} height The height.
+   * @param {number|undefined} wantedWidth The wanted width.
+   * @param {number|undefined} wantedHeight The wanted height.
+   * @return {number|Array<number>} The scale.
+   */
+  function calculateScale(width, height, wantedWidth, wantedHeight) {
+    if (wantedWidth !== undefined && wantedHeight !== undefined) {
+      return [wantedWidth / width, wantedHeight / height];
+    }
+    if (wantedWidth !== undefined) {
+      return wantedWidth / width;
+    }
+    if (wantedHeight !== undefined) {
+      return wantedHeight / height;
+    }
+    return 1;
+  }
+
+  /**
    * @classdesc
    * Set icon style for vector features.
    * @api
@@ -17975,27 +18060,45 @@ var ol = (function () {
       this.size_ = options.size !== undefined ? options.size : null;
 
       /**
-       * @type {number|undefined}
+       * Calculate the scale if width or height were given.
        */
-      this.width_ = options.width;
-
-      /**
-       * @type {number|undefined}
-       */
-      this.height_ = options.height;
-
-      /**
-       * Recalculate the scale if width or height were given.
-       */
-      if (this.width_ !== undefined || this.height_ !== undefined) {
-        const image = this.getImage(1);
-        const setScale = () => {
-          this.updateScaleFromWidthAndHeight(this.width_, this.height_);
-        };
-        if (image.width > 0) {
-          this.updateScaleFromWidthAndHeight(this.width_, this.height_);
+      if (options.width !== undefined || options.height !== undefined) {
+        let width, height;
+        if (options.size) {
+          [width, height] = options.size;
         } else {
-          image.addEventListener('load', setScale);
+          const image = this.getImage(1);
+          if (
+            image instanceof HTMLCanvasElement ||
+            (image.src && image.complete)
+          ) {
+            width = image.width;
+            height = image.height;
+          } else {
+            this.initialOptions_ = options;
+            const onload = () => {
+              this.unlistenImageChange(onload);
+              if (!this.initialOptions_) {
+                return;
+              }
+              const imageSize = this.iconImage_.getSize();
+              this.setScale(
+                calculateScale(
+                  imageSize[0],
+                  imageSize[1],
+                  options.width,
+                  options.height
+                )
+              );
+            };
+            this.listenImageChange(onload);
+            return;
+          }
+        }
+        if (width !== undefined) {
+          this.setScale(
+            calculateScale(width, height, options.width, options.height)
+          );
         }
       }
     }
@@ -18006,13 +18109,15 @@ var ol = (function () {
      * @api
      */
     clone() {
-      let scale = this.getScale();
-      scale = Array.isArray(scale) ? scale.slice() : scale;
-      // if either width or height are defined, do not pass scale.
-      if (this.width_ !== undefined || this.height_ !== undefined) {
-        scale = undefined;
+      let scale, width, height;
+      if (this.initialOptions_) {
+        width = this.initialOptions_.width;
+        height = this.initialOptions_.height;
+      } else {
+        scale = this.getScale();
+        scale = Array.isArray(scale) ? scale.slice() : scale;
       }
-      return new Icon({
+      const clone = new Icon({
         anchor: this.anchor_.slice(),
         anchorOrigin: this.anchorOrigin_,
         anchorXUnits: this.anchorXUnits_,
@@ -18028,35 +18133,15 @@ var ol = (function () {
         opacity: this.getOpacity(),
         rotateWithView: this.getRotateWithView(),
         rotation: this.getRotation(),
-        scale: scale,
+        scale,
+        width,
+        height,
         size: this.size_ !== null ? this.size_.slice() : undefined,
         src: this.getSrc(),
         displacement: this.getDisplacement().slice(),
         declutterMode: this.getDeclutterMode(),
-        width: this.width_,
-        height: this.height_,
       });
-    }
-
-    /**
-     * Set the scale of the Icon by calculating it from given width and height and the
-     * width and height of the image.
-     *
-     * @private
-     * @param {number} width The width.
-     * @param {number} height The height.
-     */
-    updateScaleFromWidthAndHeight(width, height) {
-      const image = this.getImage(1);
-      if (width !== undefined && height !== undefined) {
-        super.setScale([width / image.width, height / image.height]);
-      } else if (width !== undefined) {
-        super.setScale([width / image.width, width / image.width]);
-      } else if (height !== undefined) {
-        super.setScale([height / image.height, height / image.height]);
-      } else {
-        super.setScale([1, 1]);
-      }
+      return clone;
     }
 
     /**
@@ -18234,63 +18319,46 @@ var ol = (function () {
     }
 
     /**
-     * Get the width of the icon (in pixels).
+     * Get the width of the icon (in pixels). Will return undefined when the icon image is not yet loaded.
      * @return {number} Icon width (in pixels).
      * @api
      */
     getWidth() {
-      return this.width_;
+      const scale = this.getScaleArray();
+      if (this.size_) {
+        return this.size_[0] * scale[0];
+      }
+      if (this.iconImage_.getImageState() == ImageState.LOADED) {
+        return this.iconImage_.getSize()[0] * scale[0];
+      }
+      return undefined;
     }
 
     /**
-     * Get the height of the icon (in pixels).
+     * Get the height of the icon (in pixels). Will return undefined when the icon image is not yet loaded.
      * @return {number} Icon height (in pixels).
      * @api
      */
     getHeight() {
-      return this.height_;
+      const scale = this.getScaleArray();
+      if (this.size_) {
+        return this.size_[1] * scale[1];
+      }
+      if (this.iconImage_.getImageState() == ImageState.LOADED) {
+        return this.iconImage_.getSize()[1] * scale[1];
+      }
+      return undefined;
     }
 
     /**
-     * Set the width of the icon in pixels.
-     *
-     * @param {number} width The width to set.
-     */
-    setWidth(width) {
-      this.width_ = width;
-      this.updateScaleFromWidthAndHeight(width, this.height_);
-    }
-
-    /**
-     * Set the height of the icon in pixels.
-     *
-     * @param {number} height The height to set.
-     */
-    setHeight(height) {
-      this.height_ = height;
-      this.updateScaleFromWidthAndHeight(this.width_, height);
-    }
-
-    /**
-     * Set the scale and updates the width and height correspondingly.
+     * Set the scale.
      *
      * @param {number|import("../size.js").Size} scale Scale.
-     * @override
      * @api
      */
     setScale(scale) {
+      delete this.initialOptions_;
       super.setScale(scale);
-      const image = this.getImage(1);
-      if (image) {
-        const widthScale = Array.isArray(scale) ? scale[0] : scale;
-        if (widthScale !== undefined) {
-          this.width_ = widthScale * image.width;
-        }
-        const heightScale = Array.isArray(scale) ? scale[1] : scale;
-        if (heightScale !== undefined) {
-          this.height_ = heightScale * image.height;
-        }
-      }
     }
 
     /**
@@ -18368,7 +18436,7 @@ var ol = (function () {
    * contain line breaks (`\n`). For rich text provide an array of text/font tuples. A tuple consists of the text to
    * render and the font to use (or `''` to use the text style's font). A line break has to be a separate tuple (i.e. `'\n', ''`).
    * **Example:** `['foo', 'bold 10px sans-serif', ' bar', 'italic 10px sans-serif', ' baz', '']` will yield "**foo** *bar* baz".
-   * **Note:** Rich text is not supported for the immediate rendering API.
+   * **Note:** Rich text is not supported for `'text-placement': 'line'` or the immediate rendering API.
    * @property {string} [text-font] Font style as CSS `font` value, see:
    * https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/font. Default is `'10px sans-serif'`
    * @property {number} [text-max-angle=Math.PI/4] When `text-placement` is set to `'line'`, allow a maximum angle between adjacent characters.
@@ -18384,17 +18452,17 @@ var ol = (function () {
    * @property {boolean} [text-rotate-with-view=false] Whether to rotate the text with the view.
    * @property {number} [text-rotation=0] Rotation in radians (positive rotation clockwise).
    * @property {CanvasTextAlign} [text-align] Text alignment. Possible values: `'left'`, `'right'`, `'center'`, `'end'` or `'start'`.
-   * Default is `'center'` for `text-placement: 'point'`. For `text-placement: 'line'`, the default is to let the renderer choose a
+   * Default is `'center'` for `'text-placement': 'point'`. For `'text-placement': 'line'`, the default is to let the renderer choose a
    * placement where `text-max-angle` is not exceeded.
    * @property {import('./Text.js').TextJustify} [text-justify] Text justification within the text box.
    * If not set, text is justified towards the `textAlign` anchor.
    * Otherwise, use options `'left'`, `'center'`, or `'right'` to justify the text within the text box.
-   * **Note:** `text-justify` is ignored for immediate rendering and also for `text-placement: 'line'`.
+   * **Note:** `text-justify` is ignored for immediate rendering and also for `'text-placement': 'line'`.
    * @property {CanvasTextBaseline} [text-baseline='middle'] Text base line. Possible values: `'bottom'`, `'top'`, `'middle'`, `'alphabetic'`,
    * `'hanging'`, `'ideographic'`.
    * @property {Array<number>} [text-padding=[0, 0, 0, 0]] Padding in pixels around the text for decluttering and background. The order of
    * values in the array is `[top, right, bottom, left]`.
-   * @property {import("../color.js").Color|import("../colorlike.js").ColorLike} [text-fill-color] The fill color.
+   * @property {import("../color.js").Color|import("../colorlike.js").ColorLike} [text-fill-color] The fill color. Specify `'none'` to avoid hit detection on the fill.
    * @property {import("../color.js").Color|import("../colorlike.js").ColorLike} [text-background-fill-color] The fill color.
    * @property {import("../color.js").Color|import("../colorlike.js").ColorLike} [text-stroke-color] The stroke color.
    * @property {CanvasLineCap} [text-stroke-line-cap='round'] Line cap style: `butt`, `round`, or `square`.
@@ -18444,6 +18512,10 @@ var ol = (function () {
    * `top-left` or `top-right`.
    * @property {number} [icon-opacity=1] Opacity of the icon.
    * @property {number|import("../size.js").Size} [icon-scale=1] Scale.
+   * @property {number} [icon-width] Width of the icon. If not specified, the actual image width will be used. Cannot be combined
+   * with `scale`.
+   * @property {number} [icon-height] Height of the icon. If not specified, the actual image height will be used. Cannot be combined
+   * with `scale`.
    * @property {number} [icon-rotation=0] Rotation in radians (positive rotation clockwise).
    * @property {boolean} [icon-rotate-with-view=false] Whether to rotate the icon with the view.
    * @property {import("../size.js").Size} [icon-size] Icon size in pixel. Can be used together with `icon-offset` to define the
@@ -18518,12 +18590,15 @@ var ol = (function () {
   /**
    * @param {FlatStyle} flatStyle The flat style.
    * @param {string} prefix The property prefix.
-   * @return {Fill|undefined} The fill (if any).
+   * @return {Fill|null|undefined} The fill (if any).
    */
   function getFill(flatStyle, prefix) {
     const color = flatStyle[prefix + 'fill-color'];
     if (!color) {
       return;
+    }
+    if (color === 'none') {
+      return null;
     }
 
     return new Fill$1({color: color});
@@ -18609,6 +18684,8 @@ var ol = (function () {
         displacement: flatStyle['icon-displacement'],
         opacity: flatStyle['icon-opacity'],
         scale: flatStyle['icon-scale'],
+        width: flatStyle['icon-width'],
+        height: flatStyle['icon-height'],
         rotation: flatStyle['icon-rotation'],
         rotateWithView: flatStyle['icon-rotate-with-view'],
         size: flatStyle['icon-size'],
@@ -18656,6 +18733,21 @@ var ol = (function () {
     }
 
     return;
+  }
+
+  /**
+   * @return {import('./flat.js').FlatStyle} The default flat style.
+   */
+  function createDefaultStyle() {
+    return {
+      'fill-color': 'rgba(255,255,255,0.4)',
+      'stroke-color': '#3399CC',
+      'stroke-width': 1.25,
+      'circle-radius': 5,
+      'circle-fill-color': 'rgba(255,255,255,0.4)',
+      'circle-stroke-width': 1.25,
+      'circle-stroke-color': '#3399CC',
+    };
   }
 
   /**
@@ -18905,9 +18997,15 @@ var ol = (function () {
      * `setStyle()` without arguments to reset to the default style. See
      * [the ol/style/Style module]{@link module:ol/style/Style~Style} for information on the default style.
      *
-     * If your layer has a static style, you can use "flat" style object literals instead of
-     * using the `Style` and symbolizer constructors (`Fill`, `Stroke`, etc.).  See the documentation
-     * for the [flat style types]{@link module:ol/style/flat~FlatStyle} to see what properties are supported.
+     * If your layer has a static style, you can use [flat style]{@link module:ol/style/flat~FlatStyle} object
+     * literals instead of using the `Style` and symbolizer constructors (`Fill`, `Stroke`, etc.):
+     * ```js
+     * vectorLayer.setStyle({
+     *   "fill-color": "yellow",
+     *   "stroke-color": "black",
+     *   "stroke-width": 4
+     * })
+     * ```
      *
      * @param {import("../style/Style.js").StyleLike|import("../style/flat.js").FlatStyleLike|null} [style] Layer style.
      * @api
@@ -18919,7 +19017,7 @@ var ol = (function () {
       let styleLike;
 
       if (style === undefined) {
-        styleLike = createDefaultStyle;
+        styleLike = createDefaultStyle$1;
       } else if (style === null) {
         styleLike = null;
       } else if (typeof style === 'function') {
@@ -19892,7 +19990,7 @@ var ol = (function () {
         this.anchorX_,
         this.anchorY_,
         this.height_,
-        this.opacity_,
+        1,
         this.originX_,
         this.originY_,
         this.rotateWithView_,
@@ -19949,7 +20047,7 @@ var ol = (function () {
         this.anchorX_,
         this.anchorY_,
         this.height_,
-        this.opacity_,
+        1,
         this.originX_,
         this.originY_,
         this.rotateWithView_,
@@ -20114,8 +20212,8 @@ var ol = (function () {
           state.lineCap,
           state.lineJoin,
           state.miterLimit,
-          state.lineDash,
-          state.lineDashOffset,
+          defaultLineDash,
+          defaultLineDashOffset,
         ],
         beginPathInstruction
       );
@@ -20264,8 +20362,8 @@ var ol = (function () {
           state.lineCap,
           state.lineJoin,
           state.miterLimit,
-          state.lineDash,
-          state.lineDashOffset,
+          defaultLineDash,
+          defaultLineDashOffset,
         ]);
       }
       const flatCoordinates = circleGeometry.getFlatCoordinates();
@@ -20320,8 +20418,8 @@ var ol = (function () {
           state.lineCap,
           state.lineJoin,
           state.miterLimit,
-          state.lineDash,
-          state.lineDashOffset,
+          defaultLineDash,
+          defaultLineDashOffset,
         ]);
       }
       const ends = polygonGeometry.getEnds();
@@ -20363,8 +20461,8 @@ var ol = (function () {
           state.lineCap,
           state.lineJoin,
           state.miterLimit,
-          state.lineDash,
-          state.lineDashOffset,
+          defaultLineDash,
+          defaultLineDashOffset,
         ]);
       }
       const endss = multiPolygonGeometry.getEndss();
@@ -20531,14 +20629,12 @@ var ol = (function () {
    */
   /**
    * @const
-   * @enum {number}
+   * @type {{left: 0, center: 0.5, right: 1, top: 0, middle: 0.5, hanging: 0.2, alphabetic: 0.8, ideographic: 0.8, bottom: 1}}
    */
   const TEXT_ALIGN = {
     'left': 0,
-    'end': 0,
     'center': 0.5,
     'right': 1,
-    'start': 1,
     'top': 0,
     'middle': 0.5,
     'hanging': 0.2,
@@ -20603,6 +20699,7 @@ var ol = (function () {
        * @type {!Object<string, import("../canvas.js").FillState>}
        */
       this.fillStates = {};
+      this.fillStates[defaultFillStyle] = {fillStyle: defaultFillStyle};
 
       /**
        * @private
@@ -20843,7 +20940,6 @@ var ol = (function () {
           );
           if (textState.backgroundFill) {
             this.updateFillStyle(this.state, this.createFill);
-            this.hitDetectionInstructions.push(this.createFill(this.state));
           }
           if (textState.backgroundStroke) {
             this.updateStrokeStyle(this.state, this.applyStroke);
@@ -20911,6 +21007,12 @@ var ol = (function () {
           geometryWidths,
         ]);
         const scale = 1 / pixelRatio;
+        // Set default fill for hit detection background
+        const currentFillStyle = this.state.fillStyle;
+        if (textState.backgroundFill) {
+          this.state.fillStyle = defaultFillStyle;
+          this.hitDetectionInstructions.push(this.createFill(this.state));
+        }
         this.hitDetectionInstructions.push([
           CanvasInstruction.DRAW_IMAGE,
           begin,
@@ -20934,11 +21036,16 @@ var ol = (function () {
           this.text_,
           this.textKey_,
           this.strokeKey_,
-          this.fillKey_,
+          this.fillKey_ ? defaultFillStyle : this.fillKey_,
           this.textOffsetX_,
           this.textOffsetY_,
           geometryWidths,
         ]);
+        // Reset previous fill
+        if (textState.backgroundFill) {
+          this.state.fillStyle = currentFillStyle;
+          this.hitDetectionInstructions.push(this.createFill(this.state));
+        }
 
         this.endGeometry(feature);
       }
@@ -21031,7 +21138,7 @@ var ol = (function () {
         end,
         baseline,
         textState.overflow,
-        fillKey,
+        fillKey ? defaultFillStyle : fillKey,
         textState.maxAngle,
         1,
         offsetY,
@@ -21322,8 +21429,8 @@ var ol = (function () {
      * Render the layer.
      * @abstract
      * @param {import("../Map.js").FrameState} frameState Frame state.
-     * @param {HTMLElement} target Target that may be used to render content to.
-     * @return {HTMLElement} The rendered element.
+     * @param {HTMLElement|null} target Target that may be used to render content to.
+     * @return {HTMLElement|null} The rendered element.
      */
     renderFrame(frameState, target) {
       return abstract();
@@ -21405,7 +21512,10 @@ var ol = (function () {
      */
     handleImageChange_(event) {
       const image = /** @type {import("../Image.js").default} */ (event.target);
-      if (image.getState() === ImageState.LOADED) {
+      if (
+        image.getState() === ImageState.LOADED ||
+        image.getState() === ImageState.ERROR
+      ) {
         this.renderIfReadyAndVisible();
       }
     }
@@ -21655,6 +21765,8 @@ var ol = (function () {
         this.container = null;
         this.context = null;
         this.containerReused = false;
+      } else if (this.container) {
+        this.container.style.backgroundColor = null;
       }
       if (!this.container) {
         container = document.createElement('div');
@@ -22030,8 +22142,10 @@ var ol = (function () {
    * @return {number} Text alignment.
    */
   function horizontalTextAlign(text, align) {
-    if ((align === 'start' || align === 'end') && !rtlRegEx.test(text)) {
-      align = align === 'start' ? 'left' : 'right';
+    if (align === 'start') {
+      align = rtlRegEx.test(text) ? 'right' : 'left';
+    } else if (align === 'end') {
+      align = rtlRegEx.test(text) ? 'left' : 'right';
     }
     return TEXT_ALIGN[align];
   }
@@ -22916,7 +23030,8 @@ var ol = (function () {
               measureAndCacheTextWidth(font, text, cachedWidths);
             if (overflow || textLength <= pathLength) {
               const textAlign = this.textStates[textKey].textAlign;
-              const startM = (pathLength - textLength) * TEXT_ALIGN[textAlign];
+              const startM =
+                (pathLength - textLength) * horizontalTextAlign(text, textAlign);
               const parts = drawTextOnPath(
                 pixelCoordinates,
                 begin,
@@ -24064,6 +24179,14 @@ var ol = (function () {
      * @api
      */
     drawCircle(geometry) {
+      if (this.squaredTolerance_) {
+        geometry = /** @type {import("../../geom/Circle.js").default} */ (
+          geometry.simplifyTransformed(
+            this.squaredTolerance_,
+            this.userTransform_
+          )
+        );
+      }
       if (!intersects$2(this.extent_, geometry.getExtent())) {
         return;
       }
@@ -24192,7 +24315,7 @@ var ol = (function () {
      */
     drawFeature(feature, style) {
       const geometry = style.getGeometryFunction()(feature);
-      if (!geometry || !intersects$2(this.extent_, geometry.getExtent())) {
+      if (!geometry) {
         return;
       }
       this.setStyle(style);
@@ -24812,7 +24935,7 @@ var ol = (function () {
     for (let i = 1; i <= featureCount; ++i) {
       const feature = features[i - 1];
       const featureStyleFunction = feature.getStyleFunction() || styleFunction;
-      if (!styleFunction) {
+      if (!featureStyleFunction) {
         continue;
       }
       let styles = featureStyleFunction(feature, resolution);
@@ -24842,7 +24965,7 @@ var ol = (function () {
         }
         style.setText(undefined);
         const image = originalStyle.getImage();
-        if (image && image.getOpacity() !== 0) {
+        if (image) {
           const imgSize = image.getImageSize();
           if (!imgSize) {
             continue;
@@ -25652,8 +25775,8 @@ var ol = (function () {
     /**
      * Render the layer.
      * @param {import("../../Map.js").FrameState} frameState Frame state.
-     * @param {HTMLElement} target Target that may be used to render content to.
-     * @return {HTMLElement} The rendered element.
+     * @param {HTMLElement|null} target Target that may be used to render content to.
+     * @return {HTMLElement|null} The rendered element.
      */
     renderFrame(frameState, target) {
       const pixelRatio = frameState.pixelRatio;
@@ -25671,11 +25794,16 @@ var ol = (function () {
 
       const replayGroup = this.replayGroup_;
       const declutterExecutorGroup = this.declutterExecutorGroup;
-      if (
-        (!replayGroup || replayGroup.isEmpty()) &&
-        (!declutterExecutorGroup || declutterExecutorGroup.isEmpty())
-      ) {
-        return null;
+      let render =
+        (replayGroup && !replayGroup.isEmpty()) ||
+        (declutterExecutorGroup && !declutterExecutorGroup.isEmpty());
+      if (!render) {
+        const hasRenderListeners =
+          this.getLayer().hasListener(RenderEventType.PRERENDER) ||
+          this.getLayer().hasListener(RenderEventType.POSTRENDER);
+        if (!hasRenderListeners) {
+          return null;
+        }
       }
 
       // resize and clear
@@ -25701,8 +25829,7 @@ var ol = (function () {
 
       // clipped rendering if layer extent is set
       let clipped = false;
-      let render = true;
-      if (layerState.extent && this.clipping) {
+      if (render && layerState.extent && this.clipping) {
         const layerExtent = fromUserExtent(layerState.extent, projection);
         render = intersects$2(layerExtent, frameState.extent);
         clipped = render && !containsExtent(layerExtent, frameState.extent);
@@ -26453,10 +26580,10 @@ var ol = (function () {
    */
 
   /**
-   * A function that takes a {@link import("../View.js").ViewStateAndExtent} and returns a string or
+   * A function that takes a {@link import("../View.js").ViewStateLayerStateExtent} and returns a string or
    * an array of strings representing source attributions.
    *
-   * @typedef {function(import("../View.js").ViewStateAndExtent): (string|Array<string>)} Attribution
+   * @typedef {function(import("../View.js").ViewStateLayerStateExtent): (string|Array<string>)} Attribution
    */
 
   /**
@@ -27051,6 +27178,7 @@ var ol = (function () {
    */
 
   /**
+   * @template {import("../geom/Geometry.js").default} [Geometry=import("../geom/Geometry.js").default]
    * @typedef {Object} Options
    * @property {import("./Source.js").AttributionLike} [attributions] Attributions.
    * @property {Array<import("../Feature.js").default<Geometry>>|Collection<import("../Feature.js").default<Geometry>>} [features]
@@ -27140,7 +27268,6 @@ var ol = (function () {
    * @property {boolean} [wrapX=true] Wrap the world horizontally. For vector editing across the
    * -180° and 180° meridians to work properly, this should be set to `false`. The
    * resulting geometry coordinates will then exceed the world bounds.
-   * @template {import("../geom/Geometry.js").default} [Geometry=import("../geom/Geometry.js").default]
    */
 
   /**
@@ -27561,7 +27688,8 @@ var ol = (function () {
     forEachFeature(callback) {
       if (this.featuresRtree_) {
         return this.featuresRtree_.forEach(callback);
-      } else if (this.featuresCollection_) {
+      }
+      if (this.featuresCollection_) {
         this.featuresCollection_.forEach(callback);
       }
     }
@@ -27611,7 +27739,8 @@ var ol = (function () {
     forEachFeatureInExtent(extent, callback) {
       if (this.featuresRtree_) {
         return this.featuresRtree_.forEachInExtent(extent, callback);
-      } else if (this.featuresCollection_) {
+      }
+      if (this.featuresCollection_) {
         this.featuresCollection_.forEach(callback);
       }
     }
@@ -27723,7 +27852,8 @@ var ol = (function () {
         return [].concat(
           ...extents.map((anExtent) => this.featuresRtree_.getInExtent(anExtent))
         );
-      } else if (this.featuresCollection_) {
+      }
+      if (this.featuresCollection_) {
         return this.featuresCollection_.getArray().slice(0);
       }
       return [];
@@ -30249,13 +30379,13 @@ var ol = (function () {
    */
 
   /**
+   * @template T
    * @typedef HitMatch
    * @property {import("../Feature.js").FeatureLike} feature Feature.
    * @property {import("../layer/Layer.js").default} layer Layer.
    * @property {import("../geom/SimpleGeometry.js").default} geometry Geometry.
    * @property {number} distanceSq Squared distance.
    * @property {import("./vector.js").FeatureCallback<T>} callback Callback.
-   * @template T
    */
 
   /**
@@ -30461,6 +30591,11 @@ var ol = (function () {
 
     /**
      * @param {import("../Map.js").FrameState} frameState Frame state.
+     */
+    flushDeclutterItems(frameState) {}
+
+    /**
+     * @param {import("../Map.js").FrameState} frameState Frame state.
      * @protected
      */
     scheduleExpireIconCache(frameState) {
@@ -30532,6 +30667,11 @@ var ol = (function () {
        * @type {boolean}
        */
       this.renderedVisible_ = true;
+
+      /**
+       * @type {Array<import("../layer/BaseVector.js").default>}
+       */
+      this.declutterLayers_ = [];
     }
 
     /**
@@ -30574,10 +30714,10 @@ var ol = (function () {
       const viewState = frameState.viewState;
 
       this.children_.length = 0;
-      /**
-       * @type {Array<import("../layer/BaseVector.js").default>}
-       */
-      const declutterLayers = [];
+
+      const declutterLayers = this.declutterLayers_;
+      declutterLayers.length = 0;
+
       let previousElement = null;
       for (let i = 0, ii = layerStatesArray.length; i < ii; ++i) {
         const layerState = layerStatesArray[i];
@@ -30607,9 +30747,7 @@ var ol = (function () {
           );
         }
       }
-      for (let i = declutterLayers.length - 1; i >= 0; --i) {
-        declutterLayers[i].renderDeclutter(frameState);
-      }
+      this.flushDeclutterItems(frameState);
 
       replaceChildren(this.element_, this.children_);
 
@@ -30621,6 +30759,17 @@ var ol = (function () {
       }
 
       this.scheduleExpireIconCache(frameState);
+    }
+
+    /**
+     * @param {import("../Map.js").FrameState} frameState Frame state.
+     */
+    flushDeclutterItems(frameState) {
+      const layers = this.declutterLayers_;
+      for (let i = layers.length - 1; i >= 0; --i) {
+        layers[i].renderDeclutter(frameState);
+      }
+      layers.length = 0;
     }
   }
 
@@ -31213,7 +31362,7 @@ var ol = (function () {
       this.map_ = map;
 
       /**
-       * @type {any}
+       * @type {ReturnType<typeof setTimeout>}
        * @private
        */
       this.clickTimeoutId_;
@@ -31547,7 +31696,8 @@ var ol = (function () {
      */
     handleTouchMove_(event) {
       // Due to https://github.com/mpizenberg/elm-pep/issues/2, `this.originalPointerMoveEvent_`
-      // may not be initialized yet when we get here on a platform without native pointer events.
+      // may not be initialized yet when we get here on a platform without native pointer events,
+      // when elm-pep is used as pointer events polyfill.
       const originalEvent = this.originalPointerMoveEvent_;
       if (
         (!originalEvent || originalEvent.defaultPrevented) &&
@@ -33630,6 +33780,21 @@ var ol = (function () {
   };
 
   /**
+   * Return `true` if the platform-modifier-key (the meta-key on Mac,
+   * ctrl-key otherwise) is pressed.
+   *
+   * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Map browser event.
+   * @return {boolean} True if the platform modifier key is pressed.
+   * @api
+   */
+  const platformModifierKey = function (mapBrowserEvent) {
+    const originalEvent = /** @type {KeyboardEvent|MouseEvent|TouchEvent} */ (
+      mapBrowserEvent.originalEvent
+    );
+    return MAC ? originalEvent.metaKey : originalEvent.ctrlKey;
+  };
+
+  /**
    * Return `true` if only the shift-key is pressed, `false` otherwise (e.g. when
    * additionally the alt-key is pressed).
    *
@@ -33754,6 +33919,7 @@ var ol = (function () {
     doubleClick: doubleClick,
     noModifierKeys: noModifierKeys,
     platformModifierKeyOnly: platformModifierKeyOnly,
+    platformModifierKey: platformModifierKey,
     shiftKeyOnly: shiftKeyOnly,
     targetNotEditable: targetNotEditable,
     mouseOnly: mouseOnly,
@@ -34536,18 +34702,18 @@ var ol = (function () {
   var DragZoom$1 = DragZoom;
 
   /**
-   * @module ol/events/KeyCode
+   * @module ol/events/Key
    */
 
   /**
-   * @enum {number}
+   * @enum {string}
    * @const
    */
-  var KeyCode = {
-    LEFT: 37,
-    UP: 38,
-    RIGHT: 39,
-    DOWN: 40,
+  var Key = {
+    LEFT: 'ArrowLeft',
+    UP: 'ArrowUp',
+    RIGHT: 'ArrowRight',
+    DOWN: 'ArrowDown',
   };
 
   /**
@@ -34635,24 +34801,24 @@ var ol = (function () {
         const keyEvent = /** @type {KeyboardEvent} */ (
           mapBrowserEvent.originalEvent
         );
-        const keyCode = keyEvent.keyCode;
+        const key = keyEvent.key;
         if (
           this.condition_(mapBrowserEvent) &&
-          (keyCode == KeyCode.DOWN ||
-            keyCode == KeyCode.LEFT ||
-            keyCode == KeyCode.RIGHT ||
-            keyCode == KeyCode.UP)
+          (key == Key.DOWN ||
+            key == Key.LEFT ||
+            key == Key.RIGHT ||
+            key == Key.UP)
         ) {
           const map = mapBrowserEvent.map;
           const view = map.getView();
           const mapUnitsDelta = view.getResolution() * this.pixelDelta_;
           let deltaX = 0,
             deltaY = 0;
-          if (keyCode == KeyCode.DOWN) {
+          if (key == Key.DOWN) {
             deltaY = -mapUnitsDelta;
-          } else if (keyCode == KeyCode.LEFT) {
+          } else if (key == Key.LEFT) {
             deltaX = -mapUnitsDelta;
-          } else if (keyCode == KeyCode.RIGHT) {
+          } else if (key == Key.RIGHT) {
             deltaX = mapUnitsDelta;
           } else {
             deltaY = mapUnitsDelta;
@@ -34679,8 +34845,10 @@ var ol = (function () {
    * @property {number} [duration=100] Animation duration in milliseconds.
    * @property {import("../events/condition.js").Condition} [condition] A function that
    * takes an {@link module:ol/MapBrowserEvent~MapBrowserEvent} and returns a
-   * boolean to indicate whether that event should be handled. Default is
-   * {@link module:ol/events/condition.targetNotEditable}.
+   * boolean to indicate whether that event should be handled. The default condition is
+   * that {@link module:ol/events/condition.targetNotEditable} is fulfilled and that
+   * the platform modifier key isn't pressed
+   * (!{@link module:ol/events/condition.platformModifierKey}).
    * @property {number} [delta=1] The zoom level delta on each key press.
    */
 
@@ -34710,7 +34878,14 @@ var ol = (function () {
        * @private
        * @type {import("../events/condition.js").Condition}
        */
-      this.condition_ = options.condition ? options.condition : targetNotEditable;
+      this.condition_ = options.condition
+        ? options.condition
+        : function (mapBrowserEvent) {
+            return (
+              !platformModifierKey(mapBrowserEvent) &&
+              targetNotEditable(mapBrowserEvent)
+            );
+          };
 
       /**
        * @private
@@ -34870,7 +35045,7 @@ var ol = (function () {
 
       /**
        * @private
-       * @type {?}
+       * @type {ReturnType<typeof setTimeout>}
        */
       this.timeoutId_;
 
@@ -34883,12 +35058,14 @@ var ol = (function () {
       /**
        * Trackpad events separated by this delay will be considered separate
        * interactions.
+       * @private
        * @type {number}
        */
       this.trackpadEventGap_ = 400;
 
       /**
-       * @type {?}
+       * @private
+       * @type {ReturnType<typeof setTimeout>}
        */
       this.trackpadTimeoutId_;
 
@@ -35488,7 +35665,7 @@ var ol = (function () {
    * @property {boolean} animate Animate.
    * @property {import("./transform.js").Transform} coordinateToPixelTransform CoordinateToPixelTransform.
    * @property {import("rbush").default} declutterTree DeclutterTree.
-   * @property {null|import("./extent.js").Extent} extent Extent.
+   * @property {null|import("./extent.js").Extent} extent Extent (in view projection coordinates).
    * @property {import("./extent.js").Extent} [nextExtent] Next extent during an animation series.
    * @property {number} index Index.
    * @property {Array<import("./layer/Layer.js").State>} layerStatesArray LayerStatesArray.
@@ -35728,7 +35905,7 @@ var ol = (function () {
 
       /**
        * @private
-       * @type {*}
+       * @type {ReturnType<typeof setTimeout>}
        */
       this.postRenderTimeoutHandle_;
 
@@ -36693,6 +36870,7 @@ var ol = (function () {
         if (rootNode instanceof ShadowRoot) {
           this.resizeObserver_.unobserve(rootNode.host);
         }
+        this.setSize(undefined);
       }
 
       // target may be undefined, null, a string or an Element.
@@ -36888,6 +37066,21 @@ var ol = (function () {
       if (this.renderer_ && this.animationDelayKey_ === undefined) {
         this.animationDelayKey_ = requestAnimationFrame(this.animationDelay_);
       }
+    }
+
+    /**
+     * This method is meant to be called in a layer's `prerender` listener. It causes all collected
+     * declutter items to be decluttered and rendered on the map immediately. This is useful for
+     * layers that need to appear entirely above the decluttered items of layers lower in the layer
+     * stack.
+     * @api
+     */
+    flushDeclutterItems() {
+      const frameState = this.frameState_;
+      if (!frameState) {
+        return;
+      }
+      this.renderer_.flushDeclutterItems(frameState);
     }
 
     /**
@@ -37967,7 +38160,8 @@ var ol = (function () {
       assert(entry !== undefined, 15); // Tried to get a value for a key that does not exist in the cache
       if (entry === this.newest_) {
         return entry.value_;
-      } else if (entry === this.oldest_) {
+      }
+      if (entry === this.oldest_) {
         this.oldest_ = /** @type {Entry} */ (this.oldest_.newer);
         this.oldest_.older = null;
       } else {
@@ -40578,6 +40772,8 @@ var ol = (function () {
    * @property {number} [duration=200] Animation duration in milliseconds.
    * @property {function(import("../MapEvent.js").default):void} [render] Function called when the control
    * should be re-rendered. This is called in a `requestAnimationFrame` callback.
+   * @property {HTMLElement|string} [target] Specify a target if you want the control to be
+   * rendered outside of the map's viewport.
    */
 
   /**
@@ -40598,6 +40794,7 @@ var ol = (function () {
       options = options ? options : {};
 
       super({
+        target: options.target,
         element: document.createElement('div'),
         render: options.render,
       });
@@ -41063,7 +41260,7 @@ var ol = (function () {
      * @param {!import("../coordinate.js").Coordinate} center Center.
      *     For internal use, flat coordinates in combination with `layout` and no
      *     `radius` are also accepted.
-     * @param {number} [radius] Radius.
+     * @param {number} [radius] Radius in units of the projection.
      * @param {import("./Geometry.js").GeometryLayout} [layout] Layout.
      */
     constructor(center, radius, layout) {
@@ -41280,22 +41477,6 @@ var ol = (function () {
       const stride = this.getStride();
       this.setCenter(
         rotate(center, 0, center.length, stride, angle, anchor, center)
-      );
-      this.changed();
-    }
-
-    /**
-     * Translate the geometry.  This modifies the geometry coordinates in place.  If
-     * instead you want a new geometry, first `clone()` this geometry.
-     * @param {number} deltaX Delta X.
-     * @param {number} deltaY Delta Y.
-     * @api
-     */
-    translate(deltaX, deltaY) {
-      const center = this.getCenter();
-      const stride = this.getStride();
-      this.setCenter(
-        translate(center, 0, center.length, stride, deltaX, deltaY, center)
       );
       this.changed();
     }
@@ -42915,6 +43096,8 @@ var ol = (function () {
     }
   }
 
+  var FeatureFormat$1 = FeatureFormat;
+
   /**
    * @param {import("../geom/Geometry.js").default} geometry Geometry.
    * @param {boolean} write Set to true for writing, false for reading.
@@ -42998,7 +43181,7 @@ var ol = (function () {
    *
    * @abstract
    */
-  class JSONFeature extends FeatureFormat {
+  class JSONFeature extends FeatureFormat$1 {
     constructor() {
       super();
     }
@@ -43186,13 +43369,570 @@ var ol = (function () {
     if (typeof source === 'string') {
       const object = JSON.parse(source);
       return object ? /** @type {Object} */ (object) : null;
-    } else if (source !== null) {
+    }
+    if (source !== null) {
       return source;
     }
     return null;
   }
 
   var JSONFeature$1 = JSONFeature;
+
+  /**
+   * @module ol/format/EsriJSON
+   */
+
+  /**
+   * @typedef {import("arcgis-rest-api").Feature} EsriJSONFeature
+   * @typedef {import("arcgis-rest-api").FeatureSet} EsriJSONFeatureSet
+   * @typedef {import("arcgis-rest-api").Geometry} EsriJSONGeometry
+   * @typedef {import("arcgis-rest-api").Point} EsriJSONPoint
+   * @typedef {import("arcgis-rest-api").Polyline} EsriJSONPolyline
+   * @typedef {import("arcgis-rest-api").Polygon} EsriJSONPolygon
+   * @typedef {import("arcgis-rest-api").Multipoint} EsriJSONMultipoint
+   * @typedef {import("arcgis-rest-api").HasZM} EsriJSONHasZM
+   * @typedef {import("arcgis-rest-api").Position} EsriJSONPosition
+   * @typedef {import("arcgis-rest-api").SpatialReferenceWkid} EsriJSONSpatialReferenceWkid
+   */
+
+  /**
+   * @typedef {Object} EsriJSONMultiPolygon
+   * @property {Array<Array<Array<Array<number>>>>} rings Rings for the MultiPolygon.
+   * @property {boolean} [hasM] If the polygon coordinates have an M value.
+   * @property {boolean} [hasZ] If the polygon coordinates have a Z value.
+   * @property {EsriJSONSpatialReferenceWkid} [spatialReference] The coordinate reference system.
+   */
+
+  /**
+   * @const
+   * @type {Object<import("../geom/Geometry.js").Type, function(EsriJSONGeometry): import("../geom/Geometry.js").default>}
+   */
+  const GEOMETRY_READERS$1 = {
+    Point: readPointGeometry$2,
+    LineString: readLineStringGeometry$2,
+    Polygon: readPolygonGeometry$2,
+    MultiPoint: readMultiPointGeometry$2,
+    MultiLineString: readMultiLineStringGeometry$2,
+    MultiPolygon: readMultiPolygonGeometry$2,
+  };
+
+  /**
+   * @const
+   * @type {Object<import("../geom/Geometry.js").Type, function(import("../geom/Geometry.js").default, import("./Feature.js").WriteOptions=): (EsriJSONGeometry)>}
+   */
+  const GEOMETRY_WRITERS = {
+    Point: writePointGeometry$1,
+    LineString: writeLineStringGeometry$1,
+    Polygon: writePolygonGeometry$1,
+    MultiPoint: writeMultiPointGeometry$1,
+    MultiLineString: writeMultiLineStringGeometry$1,
+    MultiPolygon: writeMultiPolygonGeometry$1,
+  };
+
+  /**
+   * @typedef {Object} Options
+   * @property {string} [geometryName] Geometry name to use when creating features.
+   */
+
+  /**
+   * @classdesc
+   * Feature format for reading and writing data in the EsriJSON format.
+   *
+   * @api
+   */
+  class EsriJSON extends JSONFeature$1 {
+    /**
+     * @param {Options} [options] Options.
+     */
+    constructor(options) {
+      options = options ? options : {};
+
+      super();
+
+      /**
+       * Name of the geometry attribute for features.
+       * @type {string|undefined}
+       * @private
+       */
+      this.geometryName_ = options.geometryName;
+    }
+
+    /**
+     * @param {Object} object Object.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @param {string} [idField] Name of the field where to get the id from.
+     * @protected
+     * @return {import("../Feature.js").default} Feature.
+     */
+    readFeatureFromObject(object, options, idField) {
+      const esriJSONFeature = /** @type {EsriJSONFeature} */ (object);
+      const geometry = readGeometry$1(esriJSONFeature.geometry, options);
+      const feature = new Feature$1();
+      if (this.geometryName_) {
+        feature.setGeometryName(this.geometryName_);
+      }
+      feature.setGeometry(geometry);
+      if (esriJSONFeature.attributes) {
+        feature.setProperties(esriJSONFeature.attributes, true);
+        const id = esriJSONFeature.attributes[idField];
+        if (id !== undefined) {
+          feature.setId(/** @type {number} */ (id));
+        }
+      }
+      return feature;
+    }
+
+    /**
+     * @param {Object} object Object.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {Array<Feature>} Features.
+     */
+    readFeaturesFromObject(object, options) {
+      options = options ? options : {};
+      if (object['features']) {
+        const esriJSONFeatureSet = /** @type {EsriJSONFeatureSet} */ (object);
+        /** @type {Array<import("../Feature.js").default>} */
+        const features = [];
+        const esriJSONFeatures = esriJSONFeatureSet.features;
+        for (let i = 0, ii = esriJSONFeatures.length; i < ii; ++i) {
+          features.push(
+            this.readFeatureFromObject(
+              esriJSONFeatures[i],
+              options,
+              object.objectIdFieldName
+            )
+          );
+        }
+        return features;
+      }
+      return [this.readFeatureFromObject(object, options)];
+    }
+
+    /**
+     * @param {EsriJSONGeometry} object Object.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {import("../geom/Geometry.js").default} Geometry.
+     */
+    readGeometryFromObject(object, options) {
+      return readGeometry$1(object, options);
+    }
+
+    /**
+     * @param {Object} object Object.
+     * @protected
+     * @return {import("../proj/Projection.js").default} Projection.
+     */
+    readProjectionFromObject(object) {
+      if (
+        object['spatialReference'] &&
+        object['spatialReference']['wkid'] !== undefined
+      ) {
+        const spatialReference = /** @type {EsriJSONSpatialReferenceWkid} */ (
+          object['spatialReference']
+        );
+        const crs = spatialReference.wkid;
+        return get$2('EPSG:' + crs);
+      }
+      return null;
+    }
+
+    /**
+     * Encode a geometry as a EsriJSON object.
+     *
+     * @param {import("../geom/Geometry.js").default} geometry Geometry.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {EsriJSONGeometry} Object.
+     * @api
+     */
+    writeGeometryObject(geometry, options) {
+      return writeGeometry$1(geometry, this.adaptOptions(options));
+    }
+
+    /**
+     * Encode a feature as a esriJSON Feature object.
+     *
+     * @param {import("../Feature.js").default} feature Feature.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {Object} Object.
+     * @api
+     */
+    writeFeatureObject(feature, options) {
+      options = this.adaptOptions(options);
+      const object = {};
+      if (!feature.hasProperties()) {
+        object['attributes'] = {};
+        return object;
+      }
+      const properties = feature.getProperties();
+      const geometry = feature.getGeometry();
+      if (geometry) {
+        object['geometry'] = writeGeometry$1(geometry, options);
+        const projection =
+          options && (options.dataProjection || options.featureProjection);
+        if (projection) {
+          object['geometry']['spatialReference'] =
+            /** @type {EsriJSONSpatialReferenceWkid} */ ({
+              wkid: Number(get$2(projection).getCode().split(':').pop()),
+            });
+        }
+        delete properties[feature.getGeometryName()];
+      }
+      if (!isEmpty$1(properties)) {
+        object['attributes'] = properties;
+      } else {
+        object['attributes'] = {};
+      }
+      return object;
+    }
+
+    /**
+     * Encode an array of features as a EsriJSON object.
+     *
+     * @param {Array<import("../Feature.js").default>} features Features.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {EsriJSONFeatureSet} EsriJSON Object.
+     * @api
+     */
+    writeFeaturesObject(features, options) {
+      options = this.adaptOptions(options);
+      const objects = [];
+      for (let i = 0, ii = features.length; i < ii; ++i) {
+        objects.push(this.writeFeatureObject(features[i], options));
+      }
+      return {
+        'features': objects,
+      };
+    }
+  }
+
+  /**
+   * @param {EsriJSONGeometry} object Object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {import("../geom/Geometry.js").default} Geometry.
+   */
+  function readGeometry$1(object, options) {
+    if (!object) {
+      return null;
+    }
+    /** @type {import("../geom/Geometry.js").Type} */
+    let type;
+    if (typeof object['x'] === 'number' && typeof object['y'] === 'number') {
+      type = 'Point';
+    } else if (object['points']) {
+      type = 'MultiPoint';
+    } else if (object['paths']) {
+      const esriJSONPolyline = /** @type {EsriJSONPolyline} */ (object);
+      if (esriJSONPolyline.paths.length === 1) {
+        type = 'LineString';
+      } else {
+        type = 'MultiLineString';
+      }
+    } else if (object['rings']) {
+      const esriJSONPolygon = /** @type {EsriJSONPolygon} */ (object);
+      const layout = getGeometryLayout(esriJSONPolygon);
+      const rings = convertRings(esriJSONPolygon.rings, layout);
+      if (rings.length === 1) {
+        type = 'Polygon';
+        object = Object.assign({}, object, {['rings']: rings[0]});
+      } else {
+        type = 'MultiPolygon';
+        object = Object.assign({}, object, {['rings']: rings});
+      }
+    }
+    const geometryReader = GEOMETRY_READERS$1[type];
+    return transformGeometryWithOptions(geometryReader(object), false, options);
+  }
+
+  /**
+   * Determines inner and outer rings.
+   * Checks if any polygons in this array contain any other polygons in this
+   * array. It is used for checking for holes.
+   * Logic inspired by: https://github.com/Esri/terraformer-arcgis-parser
+   * @param {Array<!Array<!Array<number>>>} rings Rings.
+   * @param {import("../geom/Geometry.js").GeometryLayout} layout Geometry layout.
+   * @return {Array<!Array<!Array<!Array<number>>>>} Transformed rings.
+   */
+  function convertRings(rings, layout) {
+    const flatRing = [];
+    const outerRings = [];
+    const holes = [];
+    let i, ii;
+    for (i = 0, ii = rings.length; i < ii; ++i) {
+      flatRing.length = 0;
+      deflateCoordinates(flatRing, 0, rings[i], layout.length);
+      // is this ring an outer ring? is it clockwise?
+      const clockwise = linearRingIsClockwise(
+        flatRing,
+        0,
+        flatRing.length,
+        layout.length
+      );
+      if (clockwise) {
+        outerRings.push([rings[i]]);
+      } else {
+        holes.push(rings[i]);
+      }
+    }
+    while (holes.length) {
+      const hole = holes.shift();
+      let matched = false;
+      // loop over all outer rings and see if they contain our hole.
+      for (i = outerRings.length - 1; i >= 0; i--) {
+        const outerRing = outerRings[i][0];
+        const containsHole = containsExtent(
+          new LinearRing$1(outerRing).getExtent(),
+          new LinearRing$1(hole).getExtent()
+        );
+        if (containsHole) {
+          // the hole is contained push it into our polygon
+          outerRings[i].push(hole);
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // no outer rings contain this hole turn it into and outer
+        // ring (reverse it)
+        outerRings.push([hole.reverse()]);
+      }
+    }
+    return outerRings;
+  }
+
+  /**
+   * @param {EsriJSONPoint} object Object.
+   * @return {import("../geom/Geometry.js").default} Point.
+   */
+  function readPointGeometry$2(object) {
+    let point;
+    if (object.m !== undefined && object.z !== undefined) {
+      point = new Point$1([object.x, object.y, object.z, object.m], 'XYZM');
+    } else if (object.z !== undefined) {
+      point = new Point$1([object.x, object.y, object.z], 'XYZ');
+    } else if (object.m !== undefined) {
+      point = new Point$1([object.x, object.y, object.m], 'XYM');
+    } else {
+      point = new Point$1([object.x, object.y]);
+    }
+    return point;
+  }
+
+  /**
+   * @param {EsriJSONPolyline} object Object.
+   * @return {import("../geom/Geometry.js").default} LineString.
+   */
+  function readLineStringGeometry$2(object) {
+    const layout = getGeometryLayout(object);
+    return new LineString$1(object.paths[0], layout);
+  }
+
+  /**
+   * @param {EsriJSONPolyline} object Object.
+   * @return {import("../geom/Geometry.js").default} MultiLineString.
+   */
+  function readMultiLineStringGeometry$2(object) {
+    const layout = getGeometryLayout(object);
+    return new MultiLineString$1(object.paths, layout);
+  }
+
+  /**
+   * @param {EsriJSONHasZM} object Object.
+   * @return {import("../geom/Geometry.js").GeometryLayout} The geometry layout to use.
+   */
+  function getGeometryLayout(object) {
+    /** @type {import("../geom/Geometry.js").GeometryLayout} */
+    let layout = 'XY';
+    if (object.hasZ === true && object.hasM === true) {
+      layout = 'XYZM';
+    } else if (object.hasZ === true) {
+      layout = 'XYZ';
+    } else if (object.hasM === true) {
+      layout = 'XYM';
+    }
+    return layout;
+  }
+
+  /**
+   * @param {EsriJSONMultipoint} object Object.
+   * @return {import("../geom/Geometry.js").default} MultiPoint.
+   */
+  function readMultiPointGeometry$2(object) {
+    const layout = getGeometryLayout(object);
+    return new MultiPoint$1(object.points, layout);
+  }
+
+  /**
+   * @param {EsriJSONMultiPolygon} object Object.
+   * @return {import("../geom/Geometry.js").default} MultiPolygon.
+   */
+  function readMultiPolygonGeometry$2(object) {
+    const layout = getGeometryLayout(object);
+    return new MultiPolygon$1(object.rings, layout);
+  }
+
+  /**
+   * @param {EsriJSONPolygon} object Object.
+   * @return {import("../geom/Geometry.js").default} Polygon.
+   */
+  function readPolygonGeometry$2(object) {
+    const layout = getGeometryLayout(object);
+    return new Polygon$1(object.rings, layout);
+  }
+
+  /**
+   * @param {import("../geom/Point.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONPoint} EsriJSON geometry.
+   */
+  function writePointGeometry$1(geometry, options) {
+    const coordinates = geometry.getCoordinates();
+    /** @type {EsriJSONPoint} */
+    let esriJSON;
+    const layout = geometry.getLayout();
+    if (layout === 'XYZ') {
+      esriJSON = {
+        x: coordinates[0],
+        y: coordinates[1],
+        z: coordinates[2],
+      };
+    } else if (layout === 'XYM') {
+      esriJSON = {
+        x: coordinates[0],
+        y: coordinates[1],
+        m: coordinates[2],
+      };
+    } else if (layout === 'XYZM') {
+      esriJSON = {
+        x: coordinates[0],
+        y: coordinates[1],
+        z: coordinates[2],
+        m: coordinates[3],
+      };
+    } else if (layout === 'XY') {
+      esriJSON = {
+        x: coordinates[0],
+        y: coordinates[1],
+      };
+    } else {
+      assert(false, 34); // Invalid geometry layout
+    }
+    return esriJSON;
+  }
+
+  /**
+   * @param {import("../geom/SimpleGeometry.js").default} geometry Geometry.
+   * @return {Object} Object with boolean hasZ and hasM keys.
+   */
+  function getHasZM(geometry) {
+    const layout = geometry.getLayout();
+    return {
+      hasZ: layout === 'XYZ' || layout === 'XYZM',
+      hasM: layout === 'XYM' || layout === 'XYZM',
+    };
+  }
+
+  /**
+   * @param {import("../geom/LineString.js").default} lineString Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONPolyline} EsriJSON geometry.
+   */
+  function writeLineStringGeometry$1(lineString, options) {
+    const hasZM = getHasZM(lineString);
+    return {
+      hasZ: hasZM.hasZ,
+      hasM: hasZM.hasM,
+      paths: [
+        /** @type {Array<EsriJSONPosition>} */ (lineString.getCoordinates()),
+      ],
+    };
+  }
+
+  /**
+   * @param {import("../geom/Polygon.js").default} polygon Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONPolygon} EsriJSON geometry.
+   */
+  function writePolygonGeometry$1(polygon, options) {
+    // Esri geometries use the left-hand rule
+    const hasZM = getHasZM(polygon);
+    return {
+      hasZ: hasZM.hasZ,
+      hasM: hasZM.hasM,
+      rings: /** @type {Array<Array<EsriJSONPosition>>} */ (
+        polygon.getCoordinates(false)
+      ),
+    };
+  }
+
+  /**
+   * @param {import("../geom/MultiLineString.js").default} multiLineString Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONPolyline} EsriJSON geometry.
+   */
+  function writeMultiLineStringGeometry$1(multiLineString, options) {
+    const hasZM = getHasZM(multiLineString);
+    return {
+      hasZ: hasZM.hasZ,
+      hasM: hasZM.hasM,
+      paths: /** @type {Array<Array<EsriJSONPosition>>} */ (
+        multiLineString.getCoordinates()
+      ),
+    };
+  }
+
+  /**
+   * @param {import("../geom/MultiPoint.js").default} multiPoint Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONMultipoint} EsriJSON geometry.
+   */
+  function writeMultiPointGeometry$1(multiPoint, options) {
+    const hasZM = getHasZM(multiPoint);
+    return {
+      hasZ: hasZM.hasZ,
+      hasM: hasZM.hasM,
+      points: /** @type {Array<EsriJSONPosition>} */ (
+        multiPoint.getCoordinates()
+      ),
+    };
+  }
+
+  /**
+   * @param {import("../geom/MultiPolygon.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONPolygon} EsriJSON geometry.
+   */
+  function writeMultiPolygonGeometry$1(geometry, options) {
+    const hasZM = getHasZM(geometry);
+    const coordinates = geometry.getCoordinates(false);
+    const output = [];
+    for (let i = 0; i < coordinates.length; i++) {
+      for (let x = coordinates[i].length - 1; x >= 0; x--) {
+        output.push(coordinates[i][x]);
+      }
+    }
+    return {
+      hasZ: hasZM.hasZ,
+      hasM: hasZM.hasM,
+      rings: /** @type {Array<Array<EsriJSONPosition>>} */ (output),
+    };
+  }
+
+  /**
+   * @param {import("../geom/Geometry.js").default} geometry Geometry.
+   * @param {import("./Feature.js").WriteOptions} [options] Write options.
+   * @return {EsriJSONGeometry} EsriJSON geometry.
+   */
+  function writeGeometry$1(geometry, options) {
+    const geometryWriter = GEOMETRY_WRITERS[geometry.getType()];
+    return geometryWriter(
+      transformGeometryWithOptions(geometry, true, options),
+      options
+    );
+  }
+
+  var format_EsriJSON = EsriJSON;
 
   /**
    * @module ol/format/GeoJSON
@@ -43464,33 +44204,33 @@ var ol = (function () {
     let geometry;
     switch (object['type']) {
       case 'Point': {
-        geometry = readPointGeometry(/** @type {GeoJSONPoint} */ (object));
+        geometry = readPointGeometry$1(/** @type {GeoJSONPoint} */ (object));
         break;
       }
       case 'LineString': {
-        geometry = readLineStringGeometry(
+        geometry = readLineStringGeometry$1(
           /** @type {GeoJSONLineString} */ (object)
         );
         break;
       }
       case 'Polygon': {
-        geometry = readPolygonGeometry(/** @type {GeoJSONPolygon} */ (object));
+        geometry = readPolygonGeometry$1(/** @type {GeoJSONPolygon} */ (object));
         break;
       }
       case 'MultiPoint': {
-        geometry = readMultiPointGeometry(
+        geometry = readMultiPointGeometry$1(
           /** @type {GeoJSONMultiPoint} */ (object)
         );
         break;
       }
       case 'MultiLineString': {
-        geometry = readMultiLineStringGeometry(
+        geometry = readMultiLineStringGeometry$1(
           /** @type {GeoJSONMultiLineString} */ (object)
         );
         break;
       }
       case 'MultiPolygon': {
-        geometry = readMultiPolygonGeometry(
+        geometry = readMultiPolygonGeometry$1(
           /** @type {GeoJSONMultiPolygon} */ (object)
         );
         break;
@@ -43530,7 +44270,7 @@ var ol = (function () {
    * @param {GeoJSONPoint} object Object.
    * @return {Point} Point.
    */
-  function readPointGeometry(object) {
+  function readPointGeometry$1(object) {
     return new Point$1(object['coordinates']);
   }
 
@@ -43538,7 +44278,7 @@ var ol = (function () {
    * @param {GeoJSONLineString} object Object.
    * @return {LineString} LineString.
    */
-  function readLineStringGeometry(object) {
+  function readLineStringGeometry$1(object) {
     return new LineString$1(object['coordinates']);
   }
 
@@ -43546,7 +44286,7 @@ var ol = (function () {
    * @param {GeoJSONMultiLineString} object Object.
    * @return {MultiLineString} MultiLineString.
    */
-  function readMultiLineStringGeometry(object) {
+  function readMultiLineStringGeometry$1(object) {
     return new MultiLineString$1(object['coordinates']);
   }
 
@@ -43554,7 +44294,7 @@ var ol = (function () {
    * @param {GeoJSONMultiPoint} object Object.
    * @return {MultiPoint} MultiPoint.
    */
-  function readMultiPointGeometry(object) {
+  function readMultiPointGeometry$1(object) {
     return new MultiPoint$1(object['coordinates']);
   }
 
@@ -43562,7 +44302,7 @@ var ol = (function () {
    * @param {GeoJSONMultiPolygon} object Object.
    * @return {MultiPolygon} MultiPolygon.
    */
-  function readMultiPolygonGeometry(object) {
+  function readMultiPolygonGeometry$1(object) {
     return new MultiPolygon$1(object['coordinates']);
   }
 
@@ -43570,7 +44310,7 @@ var ol = (function () {
    * @param {GeoJSONPolygon} object Object.
    * @return {Polygon} Polygon.
    */
-  function readPolygonGeometry(object) {
+  function readPolygonGeometry$1(object) {
     return new Polygon$1(object['coordinates']);
   }
 
@@ -43930,6 +44670,45 @@ var ol = (function () {
   }
 
   /**
+   * Make an object property pusher function for adding a property to the
+   * object at the top of the stack.
+   * @param {function(this: T, Element, Array<*>): *} valueReader Value reader.
+   * @param {string} [property] Property.
+   * @param {T} [thisArg] The object to use as `this` in `valueReader`.
+   * @return {Parser} Parser.
+   * @template T
+   */
+  function makeObjectPropertyPusher(valueReader, property, thisArg) {
+    return (
+      /**
+       * @param {Element} node Node.
+       * @param {Array<*>} objectStack Object stack.
+       */
+      function (node, objectStack) {
+        const value = valueReader.call(
+          thisArg !== undefined ? thisArg : this,
+          node,
+          objectStack
+        );
+        if (value !== undefined) {
+          const object = /** @type {!Object} */ (
+            objectStack[objectStack.length - 1]
+          );
+          const name = property !== undefined ? property : node.localName;
+          let array;
+          if (name in object) {
+            array = object[name];
+          } else {
+            array = [];
+            object[name] = array;
+          }
+          array.push(value);
+        }
+      }
+    );
+  }
+
+  /**
    * Make an object property setter function.
    * @param {function(this: T, Element, Array<*>): *} valueReader Value reader.
    * @param {string} [property] Property.
@@ -43982,6 +44761,32 @@ var ol = (function () {
       );
       const parentNode = parent.node;
       parentNode.appendChild(node);
+    };
+  }
+
+  /**
+   * Create a serializer that calls the provided `nodeWriter` from
+   * {@link module:ol/xml.serialize}. This can be used by the parent writer to have the
+   * `nodeWriter` called with an array of values when the `nodeWriter` was
+   * designed to serialize a single item. An example would be a LineString
+   * geometry writer, which could be reused for writing MultiLineString
+   * geometries.
+   * @param {function(this: T, Element, V, Array<*>): void} nodeWriter Node writer.
+   * @param {T} [thisArg] The object to use as `this` in `nodeWriter`.
+   * @return {Serializer} Serializer.
+   * @template T, V
+   */
+  function makeArraySerializer(nodeWriter, thisArg) {
+    let serializersNS, nodeFactory;
+    return function (node, value, objectStack) {
+      if (serializersNS === undefined) {
+        serializersNS = {};
+        const serializers = {};
+        serializers[node.localName] = nodeWriter;
+        serializersNS[node.namespaceURI] = serializers;
+        nodeFactory = makeSimpleNodeFactory(node.localName);
+      }
+      serialize(serializersNS, nodeFactory, value, objectStack);
     };
   }
 
@@ -44236,7 +45041,7 @@ var ol = (function () {
    *
    * @abstract
    */
-  class XMLFeature extends FeatureFormat {
+  class XMLFeature extends FeatureFormat$1 {
     constructor() {
       super();
 
@@ -44265,10 +45070,12 @@ var ol = (function () {
     readFeature(source, options) {
       if (!source) {
         return null;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readFeatureFromDocument(doc, options);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readFeatureFromDocument(
           /** @type {Document} */ (source),
           options
@@ -44310,10 +45117,12 @@ var ol = (function () {
     readFeatures(source, options) {
       if (!source) {
         return [];
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readFeaturesFromDocument(doc, options);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readFeaturesFromDocument(
           /** @type {Document} */ (source),
           options
@@ -44363,10 +45172,12 @@ var ol = (function () {
     readGeometry(source, options) {
       if (!source) {
         return null;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readGeometryFromDocument(doc, options);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readGeometryFromDocument(
           /** @type {Document} */ (source),
           options
@@ -44405,10 +45216,12 @@ var ol = (function () {
     readProjection(source) {
       if (!source) {
         return null;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readProjectionFromDocument(doc);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readProjectionFromDocument(/** @type {Document} */ (source));
       }
       return this.readProjectionFromNode(/** @type {Element} */ (source));
@@ -45186,6 +45999,16 @@ var ol = (function () {
 
   /**
    * @param {Node} node Node.
+   * @return {number|undefined} DateTime in seconds.
+   */
+  function readDateTime(node) {
+    const s = getAllTextContent(node, false);
+    const dateTime = Date.parse(s);
+    return isNaN(dateTime) ? undefined : dateTime / 1000;
+  }
+
+  /**
+   * @param {Node} node Node.
    * @return {number|undefined} Decimal.
    */
   function readDecimal(node) {
@@ -45252,11 +46075,42 @@ var ol = (function () {
   }
 
   /**
+   * @param {Node} node Node to append a TextNode with the dateTime to.
+   * @param {number} dateTime DateTime in seconds.
+   */
+  function writeDateTimeTextNode(node, dateTime) {
+    const date = new Date(dateTime * 1000);
+    const string =
+      date.getUTCFullYear() +
+      '-' +
+      padNumber(date.getUTCMonth() + 1, 2) +
+      '-' +
+      padNumber(date.getUTCDate(), 2) +
+      'T' +
+      padNumber(date.getUTCHours(), 2) +
+      ':' +
+      padNumber(date.getUTCMinutes(), 2) +
+      ':' +
+      padNumber(date.getUTCSeconds(), 2) +
+      'Z';
+    node.appendChild(getDocument().createTextNode(string));
+  }
+
+  /**
    * @param {Node} node Node to append a TextNode with the decimal to.
    * @param {number} decimal Decimal.
    */
   function writeDecimalTextNode(node, decimal) {
     const string = decimal.toPrecision();
+    node.appendChild(getDocument().createTextNode(string));
+  }
+
+  /**
+   * @param {Node} node Node to append a TextNode with the decimal to.
+   * @param {number} nonNegativeInteger Non negative integer.
+   */
+  function writeNonNegativeIntegerTextNode(node, nonNegativeInteger) {
+    const string = nonNegativeInteger.toString();
     node.appendChild(getDocument().createTextNode(string));
   }
 
@@ -47331,6 +48185,913 @@ var ol = (function () {
   var format_GML = GML;
 
   /**
+   * @module ol/format/GPX
+   */
+
+  /**
+   * @const
+   * @type {Array<null|string>}
+   */
+  const NAMESPACE_URIS$4 = [
+    null,
+    'http://www.topografix.com/GPX/1/0',
+    'http://www.topografix.com/GPX/1/1',
+  ];
+
+  /**
+   * @const
+   * @type {string}
+   */
+  const SCHEMA_LOCATION$1 =
+    'http://www.topografix.com/GPX/1/1 ' +
+    'http://www.topografix.com/GPX/1/1/gpx.xsd';
+
+  /**
+   * @const
+   * @type {Object<string, function(Node, Array<*>): (Feature|undefined)>}
+   */
+  const FEATURE_READER = {
+    'rte': readRte,
+    'trk': readTrk,
+    'wpt': readWpt,
+  };
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const GPX_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'rte': makeArrayPusher(readRte),
+    'trk': makeArrayPusher(readTrk),
+    'wpt': makeArrayPusher(readWpt),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const LINK_PARSERS$1 = makeStructureNS(NAMESPACE_URIS$4, {
+    'text': makeObjectPropertySetter(readString, 'linkText'),
+    'type': makeObjectPropertySetter(readString, 'linkType'),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const GPX_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'rte': makeChildAppender(writeRte),
+    'trk': makeChildAppender(writeTrk),
+    'wpt': makeChildAppender(writeWpt),
+  });
+
+  /**
+   * @typedef {Object} Options
+   * @property {function(Feature, Node):void} [readExtensions] Callback function
+   * to process `extensions` nodes. To prevent memory leaks, this callback function must
+   * not store any references to the node. Note that the `extensions`
+   * node is not allowed in GPX 1.0. Moreover, only `extensions`
+   * nodes from `wpt`, `rte` and `trk` can be processed, as those are
+   * directly mapped to a feature.
+   */
+
+  /**
+   * @typedef {Object} LayoutOptions
+   * @property {boolean} [hasZ] HasZ.
+   * @property {boolean} [hasM] HasM.
+   */
+
+  /**
+   * @classdesc
+   * Feature format for reading and writing data in the GPX format.
+   *
+   * Note that {@link module:ol/format/GPX~GPX#readFeature} only reads the first
+   * feature of the source.
+   *
+   * When reading, routes (`<rte>`) are converted into LineString geometries, and
+   * tracks (`<trk>`) into MultiLineString. Any properties on route and track
+   * waypoints are ignored.
+   *
+   * When writing, LineString geometries are output as routes (`<rte>`), and
+   * MultiLineString as tracks (`<trk>`).
+   *
+   * @api
+   */
+  class GPX extends XMLFeature$1 {
+    /**
+     * @param {Options} [options] Options.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      /**
+       * @type {import("../proj/Projection.js").default}
+       */
+      this.dataProjection = get$2('EPSG:4326');
+
+      /**
+       * @type {function(Feature, Node): void|undefined}
+       * @private
+       */
+      this.readExtensions_ = options.readExtensions;
+    }
+
+    /**
+     * @param {Array<Feature>} features List of features.
+     * @private
+     */
+    handleReadExtensions_(features) {
+      if (!features) {
+        features = [];
+      }
+      for (let i = 0, ii = features.length; i < ii; ++i) {
+        const feature = features[i];
+        if (this.readExtensions_) {
+          const extensionsNode = feature.get('extensionsNode_') || null;
+          this.readExtensions_(feature, extensionsNode);
+        }
+        feature.set('extensionsNode_', undefined);
+      }
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @param {import("./Feature.js").ReadOptions} [options] Options.
+     * @return {import("../Feature.js").default} Feature.
+     */
+    readFeatureFromNode(node, options) {
+      if (!NAMESPACE_URIS$4.includes(node.namespaceURI)) {
+        return null;
+      }
+      const featureReader = FEATURE_READER[node.localName];
+      if (!featureReader) {
+        return null;
+      }
+      const feature = featureReader(node, [this.getReadOptions(node, options)]);
+      if (!feature) {
+        return null;
+      }
+      this.handleReadExtensions_([feature]);
+      return feature;
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @param {import("./Feature.js").ReadOptions} [options] Options.
+     * @return {Array<import("../Feature.js").default>} Features.
+     */
+    readFeaturesFromNode(node, options) {
+      if (!NAMESPACE_URIS$4.includes(node.namespaceURI)) {
+        return [];
+      }
+      if (node.localName == 'gpx') {
+        /** @type {Array<Feature>} */
+        const features = pushParseAndPop([], GPX_PARSERS, node, [
+          this.getReadOptions(node, options),
+        ]);
+        if (features) {
+          this.handleReadExtensions_(features);
+          return features;
+        }
+        return [];
+      }
+      return [];
+    }
+
+    /**
+     * Encode an array of features in the GPX format as an XML node.
+     * LineString geometries are output as routes (`<rte>`), and MultiLineString
+     * as tracks (`<trk>`).
+     *
+     * @param {Array<Feature>} features Features.
+     * @param {import("./Feature.js").WriteOptions} [options] Options.
+     * @return {Node} Node.
+     * @api
+     */
+    writeFeaturesNode(features, options) {
+      options = this.adaptOptions(options);
+      //FIXME Serialize metadata
+      const gpx = createElementNS('http://www.topografix.com/GPX/1/1', 'gpx');
+      const xmlnsUri = 'http://www.w3.org/2000/xmlns/';
+      gpx.setAttributeNS(xmlnsUri, 'xmlns:xsi', XML_SCHEMA_INSTANCE_URI);
+      gpx.setAttributeNS(
+        XML_SCHEMA_INSTANCE_URI,
+        'xsi:schemaLocation',
+        SCHEMA_LOCATION$1
+      );
+      gpx.setAttribute('version', '1.1');
+      gpx.setAttribute('creator', 'OpenLayers');
+
+      pushSerializeAndPop(
+        /** @type {import("../xml.js").NodeStackItem} */
+        ({node: gpx}),
+        GPX_SERIALIZERS,
+        GPX_NODE_FACTORY,
+        features,
+        [options]
+      );
+      return gpx;
+    }
+  }
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const RTE_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'name': makeObjectPropertySetter(readString),
+    'cmt': makeObjectPropertySetter(readString),
+    'desc': makeObjectPropertySetter(readString),
+    'src': makeObjectPropertySetter(readString),
+    'link': parseLink,
+    'number': makeObjectPropertySetter(readPositiveInteger),
+    'extensions': parseExtensions,
+    'type': makeObjectPropertySetter(readString),
+    'rtept': parseRtePt,
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const RTEPT_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'ele': makeObjectPropertySetter(readDecimal),
+    'time': makeObjectPropertySetter(readDateTime),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TRK_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'name': makeObjectPropertySetter(readString),
+    'cmt': makeObjectPropertySetter(readString),
+    'desc': makeObjectPropertySetter(readString),
+    'src': makeObjectPropertySetter(readString),
+    'link': parseLink,
+    'number': makeObjectPropertySetter(readPositiveInteger),
+    'type': makeObjectPropertySetter(readString),
+    'extensions': parseExtensions,
+    'trkseg': parseTrkSeg,
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TRKSEG_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'trkpt': parseTrkPt,
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TRKPT_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'ele': makeObjectPropertySetter(readDecimal),
+    'time': makeObjectPropertySetter(readDateTime),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const WPT_PARSERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'ele': makeObjectPropertySetter(readDecimal),
+    'time': makeObjectPropertySetter(readDateTime),
+    'magvar': makeObjectPropertySetter(readDecimal),
+    'geoidheight': makeObjectPropertySetter(readDecimal),
+    'name': makeObjectPropertySetter(readString),
+    'cmt': makeObjectPropertySetter(readString),
+    'desc': makeObjectPropertySetter(readString),
+    'src': makeObjectPropertySetter(readString),
+    'link': parseLink,
+    'sym': makeObjectPropertySetter(readString),
+    'type': makeObjectPropertySetter(readString),
+    'fix': makeObjectPropertySetter(readString),
+    'sat': makeObjectPropertySetter(readPositiveInteger),
+    'hdop': makeObjectPropertySetter(readDecimal),
+    'vdop': makeObjectPropertySetter(readDecimal),
+    'pdop': makeObjectPropertySetter(readDecimal),
+    'ageofdgpsdata': makeObjectPropertySetter(readDecimal),
+    'dgpsid': makeObjectPropertySetter(readPositiveInteger),
+    'extensions': parseExtensions,
+  });
+
+  /**
+   * @const
+   * @type {Array<string>}
+   */
+  const LINK_SEQUENCE = ['text', 'type'];
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const LINK_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'text': makeChildAppender(writeStringTextNode),
+    'type': makeChildAppender(writeStringTextNode),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Array<string>>}
+   */
+  // @ts-ignore
+  const RTE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$4, [
+    'name',
+    'cmt',
+    'desc',
+    'src',
+    'link',
+    'number',
+    'type',
+    'rtept',
+  ]);
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const RTE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'name': makeChildAppender(writeStringTextNode),
+    'cmt': makeChildAppender(writeStringTextNode),
+    'desc': makeChildAppender(writeStringTextNode),
+    'src': makeChildAppender(writeStringTextNode),
+    'link': makeChildAppender(writeLink),
+    'number': makeChildAppender(writeNonNegativeIntegerTextNode),
+    'type': makeChildAppender(writeStringTextNode),
+    'rtept': makeArraySerializer(makeChildAppender(writeWptType)),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Array<string>>}
+   */
+  // @ts-ignore
+  const RTEPT_TYPE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$4, ['ele', 'time']);
+
+  /**
+   * @const
+   * @type {Object<string, Array<string>>}
+   */
+  // @ts-ignore
+  const TRK_SEQUENCE = makeStructureNS(NAMESPACE_URIS$4, [
+    'name',
+    'cmt',
+    'desc',
+    'src',
+    'link',
+    'number',
+    'type',
+    'trkseg',
+  ]);
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const TRK_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'name': makeChildAppender(writeStringTextNode),
+    'cmt': makeChildAppender(writeStringTextNode),
+    'desc': makeChildAppender(writeStringTextNode),
+    'src': makeChildAppender(writeStringTextNode),
+    'link': makeChildAppender(writeLink),
+    'number': makeChildAppender(writeNonNegativeIntegerTextNode),
+    'type': makeChildAppender(writeStringTextNode),
+    'trkseg': makeArraySerializer(makeChildAppender(writeTrkSeg)),
+  });
+
+  /**
+   * @const
+   * @type {function(*, Array<*>, string=): (Node|undefined)}
+   */
+  const TRKSEG_NODE_FACTORY = makeSimpleNodeFactory('trkpt');
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const TRKSEG_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'trkpt': makeChildAppender(writeWptType),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Array<string>>}
+   */
+  // @ts-ignore
+  const WPT_TYPE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$4, [
+    'ele',
+    'time',
+    'magvar',
+    'geoidheight',
+    'name',
+    'cmt',
+    'desc',
+    'src',
+    'link',
+    'sym',
+    'type',
+    'fix',
+    'sat',
+    'hdop',
+    'vdop',
+    'pdop',
+    'ageofdgpsdata',
+    'dgpsid',
+  ]);
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
+   */
+  // @ts-ignore
+  const WPT_TYPE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$4, {
+    'ele': makeChildAppender(writeDecimalTextNode),
+    'time': makeChildAppender(writeDateTimeTextNode),
+    'magvar': makeChildAppender(writeDecimalTextNode),
+    'geoidheight': makeChildAppender(writeDecimalTextNode),
+    'name': makeChildAppender(writeStringTextNode),
+    'cmt': makeChildAppender(writeStringTextNode),
+    'desc': makeChildAppender(writeStringTextNode),
+    'src': makeChildAppender(writeStringTextNode),
+    'link': makeChildAppender(writeLink),
+    'sym': makeChildAppender(writeStringTextNode),
+    'type': makeChildAppender(writeStringTextNode),
+    'fix': makeChildAppender(writeStringTextNode),
+    'sat': makeChildAppender(writeNonNegativeIntegerTextNode),
+    'hdop': makeChildAppender(writeDecimalTextNode),
+    'vdop': makeChildAppender(writeDecimalTextNode),
+    'pdop': makeChildAppender(writeDecimalTextNode),
+    'ageofdgpsdata': makeChildAppender(writeDecimalTextNode),
+    'dgpsid': makeChildAppender(writeNonNegativeIntegerTextNode),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, string>}
+   */
+  const GEOMETRY_TYPE_TO_NODENAME$1 = {
+    'Point': 'wpt',
+    'LineString': 'rte',
+    'MultiLineString': 'trk',
+  };
+
+  /**
+   * @param {*} value Value.
+   * @param {Array<*>} objectStack Object stack.
+   * @param {string} [nodeName] Node name.
+   * @return {Node|undefined} Node.
+   */
+  function GPX_NODE_FACTORY(value, objectStack, nodeName) {
+    const geometry = /** @type {Feature} */ (value).getGeometry();
+    if (geometry) {
+      const nodeName = GEOMETRY_TYPE_TO_NODENAME$1[geometry.getType()];
+      if (nodeName) {
+        const parentNode = objectStack[objectStack.length - 1].node;
+        return createElementNS(parentNode.namespaceURI, nodeName);
+      }
+    }
+  }
+
+  /**
+   * @param {Array<number>} flatCoordinates Flat coordinates.
+   * @param {LayoutOptions} layoutOptions Layout options.
+   * @param {Element} node Node.
+   * @param {!Object} values Values.
+   * @return {Array<number>} Flat coordinates.
+   */
+  function appendCoordinate(flatCoordinates, layoutOptions, node, values) {
+    flatCoordinates.push(
+      parseFloat(node.getAttribute('lon')),
+      parseFloat(node.getAttribute('lat'))
+    );
+    if ('ele' in values) {
+      flatCoordinates.push(/** @type {number} */ (values['ele']));
+      delete values['ele'];
+      layoutOptions.hasZ = true;
+    } else {
+      flatCoordinates.push(0);
+    }
+    if ('time' in values) {
+      flatCoordinates.push(/** @type {number} */ (values['time']));
+      delete values['time'];
+      layoutOptions.hasM = true;
+    } else {
+      flatCoordinates.push(0);
+    }
+    return flatCoordinates;
+  }
+
+  /**
+   * Choose GeometryLayout based on flags in layoutOptions and adjust flatCoordinates
+   * and ends arrays by shrinking them accordingly (removing unused zero entries).
+   *
+   * @param {LayoutOptions} layoutOptions Layout options.
+   * @param {Array<number>} flatCoordinates Flat coordinates.
+   * @param {Array<number>} [ends] Ends.
+   * @return {import("../geom/Geometry.js").GeometryLayout} Layout.
+   */
+  function applyLayoutOptions(layoutOptions, flatCoordinates, ends) {
+    /** @type {import("../geom/Geometry.js").GeometryLayout} */
+    let layout = 'XY';
+    let stride = 2;
+    if (layoutOptions.hasZ && layoutOptions.hasM) {
+      layout = 'XYZM';
+      stride = 4;
+    } else if (layoutOptions.hasZ) {
+      layout = 'XYZ';
+      stride = 3;
+    } else if (layoutOptions.hasM) {
+      layout = 'XYM';
+      stride = 3;
+    }
+    if (stride !== 4) {
+      for (let i = 0, ii = flatCoordinates.length / 4; i < ii; i++) {
+        flatCoordinates[i * stride] = flatCoordinates[i * 4];
+        flatCoordinates[i * stride + 1] = flatCoordinates[i * 4 + 1];
+        if (layoutOptions.hasZ) {
+          flatCoordinates[i * stride + 2] = flatCoordinates[i * 4 + 2];
+        }
+        if (layoutOptions.hasM) {
+          flatCoordinates[i * stride + 2] = flatCoordinates[i * 4 + 3];
+        }
+      }
+      flatCoordinates.length = (flatCoordinates.length / 4) * stride;
+      if (ends) {
+        for (let i = 0, ii = ends.length; i < ii; i++) {
+          ends[i] = (ends[i] / 4) * stride;
+        }
+      }
+    }
+    return layout;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function parseLink(node, objectStack) {
+    const values = /** @type {Object} */ (objectStack[objectStack.length - 1]);
+    const href = node.getAttribute('href');
+    if (href !== null) {
+      values['link'] = href;
+    }
+    parseNode(LINK_PARSERS$1, node, objectStack);
+  }
+
+  /**
+   * @param {Node} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function parseExtensions(node, objectStack) {
+    const values = /** @type {Object} */ (objectStack[objectStack.length - 1]);
+    values['extensionsNode_'] = node;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function parseRtePt(node, objectStack) {
+    const values = pushParseAndPop({}, RTEPT_PARSERS, node, objectStack);
+    if (values) {
+      const rteValues = /** @type {!Object} */ (
+        objectStack[objectStack.length - 1]
+      );
+      const flatCoordinates = /** @type {Array<number>} */ (
+        rteValues['flatCoordinates']
+      );
+      const layoutOptions = /** @type {LayoutOptions} */ (
+        rteValues['layoutOptions']
+      );
+      appendCoordinate(flatCoordinates, layoutOptions, node, values);
+    }
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function parseTrkPt(node, objectStack) {
+    const values = pushParseAndPop({}, TRKPT_PARSERS, node, objectStack);
+    if (values) {
+      const trkValues = /** @type {!Object} */ (
+        objectStack[objectStack.length - 1]
+      );
+      const flatCoordinates = /** @type {Array<number>} */ (
+        trkValues['flatCoordinates']
+      );
+      const layoutOptions = /** @type {LayoutOptions} */ (
+        trkValues['layoutOptions']
+      );
+      appendCoordinate(flatCoordinates, layoutOptions, node, values);
+    }
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function parseTrkSeg(node, objectStack) {
+    const values = /** @type {Object} */ (objectStack[objectStack.length - 1]);
+    parseNode(TRKSEG_PARSERS, node, objectStack);
+    const flatCoordinates =
+      /** @type {Array<number>} */
+      (values['flatCoordinates']);
+    const ends = /** @type {Array<number>} */ (values['ends']);
+    ends.push(flatCoordinates.length);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Feature|undefined} Track.
+   */
+  function readRte(node, objectStack) {
+    const options = /** @type {import("./Feature.js").ReadOptions} */ (
+      objectStack[0]
+    );
+    const values = pushParseAndPop(
+      {
+        'flatCoordinates': [],
+        'layoutOptions': {},
+      },
+      RTE_PARSERS,
+      node,
+      objectStack
+    );
+    if (!values) {
+      return undefined;
+    }
+    const flatCoordinates =
+      /** @type {Array<number>} */
+      (values['flatCoordinates']);
+    delete values['flatCoordinates'];
+    const layoutOptions = /** @type {LayoutOptions} */ (values['layoutOptions']);
+    delete values['layoutOptions'];
+    const layout = applyLayoutOptions(layoutOptions, flatCoordinates);
+    const geometry = new LineString$1(flatCoordinates, layout);
+    transformGeometryWithOptions(geometry, false, options);
+    const feature = new Feature$1(geometry);
+    feature.setProperties(values, true);
+    return feature;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Feature|undefined} Track.
+   */
+  function readTrk(node, objectStack) {
+    const options = /** @type {import("./Feature.js").ReadOptions} */ (
+      objectStack[0]
+    );
+    const values = pushParseAndPop(
+      {
+        'flatCoordinates': [],
+        'ends': [],
+        'layoutOptions': {},
+      },
+      TRK_PARSERS,
+      node,
+      objectStack
+    );
+    if (!values) {
+      return undefined;
+    }
+    const flatCoordinates =
+      /** @type {Array<number>} */
+      (values['flatCoordinates']);
+    delete values['flatCoordinates'];
+    const ends = /** @type {Array<number>} */ (values['ends']);
+    delete values['ends'];
+    const layoutOptions = /** @type {LayoutOptions} */ (values['layoutOptions']);
+    delete values['layoutOptions'];
+    const layout = applyLayoutOptions(layoutOptions, flatCoordinates, ends);
+    const geometry = new MultiLineString$1(flatCoordinates, layout, ends);
+    transformGeometryWithOptions(geometry, false, options);
+    const feature = new Feature$1(geometry);
+    feature.setProperties(values, true);
+    return feature;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Feature|undefined} Waypoint.
+   */
+  function readWpt(node, objectStack) {
+    const options = /** @type {import("./Feature.js").ReadOptions} */ (
+      objectStack[0]
+    );
+    const values = pushParseAndPop({}, WPT_PARSERS, node, objectStack);
+    if (!values) {
+      return undefined;
+    }
+    const layoutOptions = /** @type {LayoutOptions} */ ({});
+    const coordinates = appendCoordinate([], layoutOptions, node, values);
+    const layout = applyLayoutOptions(layoutOptions, coordinates);
+    const geometry = new Point$1(coordinates, layout);
+    transformGeometryWithOptions(geometry, false, options);
+    const feature = new Feature$1(geometry);
+    feature.setProperties(values, true);
+    return feature;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {string} value Value for the link's `href` attribute.
+   * @param {Array<*>} objectStack Node stack.
+   */
+  function writeLink(node, value, objectStack) {
+    node.setAttribute('href', value);
+    const context = objectStack[objectStack.length - 1];
+    const properties = context['properties'];
+    const link = [properties['linkText'], properties['linkType']];
+    pushSerializeAndPop(
+      /** @type {import("../xml.js").NodeStackItem} */ ({node: node}),
+      LINK_SERIALIZERS,
+      OBJECT_PROPERTY_NODE_FACTORY,
+      link,
+      objectStack,
+      LINK_SEQUENCE
+    );
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function writeWptType(node, coordinate, objectStack) {
+    const context = objectStack[objectStack.length - 1];
+    const parentNode = context.node;
+    const namespaceURI = parentNode.namespaceURI;
+    const properties = context['properties'];
+    //FIXME Projection handling
+    node.setAttributeNS(null, 'lat', String(coordinate[1]));
+    node.setAttributeNS(null, 'lon', String(coordinate[0]));
+    const geometryLayout = context['geometryLayout'];
+    switch (geometryLayout) {
+      case 'XYZM':
+        if (coordinate[3] !== 0) {
+          properties['time'] = coordinate[3];
+        }
+      // fall through
+      case 'XYZ':
+        if (coordinate[2] !== 0) {
+          properties['ele'] = coordinate[2];
+        }
+        break;
+      case 'XYM':
+        if (coordinate[2] !== 0) {
+          properties['time'] = coordinate[2];
+        }
+        break;
+      // pass
+    }
+    const orderedKeys =
+      node.nodeName == 'rtept'
+        ? RTEPT_TYPE_SEQUENCE[namespaceURI]
+        : WPT_TYPE_SEQUENCE[namespaceURI];
+    const values = makeSequence(properties, orderedKeys);
+    pushSerializeAndPop(
+      /** @type {import("../xml.js").NodeStackItem} */
+      ({node: node, 'properties': properties}),
+      WPT_TYPE_SERIALIZERS,
+      OBJECT_PROPERTY_NODE_FACTORY,
+      values,
+      objectStack,
+      orderedKeys
+    );
+  }
+
+  /**
+   * @param {Node} node Node.
+   * @param {Feature} feature Feature.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function writeRte(node, feature, objectStack) {
+    const options = /** @type {import("./Feature.js").WriteOptions} */ (
+      objectStack[0]
+    );
+    const properties = feature.getProperties();
+    const context = {node: node};
+    context['properties'] = properties;
+    const geometry = feature.getGeometry();
+    if (geometry.getType() == 'LineString') {
+      const lineString = /** @type {LineString} */ (
+        transformGeometryWithOptions(geometry, true, options)
+      );
+      context['geometryLayout'] = lineString.getLayout();
+      properties['rtept'] = lineString.getCoordinates();
+    }
+    const parentNode = objectStack[objectStack.length - 1].node;
+    const orderedKeys = RTE_SEQUENCE[parentNode.namespaceURI];
+    const values = makeSequence(properties, orderedKeys);
+    pushSerializeAndPop(
+      context,
+      RTE_SERIALIZERS,
+      OBJECT_PROPERTY_NODE_FACTORY,
+      values,
+      objectStack,
+      orderedKeys
+    );
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Feature} feature Feature.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function writeTrk(node, feature, objectStack) {
+    const options = /** @type {import("./Feature.js").WriteOptions} */ (
+      objectStack[0]
+    );
+    const properties = feature.getProperties();
+    /** @type {import("../xml.js").NodeStackItem} */
+    const context = {node: node};
+    context['properties'] = properties;
+    const geometry = feature.getGeometry();
+    if (geometry.getType() == 'MultiLineString') {
+      const multiLineString = /** @type {MultiLineString} */ (
+        transformGeometryWithOptions(geometry, true, options)
+      );
+      properties['trkseg'] = multiLineString.getLineStrings();
+    }
+    const parentNode = objectStack[objectStack.length - 1].node;
+    const orderedKeys = TRK_SEQUENCE[parentNode.namespaceURI];
+    const values = makeSequence(properties, orderedKeys);
+    pushSerializeAndPop(
+      context,
+      TRK_SERIALIZERS,
+      OBJECT_PROPERTY_NODE_FACTORY,
+      values,
+      objectStack,
+      orderedKeys
+    );
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {LineString} lineString LineString.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function writeTrkSeg(node, lineString, objectStack) {
+    /** @type {import("../xml.js").NodeStackItem} */
+    const context = {node: node};
+    context['geometryLayout'] = lineString.getLayout();
+    context['properties'] = {};
+    pushSerializeAndPop(
+      context,
+      TRKSEG_SERIALIZERS,
+      TRKSEG_NODE_FACTORY,
+      lineString.getCoordinates(),
+      objectStack
+    );
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Feature} feature Feature.
+   * @param {Array<*>} objectStack Object stack.
+   */
+  function writeWpt(node, feature, objectStack) {
+    const options = /** @type {import("./Feature.js").WriteOptions} */ (
+      objectStack[0]
+    );
+    const context = objectStack[objectStack.length - 1];
+    context['properties'] = feature.getProperties();
+    const geometry = feature.getGeometry();
+    if (geometry.getType() == 'Point') {
+      const point = /** @type {Point} */ (
+        transformGeometryWithOptions(geometry, true, options)
+      );
+      context['geometryLayout'] = point.getLayout();
+      writeWptType(node, point.getCoordinates(), objectStack);
+    }
+  }
+
+  var format_GPX = GPX;
+
+  /**
    * @module ol/format/TextFeature
    */
 
@@ -47342,7 +49103,7 @@ var ol = (function () {
    *
    * @abstract
    */
-  class TextFeature extends FeatureFormat {
+  class TextFeature extends FeatureFormat$1 {
     constructor() {
       super();
     }
@@ -47536,6 +49297,176 @@ var ol = (function () {
   var TextFeature$1 = TextFeature;
 
   /**
+   * @module ol/format/IGC
+   */
+
+  /**
+   * @typedef {'barometric' | 'gps' | 'none'} IGCZ
+   * IGC altitude/z. One of 'barometric', 'gps', 'none'.
+   */
+
+  /**
+   * @const
+   * @type {RegExp}
+   */
+  const B_RECORD_RE =
+    /^B(\d{2})(\d{2})(\d{2})(\d{2})(\d{5})([NS])(\d{3})(\d{5})([EW])([AV])(\d{5})(\d{5})/;
+
+  /**
+   * @const
+   * @type {RegExp}
+   */
+  const H_RECORD_RE = /^H.([A-Z]{3}).*?:(.*)/;
+
+  /**
+   * @const
+   * @type {RegExp}
+   */
+  const HFDTE_RECORD_RE = /^HFDTE(\d{2})(\d{2})(\d{2})/;
+
+  /**
+   * A regular expression matching the newline characters `\r\n`, `\r` and `\n`.
+   *
+   * @const
+   * @type {RegExp}
+   */
+  const NEWLINE_RE = /\r\n|\r|\n/;
+
+  /**
+   * @typedef {Object} Options
+   * @property {IGCZ} [altitudeMode='none'] Altitude mode. Possible
+   * values are `'barometric'`, `'gps'`, and `'none'`.
+   */
+
+  /**
+   * @classdesc
+   * Feature format for `*.igc` flight recording files.
+   *
+   * As IGC sources contain a single feature,
+   * {@link module:ol/format/IGC~IGC#readFeatures} will return the feature in an
+   * array
+   *
+   * @api
+   */
+  class IGC extends TextFeature$1 {
+    /**
+     * @param {Options} [options] Options.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      /**
+       * @type {import("../proj/Projection.js").default}
+       */
+      this.dataProjection = get$2('EPSG:4326');
+
+      /**
+       * @private
+       * @type {IGCZ}
+       */
+      this.altitudeMode_ = options.altitudeMode ? options.altitudeMode : 'none';
+    }
+
+    /**
+     * @protected
+     * @param {string} text Text.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @return {import("../Feature.js").default} Feature.
+     */
+    readFeatureFromText(text, options) {
+      const altitudeMode = this.altitudeMode_;
+      const lines = text.split(NEWLINE_RE);
+      /** @type {Object<string, string>} */
+      const properties = {};
+      const flatCoordinates = [];
+      let year = 2000;
+      let month = 0;
+      let day = 1;
+      let lastDateTime = -1;
+      let i, ii;
+      for (i = 0, ii = lines.length; i < ii; ++i) {
+        const line = lines[i];
+        let m;
+        if (line.charAt(0) == 'B') {
+          m = B_RECORD_RE.exec(line);
+          if (m) {
+            const hour = parseInt(m[1], 10);
+            const minute = parseInt(m[2], 10);
+            const second = parseInt(m[3], 10);
+            let y = parseInt(m[4], 10) + parseInt(m[5], 10) / 60000;
+            if (m[6] == 'S') {
+              y = -y;
+            }
+            let x = parseInt(m[7], 10) + parseInt(m[8], 10) / 60000;
+            if (m[9] == 'W') {
+              x = -x;
+            }
+            flatCoordinates.push(x, y);
+            if (altitudeMode != 'none') {
+              let z;
+              if (altitudeMode == 'gps') {
+                z = parseInt(m[11], 10);
+              } else if (altitudeMode == 'barometric') {
+                z = parseInt(m[12], 10);
+              } else {
+                z = 0;
+              }
+              flatCoordinates.push(z);
+            }
+            let dateTime = Date.UTC(year, month, day, hour, minute, second);
+            // Detect UTC midnight wrap around.
+            if (dateTime < lastDateTime) {
+              dateTime = Date.UTC(year, month, day + 1, hour, minute, second);
+            }
+            flatCoordinates.push(dateTime / 1000);
+            lastDateTime = dateTime;
+          }
+        } else if (line.charAt(0) == 'H') {
+          m = HFDTE_RECORD_RE.exec(line);
+          if (m) {
+            day = parseInt(m[1], 10);
+            month = parseInt(m[2], 10) - 1;
+            year = 2000 + parseInt(m[3], 10);
+          } else {
+            m = H_RECORD_RE.exec(line);
+            if (m) {
+              properties[m[1]] = m[2].trim();
+            }
+          }
+        }
+      }
+      if (flatCoordinates.length === 0) {
+        return null;
+      }
+      const layout = altitudeMode == 'none' ? 'XYM' : 'XYZM';
+      const lineString = new LineString$1(flatCoordinates, layout);
+      const feature = new Feature$1(
+        transformGeometryWithOptions(lineString, false, options)
+      );
+      feature.setProperties(properties, true);
+      return feature;
+    }
+
+    /**
+     * @param {string} text Text.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {Array<Feature>} Features.
+     */
+    readFeaturesFromText(text, options) {
+      const feature = this.readFeatureFromText(text, options);
+      if (feature) {
+        return [feature];
+      }
+      return [];
+    }
+  }
+
+  var format_IGC = IGC;
+
+  /**
    * @module ol/format/IIIFInfo
    */
 
@@ -47589,6 +49520,435 @@ var ol = (function () {
   };
 
   /**
+   * Supported image formats, qualities and supported region / size calculation features
+   * for different image API versions and compliance levels
+   * @const
+   * @type {Object<string, Object<string, SupportedFeatures>>}
+   */
+  const IIIF_PROFILE_VALUES = {};
+  IIIF_PROFILE_VALUES[Versions.VERSION1] = {
+    'level0': {
+      supports: [],
+      formats: [],
+      qualities: ['native'],
+    },
+    'level1': {
+      supports: ['regionByPx', 'sizeByW', 'sizeByH', 'sizeByPct'],
+      formats: ['jpg'],
+      qualities: ['native'],
+    },
+    'level2': {
+      supports: [
+        'regionByPx',
+        'regionByPct',
+        'sizeByW',
+        'sizeByH',
+        'sizeByPct',
+        'sizeByConfinedWh',
+        'sizeByWh',
+      ],
+      formats: ['jpg', 'png'],
+      qualities: ['native', 'color', 'grey', 'bitonal'],
+    },
+  };
+  IIIF_PROFILE_VALUES[Versions.VERSION2] = {
+    'level0': {
+      supports: [],
+      formats: ['jpg'],
+      qualities: ['default'],
+    },
+    'level1': {
+      supports: ['regionByPx', 'sizeByW', 'sizeByH', 'sizeByPct'],
+      formats: ['jpg'],
+      qualities: ['default'],
+    },
+    'level2': {
+      supports: [
+        'regionByPx',
+        'regionByPct',
+        'sizeByW',
+        'sizeByH',
+        'sizeByPct',
+        'sizeByConfinedWh',
+        'sizeByDistortedWh',
+        'sizeByWh',
+      ],
+      formats: ['jpg', 'png'],
+      qualities: ['default', 'bitonal'],
+    },
+  };
+  IIIF_PROFILE_VALUES[Versions.VERSION3] = {
+    'level0': {
+      supports: [],
+      formats: ['jpg'],
+      qualities: ['default'],
+    },
+    'level1': {
+      supports: ['regionByPx', 'regionSquare', 'sizeByW', 'sizeByH', 'sizeByWh'],
+      formats: ['jpg'],
+      qualities: ['default'],
+    },
+    'level2': {
+      supports: [
+        'regionByPx',
+        'regionSquare',
+        'regionByPct',
+        'sizeByW',
+        'sizeByH',
+        'sizeByPct',
+        'sizeByConfinedWh',
+        'sizeByWh',
+      ],
+      formats: ['jpg', 'png'],
+      qualities: ['default'],
+    },
+  };
+  IIIF_PROFILE_VALUES['none'] = {
+    'none': {
+      supports: [],
+      formats: [],
+      qualities: [],
+    },
+  };
+
+  const COMPLIANCE_VERSION1 =
+    /^https?:\/\/library\.stanford\.edu\/iiif\/image-api\/(?:1\.1\/)?compliance\.html#level[0-2]$/;
+  const COMPLIANCE_VERSION2 =
+    /^https?:\/\/iiif\.io\/api\/image\/2\/level[0-2](?:\.json)?$/;
+  const COMPLIANCE_VERSION3 =
+    /(^https?:\/\/iiif\.io\/api\/image\/3\/level[0-2](?:\.json)?$)|(^level[0-2]$)/;
+
+  function generateVersion1Options(iiifInfo) {
+    let levelProfile = iiifInfo.getComplianceLevelSupportedFeatures();
+    // Version 1.0 and 1.1 do not require a profile.
+    if (levelProfile === undefined) {
+      levelProfile = IIIF_PROFILE_VALUES[Versions.VERSION1]['level0'];
+    }
+    return {
+      url:
+        iiifInfo.imageInfo['@id'] === undefined
+          ? undefined
+          : iiifInfo.imageInfo['@id'].replace(/\/?(?:info\.json)?$/g, ''),
+      supports: levelProfile.supports,
+      formats: [
+        ...levelProfile.formats,
+        iiifInfo.imageInfo.formats === undefined
+          ? []
+          : iiifInfo.imageInfo.formats,
+      ],
+      qualities: [
+        ...levelProfile.qualities,
+        iiifInfo.imageInfo.qualities === undefined
+          ? []
+          : iiifInfo.imageInfo.qualities,
+      ],
+      resolutions: iiifInfo.imageInfo.scale_factors,
+      tileSize:
+        iiifInfo.imageInfo.tile_width !== undefined
+          ? iiifInfo.imageInfo.tile_height !== undefined
+            ? [iiifInfo.imageInfo.tile_width, iiifInfo.imageInfo.tile_height]
+            : [iiifInfo.imageInfo.tile_width, iiifInfo.imageInfo.tile_width]
+          : iiifInfo.imageInfo.tile_height != undefined
+          ? [iiifInfo.imageInfo.tile_height, iiifInfo.imageInfo.tile_height]
+          : undefined,
+    };
+  }
+
+  function generateVersion2Options(iiifInfo) {
+    const levelProfile = iiifInfo.getComplianceLevelSupportedFeatures(),
+      additionalProfile =
+        Array.isArray(iiifInfo.imageInfo.profile) &&
+        iiifInfo.imageInfo.profile.length > 1,
+      profileSupports =
+        additionalProfile && iiifInfo.imageInfo.profile[1].supports
+          ? iiifInfo.imageInfo.profile[1].supports
+          : [],
+      profileFormats =
+        additionalProfile && iiifInfo.imageInfo.profile[1].formats
+          ? iiifInfo.imageInfo.profile[1].formats
+          : [],
+      profileQualities =
+        additionalProfile && iiifInfo.imageInfo.profile[1].qualities
+          ? iiifInfo.imageInfo.profile[1].qualities
+          : [];
+    return {
+      url: iiifInfo.imageInfo['@id'].replace(/\/?(?:info\.json)?$/g, ''),
+      sizes:
+        iiifInfo.imageInfo.sizes === undefined
+          ? undefined
+          : iiifInfo.imageInfo.sizes.map(function (size) {
+              return [size.width, size.height];
+            }),
+      tileSize:
+        iiifInfo.imageInfo.tiles === undefined
+          ? undefined
+          : [
+              iiifInfo.imageInfo.tiles.map(function (tile) {
+                return tile.width;
+              })[0],
+              iiifInfo.imageInfo.tiles.map(function (tile) {
+                return tile.height === undefined ? tile.width : tile.height;
+              })[0],
+            ],
+      resolutions:
+        iiifInfo.imageInfo.tiles === undefined
+          ? undefined
+          : iiifInfo.imageInfo.tiles.map(function (tile) {
+              return tile.scaleFactors;
+            })[0],
+      supports: [...levelProfile.supports, ...profileSupports],
+      formats: [...levelProfile.formats, ...profileFormats],
+      qualities: [...levelProfile.qualities, ...profileQualities],
+    };
+  }
+
+  function generateVersion3Options(iiifInfo) {
+    const levelProfile = iiifInfo.getComplianceLevelSupportedFeatures(),
+      formats =
+        iiifInfo.imageInfo.extraFormats === undefined
+          ? levelProfile.formats
+          : [...levelProfile.formats, ...iiifInfo.imageInfo.extraFormats],
+      preferredFormat =
+        iiifInfo.imageInfo.preferredFormats !== undefined &&
+        Array.isArray(iiifInfo.imageInfo.preferredFormats) &&
+        iiifInfo.imageInfo.preferredFormats.length > 0
+          ? iiifInfo.imageInfo.preferredFormats
+              .filter(function (format) {
+                return ['jpg', 'png', 'gif'].includes(format);
+              })
+              .reduce(function (acc, format) {
+                return acc === undefined && formats.includes(format)
+                  ? format
+                  : acc;
+              }, undefined)
+          : undefined;
+    return {
+      url: iiifInfo.imageInfo['id'],
+      sizes:
+        iiifInfo.imageInfo.sizes === undefined
+          ? undefined
+          : iiifInfo.imageInfo.sizes.map(function (size) {
+              return [size.width, size.height];
+            }),
+      tileSize:
+        iiifInfo.imageInfo.tiles === undefined
+          ? undefined
+          : [
+              iiifInfo.imageInfo.tiles.map(function (tile) {
+                return tile.width;
+              })[0],
+              iiifInfo.imageInfo.tiles.map(function (tile) {
+                return tile.height;
+              })[0],
+            ],
+      resolutions:
+        iiifInfo.imageInfo.tiles === undefined
+          ? undefined
+          : iiifInfo.imageInfo.tiles.map(function (tile) {
+              return tile.scaleFactors;
+            })[0],
+      supports:
+        iiifInfo.imageInfo.extraFeatures === undefined
+          ? levelProfile.supports
+          : [...levelProfile.supports, ...iiifInfo.imageInfo.extraFeatures],
+      formats: formats,
+      qualities:
+        iiifInfo.imageInfo.extraQualities === undefined
+          ? levelProfile.qualities
+          : [...levelProfile.qualities, ...iiifInfo.imageInfo.extraQualities],
+      preferredFormat: preferredFormat,
+    };
+  }
+
+  const versionFunctions = {};
+  versionFunctions[Versions.VERSION1] = generateVersion1Options;
+  versionFunctions[Versions.VERSION2] = generateVersion2Options;
+  versionFunctions[Versions.VERSION3] = generateVersion3Options;
+
+  /**
+   * @classdesc
+   * Format for transforming IIIF Image API image information responses into
+   * IIIF tile source ready options
+   *
+   * @api
+   */
+  class IIIFInfo {
+    /**
+     * @param {string|ImageInformationResponse} imageInfo
+     * Deserialized image information JSON response object or JSON response as string
+     */
+    constructor(imageInfo) {
+      this.setImageInfo(imageInfo);
+    }
+
+    /**
+     * @param {string|ImageInformationResponse} imageInfo
+     * Deserialized image information JSON response object or JSON response as string
+     * @api
+     */
+    setImageInfo(imageInfo) {
+      if (typeof imageInfo == 'string') {
+        this.imageInfo = JSON.parse(imageInfo);
+      } else {
+        this.imageInfo = imageInfo;
+      }
+    }
+
+    /**
+     * @return {Versions|undefined} Major IIIF version.
+     * @api
+     */
+    getImageApiVersion() {
+      if (this.imageInfo === undefined) {
+        return undefined;
+      }
+      let context = this.imageInfo['@context'] || 'ol-no-context';
+      if (typeof context == 'string') {
+        context = [context];
+      }
+      for (let i = 0; i < context.length; i++) {
+        switch (context[i]) {
+          case 'http://library.stanford.edu/iiif/image-api/1.1/context.json':
+          case 'http://iiif.io/api/image/1/context.json':
+            return Versions.VERSION1;
+          case 'http://iiif.io/api/image/2/context.json':
+            return Versions.VERSION2;
+          case 'http://iiif.io/api/image/3/context.json':
+            return Versions.VERSION3;
+          case 'ol-no-context':
+            // Image API 1.0 has no '@context'
+            if (
+              this.getComplianceLevelEntryFromProfile(Versions.VERSION1) &&
+              this.imageInfo.identifier
+            ) {
+              return Versions.VERSION1;
+            }
+            break;
+        }
+      }
+      assert(false, 61);
+    }
+
+    /**
+     * @param {Versions} version Optional IIIF image API version
+     * @return {string|undefined} Compliance level as it appears in the IIIF image information
+     * response.
+     */
+    getComplianceLevelEntryFromProfile(version) {
+      if (this.imageInfo === undefined || this.imageInfo.profile === undefined) {
+        return undefined;
+      }
+      if (version === undefined) {
+        version = this.getImageApiVersion();
+      }
+      switch (version) {
+        case Versions.VERSION1:
+          if (COMPLIANCE_VERSION1.test(this.imageInfo.profile)) {
+            return this.imageInfo.profile;
+          }
+          break;
+        case Versions.VERSION3:
+          if (COMPLIANCE_VERSION3.test(this.imageInfo.profile)) {
+            return this.imageInfo.profile;
+          }
+          break;
+        case Versions.VERSION2:
+          if (
+            typeof this.imageInfo.profile === 'string' &&
+            COMPLIANCE_VERSION2.test(this.imageInfo.profile)
+          ) {
+            return this.imageInfo.profile;
+          }
+          if (
+            Array.isArray(this.imageInfo.profile) &&
+            this.imageInfo.profile.length > 0 &&
+            typeof this.imageInfo.profile[0] === 'string' &&
+            COMPLIANCE_VERSION2.test(this.imageInfo.profile[0])
+          ) {
+            return this.imageInfo.profile[0];
+          }
+          break;
+      }
+      return undefined;
+    }
+
+    /**
+     * @param {Versions} version Optional IIIF image API version
+     * @return {string} Compliance level, on of 'level0', 'level1' or 'level2' or undefined
+     */
+    getComplianceLevelFromProfile(version) {
+      const complianceLevel = this.getComplianceLevelEntryFromProfile(version);
+      if (complianceLevel === undefined) {
+        return undefined;
+      }
+      const level = complianceLevel.match(/level[0-2](?:\.json)?$/g);
+      return Array.isArray(level) ? level[0].replace('.json', '') : undefined;
+    }
+
+    /**
+     * @return {SupportedFeatures|undefined} Image formats, qualities and region / size calculation
+     * methods that are supported by the IIIF service.
+     */
+    getComplianceLevelSupportedFeatures() {
+      if (this.imageInfo === undefined) {
+        return undefined;
+      }
+      const version = this.getImageApiVersion();
+      const level = this.getComplianceLevelFromProfile(version);
+      if (level === undefined) {
+        return IIIF_PROFILE_VALUES['none']['none'];
+      }
+      return IIIF_PROFILE_VALUES[version][level];
+    }
+
+    /**
+     * @param {PreferredOptions} [preferredOptions] Optional options for preferred format and quality.
+     * @return {import("../source/IIIF.js").Options|undefined} IIIF tile source ready constructor options.
+     * @api
+     */
+    getTileSourceOptions(preferredOptions) {
+      const options = preferredOptions || {},
+        version = this.getImageApiVersion();
+      if (version === undefined) {
+        return undefined;
+      }
+      const imageOptions =
+        version === undefined ? undefined : versionFunctions[version](this);
+      if (imageOptions === undefined) {
+        return undefined;
+      }
+      return {
+        url: imageOptions.url,
+        version: version,
+        size: [this.imageInfo.width, this.imageInfo.height],
+        sizes: imageOptions.sizes,
+        format:
+          options.format !== undefined &&
+          imageOptions.formats.includes(options.format)
+            ? options.format
+            : imageOptions.preferredFormat !== undefined
+            ? imageOptions.preferredFormat
+            : 'jpg',
+        supports: imageOptions.supports,
+        quality:
+          options.quality && imageOptions.qualities.includes(options.quality)
+            ? options.quality
+            : imageOptions.qualities.includes('native')
+            ? 'native'
+            : 'default',
+        resolutions: Array.isArray(imageOptions.resolutions)
+          ? imageOptions.resolutions.sort(function (a, b) {
+              return b - a;
+            })
+          : undefined,
+        tileSize: imageOptions.tileSize,
+      };
+    }
+  }
+
+  var format_IIIFInfo = IIIFInfo;
+
+  /**
    * @module ol/format/KML
    */
 
@@ -47617,7 +49977,7 @@ var ol = (function () {
    * @const
    * @type {Array<null|string>}
    */
-  const NAMESPACE_URIS = [
+  const NAMESPACE_URIS$3 = [
     null,
     'http://earth.google.com/kml/2.0',
     'http://earth.google.com/kml/2.1',
@@ -47648,7 +50008,7 @@ var ol = (function () {
    */
   // @ts-ignore
   const PLACEMARK_PARSERS = makeStructureNS(
-    NAMESPACE_URIS,
+    NAMESPACE_URIS$3,
     {
       'ExtendedData': extendedDataParser,
       'Region': regionParser,
@@ -47657,7 +50017,7 @@ var ol = (function () {
       'LinearRing': makeObjectPropertySetter(readLinearRing, 'geometry'),
       'Point': makeObjectPropertySetter(readPoint, 'geometry'),
       'Polygon': makeObjectPropertySetter(readPolygon, 'geometry'),
-      'Style': makeObjectPropertySetter(readStyle),
+      'Style': makeObjectPropertySetter(readStyle$2),
       'StyleMap': placemarkStyleMapParser,
       'address': makeObjectPropertySetter(readString),
       'description': makeObjectPropertySetter(readString),
@@ -47678,7 +50038,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const NETWORK_LINK_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const NETWORK_LINK_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'ExtendedData': extendedDataParser,
     'Region': regionParser,
     'Link': linkParser,
@@ -47695,7 +50055,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const LINK_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const LINK_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'href': makeObjectPropertySetter(readURI),
   });
 
@@ -47704,7 +50064,22 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const REGION_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const CAMERA_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
+    Altitude: makeObjectPropertySetter(readDecimal),
+    Longitude: makeObjectPropertySetter(readDecimal),
+    Latitude: makeObjectPropertySetter(readDecimal),
+    Tilt: makeObjectPropertySetter(readDecimal),
+    AltitudeMode: makeObjectPropertySetter(readString),
+    Heading: makeObjectPropertySetter(readDecimal),
+    Roll: makeObjectPropertySetter(readDecimal),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const REGION_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'LatLonAltBox': latLonAltBoxParser,
     'Lod': lodParser,
   });
@@ -47714,14 +50089,14 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const KML_SEQUENCE = makeStructureNS(NAMESPACE_URIS, ['Document', 'Placemark']);
+  const KML_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, ['Document', 'Placemark']);
 
   /**
    * @const
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const KML_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const KML_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Document': makeChildAppender(writeDocument),
     'Placemark': makeChildAppender(writePlacemark),
   });
@@ -47789,7 +50164,7 @@ var ol = (function () {
   /**
    * @type {Style|null}
    */
-  let DEFAULT_STYLE = null;
+  let DEFAULT_STYLE$1 = null;
 
   /**
    * @type {Array<Style>|null}
@@ -47854,7 +50229,7 @@ var ol = (function () {
       scale: 0.8,
     });
 
-    DEFAULT_STYLE = new Style$1({
+    DEFAULT_STYLE$1 = new Style$1({
       fill: DEFAULT_FILL_STYLE,
       image: DEFAULT_IMAGE_STYLE,
       text: DEFAULT_TEXT_STYLE,
@@ -47862,7 +50237,7 @@ var ol = (function () {
       zIndex: 0,
     });
 
-    DEFAULT_STYLE_ARRAY = [DEFAULT_STYLE];
+    DEFAULT_STYLE_ARRAY = [DEFAULT_STYLE$1];
   }
 
   /**
@@ -47990,7 +50365,7 @@ var ol = (function () {
      */
     readDocumentOrFolder_(node, objectStack) {
       // FIXME use scope somehow
-      const parsersNS = makeStructureNS(NAMESPACE_URIS, {
+      const parsersNS = makeStructureNS(NAMESPACE_URIS$3, {
         'Document': makeArrayExtender(this.readDocumentOrFolder_, this),
         'Folder': makeArrayExtender(this.readDocumentOrFolder_, this),
         'Placemark': makeArrayPusher(this.readPlacemark_, this),
@@ -48068,7 +50443,7 @@ var ol = (function () {
     readSharedStyle_(node, objectStack) {
       const id = node.getAttribute('id');
       if (id !== null) {
-        const style = readStyle.call(this, node, objectStack);
+        const style = readStyle$2.call(this, node, objectStack);
         if (style) {
           let styleUri;
           let baseURI = node.baseURI;
@@ -48120,7 +50495,7 @@ var ol = (function () {
      * @return {import("../Feature.js").default} Feature.
      */
     readFeatureFromNode(node, options) {
-      if (!NAMESPACE_URIS.includes(node.namespaceURI)) {
+      if (!NAMESPACE_URIS$3.includes(node.namespaceURI)) {
         return null;
       }
       const feature = this.readPlacemark_(node, [
@@ -48139,7 +50514,7 @@ var ol = (function () {
      * @return {Array<import("../Feature.js").default>} Features.
      */
     readFeaturesFromNode(node, options) {
-      if (!NAMESPACE_URIS.includes(node.namespaceURI)) {
+      if (!NAMESPACE_URIS$3.includes(node.namespaceURI)) {
         return [];
       }
       let features;
@@ -48152,7 +50527,8 @@ var ol = (function () {
           return features;
         }
         return [];
-      } else if (localName == 'Placemark') {
+      }
+      if (localName == 'Placemark') {
         const feature = this.readPlacemark_(node, [
           this.getReadOptions(node, options),
         ]);
@@ -48160,7 +50536,8 @@ var ol = (function () {
           return [feature];
         }
         return [];
-      } else if (localName == 'kml') {
+      }
+      if (localName == 'kml') {
         features = [];
         for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
           const fs = this.readFeaturesFromNode(n, options);
@@ -48183,10 +50560,12 @@ var ol = (function () {
     readName(source) {
       if (!source) {
         return undefined;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readNameFromDocument(doc);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readNameFromDocument(/** @type {Document} */ (source));
       }
       return this.readNameFromNode(/** @type {Element} */ (source));
@@ -48214,14 +50593,14 @@ var ol = (function () {
      */
     readNameFromNode(node) {
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
-        if (NAMESPACE_URIS.includes(n.namespaceURI) && n.localName == 'name') {
+        if (NAMESPACE_URIS$3.includes(n.namespaceURI) && n.localName == 'name') {
           return readString(n);
         }
       }
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
         const localName = n.localName;
         if (
-          NAMESPACE_URIS.includes(n.namespaceURI) &&
+          NAMESPACE_URIS$3.includes(n.namespaceURI) &&
           (localName == 'Document' ||
             localName == 'Folder' ||
             localName == 'Placemark' ||
@@ -48287,7 +50666,7 @@ var ol = (function () {
       const networkLinks = [];
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
         if (
-          NAMESPACE_URIS.includes(n.namespaceURI) &&
+          NAMESPACE_URIS$3.includes(n.namespaceURI) &&
           n.localName == 'NetworkLink'
         ) {
           const obj = pushParseAndPop({}, NETWORK_LINK_PARSERS, n, []);
@@ -48297,7 +50676,7 @@ var ol = (function () {
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
         const localName = n.localName;
         if (
-          NAMESPACE_URIS.includes(n.namespaceURI) &&
+          NAMESPACE_URIS$3.includes(n.namespaceURI) &&
           (localName == 'Document' || localName == 'Folder' || localName == 'kml')
         ) {
           extend$1(networkLinks, this.readNetworkLinksFromNode(n));
@@ -48351,7 +50730,7 @@ var ol = (function () {
     readRegionFromNode(node) {
       const regions = [];
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
-        if (NAMESPACE_URIS.includes(n.namespaceURI) && n.localName == 'Region') {
+        if (NAMESPACE_URIS$3.includes(n.namespaceURI) && n.localName == 'Region') {
           const obj = pushParseAndPop({}, REGION_PARSERS, n, []);
           regions.push(obj);
         }
@@ -48359,13 +50738,89 @@ var ol = (function () {
       for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
         const localName = n.localName;
         if (
-          NAMESPACE_URIS.includes(n.namespaceURI) &&
+          NAMESPACE_URIS$3.includes(n.namespaceURI) &&
           (localName == 'Document' || localName == 'Folder' || localName == 'kml')
         ) {
           extend$1(regions, this.readRegionFromNode(n));
         }
       }
       return regions;
+    }
+
+    /**
+     * @typedef {Object} KMLCamera Specifies the observer's viewpoint and associated view parameters.
+     * @property {number} [Latitude] Latitude of the camera.
+     * @property {number} [Longitude] Longitude of the camera.
+     * @property {number} [Altitude] Altitude of the camera.
+     * @property {string} [AltitudeMode] Floor-related altitude mode.
+     * @property {number} [Heading] Horizontal camera rotation.
+     * @property {number} [Tilt] Lateral camera rotation.
+     * @property {number} [Roll] Vertical camera rotation.
+     */
+
+    /**
+     * Read the cameras of the KML.
+     *
+     * @param {Document|Element|string} source Source.
+     * @return {Array<KMLCamera>} Cameras.
+     * @api
+     */
+    readCamera(source) {
+      const cameras = [];
+      if (typeof source === 'string') {
+        const doc = parse(source);
+        extend$1(cameras, this.readCameraFromDocument(doc));
+      } else if (isDocument(source)) {
+        extend$1(
+          cameras,
+          this.readCameraFromDocument(/** @type {Document} */ (source))
+        );
+      } else {
+        extend$1(cameras, this.readCameraFromNode(/** @type {Element} */ (source)));
+      }
+      return cameras;
+    }
+
+    /**
+     * @param {Document} doc Document.
+     * @return {Array<KMLCamera>} Cameras.
+     */
+    readCameraFromDocument(doc) {
+      const cameras = [];
+      for (let n = /** @type {Node} */ (doc.firstChild); n; n = n.nextSibling) {
+        if (n.nodeType === Node.ELEMENT_NODE) {
+          extend$1(cameras, this.readCameraFromNode(/** @type {Element} */ (n)));
+        }
+      }
+      return cameras;
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @return {Array<KMLCamera>} Cameras.
+     * @api
+     */
+    readCameraFromNode(node) {
+      const cameras = [];
+      for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
+        if (NAMESPACE_URIS$3.includes(n.namespaceURI) && n.localName === 'Camera') {
+          const obj = pushParseAndPop({}, CAMERA_PARSERS, n, []);
+          cameras.push(obj);
+        }
+      }
+      for (let n = node.firstElementChild; n; n = n.nextElementSibling) {
+        const localName = n.localName;
+        if (
+          NAMESPACE_URIS$3.includes(n.namespaceURI) &&
+          (localName === 'Document' ||
+            localName === 'Folder' ||
+            localName === 'Placemark' ||
+            localName === 'kml')
+        ) {
+          extend$1(cameras, this.readCameraFromNode(n));
+        }
+      }
+      return cameras;
     }
 
     /**
@@ -48379,7 +50834,7 @@ var ol = (function () {
      */
     writeFeaturesNode(features, options) {
       options = this.adaptOptions(options);
-      const kml = createElementNS(NAMESPACE_URIS[4], 'kml');
+      const kml = createElementNS(NAMESPACE_URIS$3[4], 'kml');
       const xmlnsUri = 'http://www.w3.org/2000/xmlns/';
       kml.setAttributeNS(xmlnsUri, 'xmlns:gx', GX_NAMESPACE_URIS[0]);
       kml.setAttributeNS(xmlnsUri, 'xmlns:xsi', XML_SCHEMA_INSTANCE_URI);
@@ -48555,7 +51010,8 @@ var ol = (function () {
   function findStyle(styleValue, defaultStyle, sharedStyles) {
     if (Array.isArray(styleValue)) {
       return styleValue;
-    } else if (typeof styleValue === 'string') {
+    }
+    if (typeof styleValue === 'string') {
       return findStyle(sharedStyles[styleValue], defaultStyle, sharedStyles);
     }
     return defaultStyle;
@@ -48690,7 +51146,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const STYLE_MAP_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const STYLE_MAP_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Pair': pairDataParser,
   });
 
@@ -48709,7 +51165,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const ICON_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const ICON_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Icon': makeObjectPropertySetter(readIcon),
     'color': makeObjectPropertySetter(readColor),
     'heading': makeObjectPropertySetter(readDecimal),
@@ -48857,7 +51313,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const LABEL_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const LABEL_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeObjectPropertySetter(readColor),
     'scale': makeObjectPropertySetter(readScale),
   });
@@ -48889,7 +51345,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const LINE_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const LINE_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeObjectPropertySetter(readColor),
     'width': makeObjectPropertySetter(readDecimal),
   });
@@ -48923,7 +51379,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const POLY_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const POLY_STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeObjectPropertySetter(readColor),
     'fill': makeObjectPropertySetter(readBoolean),
     'outline': makeObjectPropertySetter(readBoolean),
@@ -48961,7 +51417,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const FLAT_LINEAR_RING_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const FLAT_LINEAR_RING_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'coordinates': makeReplacer(readFlatCoordinates),
   });
 
@@ -49030,7 +51486,7 @@ var ol = (function () {
    */
   // @ts-ignore
   const GX_TRACK_PARSERS = makeStructureNS(
-    NAMESPACE_URIS,
+    NAMESPACE_URIS$3,
     {
       'when': whenParser,
     },
@@ -49083,7 +51539,7 @@ var ol = (function () {
    */
   // @ts-ignore
   const ICON_PARSERS = makeStructureNS(
-    NAMESPACE_URIS,
+    NAMESPACE_URIS$3,
     {
       'href': makeObjectPropertySetter(readURI),
     },
@@ -49113,7 +51569,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const GEOMETRY_FLAT_COORDINATES_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const GEOMETRY_FLAT_COORDINATES_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'coordinates': makeReplacer(readFlatCoordinates),
   });
 
@@ -49136,7 +51592,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const EXTRUDE_AND_ALTITUDE_MODE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const EXTRUDE_AND_ALTITUDE_MODE_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'extrude': makeObjectPropertySetter(readBoolean),
     'tessellate': makeObjectPropertySetter(readBoolean),
     'altitudeMode': makeObjectPropertySetter(readString),
@@ -49191,7 +51647,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const MULTI_GEOMETRY_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const MULTI_GEOMETRY_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'LineString': makeArrayPusher(readLineString),
     'LinearRing': makeArrayPusher(readLinearRing),
     'MultiGeometry': makeArrayPusher(readMultiGeometry),
@@ -49284,7 +51740,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const FLAT_LINEAR_RINGS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const FLAT_LINEAR_RINGS_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'innerBoundaryIs': innerBoundaryIsParser,
     'outerBoundaryIs': outerBoundaryIsParser,
   });
@@ -49326,7 +51782,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const STYLE_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const STYLE_PARSERS$2 = makeStructureNS(NAMESPACE_URIS$3, {
     'IconStyle': iconStyleParser,
     'LabelStyle': labelStyleParser,
     'LineStyle': lineStyleParser,
@@ -49339,10 +51795,10 @@ var ol = (function () {
    * @param {Array<*>} objectStack Object stack.
    * @return {Array<Style>} Style.
    */
-  function readStyle(node, objectStack) {
+  function readStyle$2(node, objectStack) {
     const styleObject = pushParseAndPop(
       {},
-      STYLE_PARSERS,
+      STYLE_PARSERS$2,
       node,
       objectStack,
       this
@@ -49404,7 +51860,8 @@ var ol = (function () {
                     return type !== 'Polygon' && type !== 'MultiPolygon';
                   })
               );
-            } else if (type !== 'Polygon' && type !== 'MultiPolygon') {
+            }
+            if (type !== 'Polygon' && type !== 'MultiPolygon') {
               return geometry;
             }
           },
@@ -49431,7 +51888,8 @@ var ol = (function () {
                     return type === 'Polygon' || type === 'MultiPolygon';
                   })
               );
-            } else if (type === 'Polygon' || type === 'MultiPolygon') {
+            }
+            if (type === 'Polygon' || type === 'MultiPolygon') {
               return geometry;
             }
           },
@@ -49492,7 +51950,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const DATA_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const DATA_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'displayName': makeObjectPropertySetter(readString),
     'value': makeObjectPropertySetter(readString),
   });
@@ -49528,7 +51986,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const EXTENDED_DATA_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const EXTENDED_DATA_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Data': dataParser,
     'SchemaData': schemaDataParser,
   });
@@ -49554,8 +52012,8 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const PAIR_PARSERS = makeStructureNS(NAMESPACE_URIS, {
-    'Style': makeObjectPropertySetter(readStyle),
+  const PAIR_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
+    'Style': makeObjectPropertySetter(readStyle$2),
     'key': makeObjectPropertySetter(readString),
     'styleUrl': makeObjectPropertySetter(readStyleURL),
   });
@@ -49607,7 +52065,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const SCHEMA_DATA_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const SCHEMA_DATA_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'SimpleData': simpleDataParser,
   });
 
@@ -49639,7 +52097,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const LAT_LON_ALT_BOX_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const LAT_LON_ALT_BOX_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'altitudeMode': makeObjectPropertySetter(readString),
     'minAltitude': makeObjectPropertySetter(readDecimal),
     'maxAltitude': makeObjectPropertySetter(readDecimal),
@@ -49683,7 +52141,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const LOD_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const LOD_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'minLodPixels': makeObjectPropertySetter(readDecimal),
     'maxLodPixels': makeObjectPropertySetter(readDecimal),
     'minFadeExtent': makeObjectPropertySetter(readDecimal),
@@ -49711,7 +52169,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const INNER_BOUNDARY_IS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const INNER_BOUNDARY_IS_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     // KML spec only allows one LinearRing  per innerBoundaryIs, but Google Earth
     // allows multiple, so we parse multiple here too.
     'LinearRing': makeArrayPusher(readFlatLinearRing),
@@ -49741,7 +52199,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Parser>>}
    */
   // @ts-ignore
-  const OUTER_BOUNDARY_IS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+  const OUTER_BOUNDARY_IS_PARSERS = makeStructureNS(NAMESPACE_URIS$3, {
     'LinearRing': makeReplacer(readFlatLinearRing),
   });
 
@@ -49845,7 +52303,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const EXTENDEDDATA_NODE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const EXTENDEDDATA_NODE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Data': makeChildAppender(writeDataNode),
     'value': makeChildAppender(writeDataNodeValue),
     'displayName': makeChildAppender(writeDataNodeName),
@@ -49916,7 +52374,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const DOCUMENT_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const DOCUMENT_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Placemark': makeChildAppender(writePlacemark),
   });
 
@@ -49986,7 +52444,7 @@ var ol = (function () {
    */
   // @ts-ignore
   const ICON_SEQUENCE = makeStructureNS(
-    NAMESPACE_URIS,
+    NAMESPACE_URIS$3,
     ['href'],
     makeStructureNS(GX_NAMESPACE_URIS, ['x', 'y', 'w', 'h'])
   );
@@ -49997,7 +52455,7 @@ var ol = (function () {
    */
   // @ts-ignore
   const ICON_SERIALIZERS = makeStructureNS(
-    NAMESPACE_URIS,
+    NAMESPACE_URIS$3,
     {
       'href': makeChildAppender(writeStringTextNode),
     },
@@ -50055,7 +52513,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const ICON_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const ICON_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'scale',
     'heading',
     'Icon',
@@ -50068,7 +52526,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const ICON_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const ICON_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'Icon': makeChildAppender(writeIcon),
     'color': makeChildAppender(writeColorTextNode),
     'heading': makeChildAppender(writeDecimalTextNode),
@@ -50156,7 +52614,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const LABEL_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const LABEL_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'color',
     'scale',
   ]);
@@ -50166,7 +52624,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const LABEL_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const LABEL_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeChildAppender(writeColorTextNode),
     'scale': makeChildAppender(writeScaleTextNode),
   });
@@ -50205,14 +52663,14 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const LINE_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS, ['color', 'width']);
+  const LINE_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, ['color', 'width']);
 
   /**
    * @const
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const LINE_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const LINE_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeChildAppender(writeColorTextNode),
     'width': makeChildAppender(writeDecimalTextNode),
   });
@@ -50308,7 +52766,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const MULTI_GEOMETRY_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const MULTI_GEOMETRY_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'LineString': makeChildAppender(writePrimitiveGeometry),
     'Point': makeChildAppender(writePrimitiveGeometry),
     'Polygon': makeChildAppender(writePolygon),
@@ -50382,7 +52840,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const BOUNDARY_IS_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const BOUNDARY_IS_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'LinearRing': makeChildAppender(writePrimitiveGeometry),
   });
 
@@ -50407,7 +52865,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const PLACEMARK_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const PLACEMARK_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'ExtendedData': makeChildAppender(writeExtendedData),
     'MultiGeometry': makeChildAppender(writeMultiGeometry),
     'LineString': makeChildAppender(writePrimitiveGeometry),
@@ -50429,7 +52887,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const PLACEMARK_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const PLACEMARK_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'name',
     'open',
     'visibility',
@@ -50603,7 +53061,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const PRIMITIVE_GEOMETRY_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const PRIMITIVE_GEOMETRY_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'extrude',
     'tessellate',
     'altitudeMode',
@@ -50615,7 +53073,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const PRIMITIVE_GEOMETRY_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const PRIMITIVE_GEOMETRY_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'extrude': makeChildAppender(writeBooleanTextNode),
     'tessellate': makeChildAppender(writeBooleanTextNode),
     'altitudeMode': makeChildAppender(writeStringTextNode),
@@ -50655,7 +53113,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const POLY_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const POLY_STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'color',
     'fill',
     'outline',
@@ -50666,7 +53124,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const POLYGON_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const POLYGON_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'outerBoundaryIs': makeChildAppender(writeBoundaryIs),
     'innerBoundaryIs': makeChildAppender(writeBoundaryIs),
   });
@@ -50717,7 +53175,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const POLY_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const POLY_STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'color': makeChildAppender(writeColorTextNode),
     'fill': makeChildAppender(writeBooleanTextNode),
     'outline': makeChildAppender(writeBooleanTextNode),
@@ -50764,7 +53222,7 @@ var ol = (function () {
    * @type {Object<string, Array<string>>}
    */
   // @ts-ignore
-  const STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS, [
+  const STYLE_SEQUENCE = makeStructureNS(NAMESPACE_URIS$3, [
     'IconStyle',
     'LabelStyle',
     'LineStyle',
@@ -50776,7 +53234,7 @@ var ol = (function () {
    * @type {Object<string, Object<string, import("../xml.js").Serializer>>}
    */
   // @ts-ignore
-  const STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS, {
+  const STYLE_SERIALIZERS = makeStructureNS(NAMESPACE_URIS$3, {
     'IconStyle': makeChildAppender(writeIconStyle),
     'LabelStyle': makeChildAppender(writeLabelStyle),
     'LineStyle': makeChildAppender(writeLineStyle),
@@ -51907,7 +54365,7 @@ var ol = (function () {
    * @param {Options} [options] Options.
    * @api
    */
-  class MVT extends FeatureFormat {
+  class MVT extends FeatureFormat$1 {
     /**
      * @param {Options} [options] Options.
      */
@@ -52300,7 +54758,1211 @@ var ol = (function () {
     return geometryType;
   }
 
-  var MVT$1 = MVT;
+  var format_MVT = MVT;
+
+  /**
+   * @module ol/format/XML
+   */
+
+  /**
+   * @classdesc
+   * Generic format for reading non-feature XML data
+   *
+   * @abstract
+   */
+  class XML {
+    /**
+     * Read the source document.
+     *
+     * @param {Document|Element|string} source The XML source.
+     * @return {Object} An object representing the source.
+     * @api
+     */
+    read(source) {
+      if (!source) {
+        return null;
+      }
+      if (typeof source === 'string') {
+        const doc = parse(source);
+        return this.readFromDocument(doc);
+      }
+      if (isDocument(source)) {
+        return this.readFromDocument(/** @type {Document} */ (source));
+      }
+      return this.readFromNode(/** @type {Element} */ (source));
+    }
+
+    /**
+     * @param {Document} doc Document.
+     * @return {Object} Object
+     */
+    readFromDocument(doc) {
+      for (let n = doc.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType == Node.ELEMENT_NODE) {
+          return this.readFromNode(/** @type {Element} */ (n));
+        }
+      }
+      return null;
+    }
+
+    /**
+     * @abstract
+     * @param {Element} node Node.
+     * @return {Object} Object
+     */
+    readFromNode(node) {}
+  }
+
+  var XML$1 = XML;
+
+  /**
+   * @module ol/format/xlink
+   */
+
+  /**
+   * @const
+   * @type {string}
+   */
+  const NAMESPACE_URI = 'http://www.w3.org/1999/xlink';
+
+  /**
+   * @param {Element} node Node.
+   * @return {string|undefined} href.
+   */
+  function readHref(node) {
+    return node.getAttributeNS(NAMESPACE_URI, 'href');
+  }
+
+  /**
+   * @module ol/format/OWS
+   */
+
+  /**
+   * @const
+   * @type {Array<null|string>}
+   */
+  const NAMESPACE_URIS$2 = [null, 'http://www.opengis.net/ows/1.1'];
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const PARSERS$2 = makeStructureNS(NAMESPACE_URIS$2, {
+    'ServiceIdentification': makeObjectPropertySetter(readServiceIdentification),
+    'ServiceProvider': makeObjectPropertySetter(readServiceProvider),
+    'OperationsMetadata': makeObjectPropertySetter(readOperationsMetadata),
+  });
+
+  class OWS extends XML$1 {
+    constructor() {
+      super();
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @return {Object} Object
+     */
+    readFromNode(node) {
+      const owsObject = pushParseAndPop({}, PARSERS$2, node, []);
+      return owsObject ? owsObject : null;
+    }
+  }
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const ADDRESS_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'DeliveryPoint': makeObjectPropertySetter(readString),
+    'City': makeObjectPropertySetter(readString),
+    'AdministrativeArea': makeObjectPropertySetter(readString),
+    'PostalCode': makeObjectPropertySetter(readString),
+    'Country': makeObjectPropertySetter(readString),
+    'ElectronicMailAddress': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const ALLOWED_VALUES_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Value': makeObjectPropertyPusher(readValue),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONSTRAINT_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'AllowedValues': makeObjectPropertySetter(readAllowedValues),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONTACT_INFO_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Phone': makeObjectPropertySetter(readPhone),
+    'Address': makeObjectPropertySetter(readAddress),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const DCP_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'HTTP': makeObjectPropertySetter(readHttp),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const HTTP_PARSERS$1 = makeStructureNS(NAMESPACE_URIS$2, {
+    'Get': makeObjectPropertyPusher(readGet),
+    'Post': undefined, // TODO
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const OPERATION_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'DCP': makeObjectPropertySetter(readDcp),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const OPERATIONS_METADATA_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Operation': readOperation,
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const PHONE_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Voice': makeObjectPropertySetter(readString),
+    'Facsimile': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const REQUEST_METHOD_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Constraint': makeObjectPropertyPusher(readConstraint),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const SERVICE_CONTACT_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'IndividualName': makeObjectPropertySetter(readString),
+    'PositionName': makeObjectPropertySetter(readString),
+    'ContactInfo': makeObjectPropertySetter(readContactInfo),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const SERVICE_IDENTIFICATION_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'Abstract': makeObjectPropertySetter(readString),
+    'AccessConstraints': makeObjectPropertySetter(readString),
+    'Fees': makeObjectPropertySetter(readString),
+    'Title': makeObjectPropertySetter(readString),
+    'ServiceTypeVersion': makeObjectPropertySetter(readString),
+    'ServiceType': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const SERVICE_PROVIDER_PARSERS = makeStructureNS(NAMESPACE_URIS$2, {
+    'ProviderName': makeObjectPropertySetter(readString),
+    'ProviderSite': makeObjectPropertySetter(readHref),
+    'ServiceContact': makeObjectPropertySetter(readServiceContact),
+  });
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The address.
+   */
+  function readAddress(node, objectStack) {
+    return pushParseAndPop({}, ADDRESS_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The values.
+   */
+  function readAllowedValues(node, objectStack) {
+    return pushParseAndPop({}, ALLOWED_VALUES_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The constraint.
+   */
+  function readConstraint(node, objectStack) {
+    const name = node.getAttribute('name');
+    if (!name) {
+      return undefined;
+    }
+    return pushParseAndPop({'name': name}, CONSTRAINT_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The contact info.
+   */
+  function readContactInfo(node, objectStack) {
+    return pushParseAndPop({}, CONTACT_INFO_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The DCP.
+   */
+  function readDcp(node, objectStack) {
+    return pushParseAndPop({}, DCP_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The GET object.
+   */
+  function readGet(node, objectStack) {
+    const href = readHref(node);
+    if (!href) {
+      return undefined;
+    }
+    return pushParseAndPop(
+      {'href': href},
+      REQUEST_METHOD_PARSERS,
+      node,
+      objectStack
+    );
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The HTTP object.
+   */
+  function readHttp(node, objectStack) {
+    return pushParseAndPop({}, HTTP_PARSERS$1, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The operation.
+   */
+  function readOperation(node, objectStack) {
+    const name = node.getAttribute('name');
+    const value = pushParseAndPop({}, OPERATION_PARSERS, node, objectStack);
+    if (!value) {
+      return undefined;
+    }
+    const object = /** @type {Object} */ (objectStack[objectStack.length - 1]);
+    object[name] = value;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The operations metadata.
+   */
+  function readOperationsMetadata(node, objectStack) {
+    return pushParseAndPop({}, OPERATIONS_METADATA_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The phone.
+   */
+  function readPhone(node, objectStack) {
+    return pushParseAndPop({}, PHONE_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The service identification.
+   */
+  function readServiceIdentification(node, objectStack) {
+    return pushParseAndPop({}, SERVICE_IDENTIFICATION_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The service contact.
+   */
+  function readServiceContact(node, objectStack) {
+    return pushParseAndPop({}, SERVICE_CONTACT_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} The service provider.
+   */
+  function readServiceProvider(node, objectStack) {
+    return pushParseAndPop({}, SERVICE_PROVIDER_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Node} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {string|undefined} The value.
+   */
+  function readValue(node, objectStack) {
+    return readString(node);
+  }
+
+  var format_OWS = OWS;
+
+  /**
+   * @module ol/geom/flat/flip
+   */
+
+  /**
+   * @param {Array<number>} flatCoordinates Flat coordinates.
+   * @param {number} offset Offset.
+   * @param {number} end End.
+   * @param {number} stride Stride.
+   * @param {Array<number>} [dest] Destination.
+   * @param {number} [destOffset] Destination offset.
+   * @return {Array<number>} Flat coordinates.
+   */
+  function flipXY(flatCoordinates, offset, end, stride, dest, destOffset) {
+    if (dest !== undefined) {
+      dest = dest;
+      destOffset = destOffset !== undefined ? destOffset : 0;
+    } else {
+      dest = [];
+      destOffset = 0;
+    }
+    let j = offset;
+    while (j < end) {
+      const x = flatCoordinates[j++];
+      dest[destOffset++] = flatCoordinates[j++];
+      dest[destOffset++] = x;
+      for (let k = 2; k < stride; ++k) {
+        dest[destOffset++] = flatCoordinates[j++];
+      }
+    }
+    dest.length = destOffset;
+    return dest;
+  }
+
+  /**
+   * @module ol/format/Polyline
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {number} [factor=1e5] The factor by which the coordinates values will be scaled.
+   * @property {import("../geom/Geometry.js").GeometryLayout} [geometryLayout='XY'] Layout of the
+   * feature geometries created by the format reader.
+   */
+
+  /**
+   * @classdesc
+   * Feature format for reading and writing data in the Encoded
+   * Polyline Algorithm Format.
+   *
+   * When reading features, the coordinates are assumed to be in two dimensions
+   * and in [latitude, longitude] order.
+   *
+   * As Polyline sources contain a single feature,
+   * {@link module:ol/format/Polyline~Polyline#readFeatures} will return the
+   * feature in an array.
+   *
+   * @api
+   */
+  class Polyline extends TextFeature$1 {
+    /**
+     * @param {Options} [options] Optional configuration object.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      /**
+       * @type {import("../proj/Projection.js").default}
+       */
+      this.dataProjection = get$2('EPSG:4326');
+
+      /**
+       * @private
+       * @type {number}
+       */
+      this.factor_ = options.factor ? options.factor : 1e5;
+
+      /**
+       * @private
+       * @type {import("../geom/Geometry.js").GeometryLayout}
+       */
+      this.geometryLayout_ = options.geometryLayout
+        ? options.geometryLayout
+        : 'XY';
+    }
+
+    /**
+     * @protected
+     * @param {string} text Text.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @return {import("../Feature.js").default} Feature.
+     */
+    readFeatureFromText(text, options) {
+      const geometry = this.readGeometryFromText(text, options);
+      return new Feature$1(geometry);
+    }
+
+    /**
+     * @param {string} text Text.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {Array<Feature>} Features.
+     */
+    readFeaturesFromText(text, options) {
+      const feature = this.readFeatureFromText(text, options);
+      return [feature];
+    }
+
+    /**
+     * @param {string} text Text.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {import("../geom/Geometry.js").default} Geometry.
+     */
+    readGeometryFromText(text, options) {
+      const stride = getStrideForLayout(this.geometryLayout_);
+      const flatCoordinates = decodeDeltas(text, stride, this.factor_);
+      flipXY(flatCoordinates, 0, flatCoordinates.length, stride, flatCoordinates);
+      const coordinates = inflateCoordinates(
+        flatCoordinates,
+        0,
+        flatCoordinates.length,
+        stride
+      );
+      const lineString = new LineString$1(coordinates, this.geometryLayout_);
+
+      return transformGeometryWithOptions(
+        lineString,
+        false,
+        this.adaptOptions(options)
+      );
+    }
+
+    /**
+     * @param {import("../Feature.js").default<LineString>} feature Features.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @protected
+     * @return {string} Text.
+     */
+    writeFeatureText(feature, options) {
+      const geometry = feature.getGeometry();
+      if (geometry) {
+        return this.writeGeometryText(geometry, options);
+      }
+      assert(false, 40); // Expected `feature` to have a geometry
+      return '';
+    }
+
+    /**
+     * @param {Array<import("../Feature.js").default<LineString>>} features Features.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @protected
+     * @return {string} Text.
+     */
+    writeFeaturesText(features, options) {
+      return this.writeFeatureText(features[0], options);
+    }
+
+    /**
+     * @param {LineString} geometry Geometry.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @protected
+     * @return {string} Text.
+     */
+    writeGeometryText(geometry, options) {
+      geometry =
+        /** @type {LineString} */
+        (
+          transformGeometryWithOptions(geometry, true, this.adaptOptions(options))
+        );
+      const flatCoordinates = geometry.getFlatCoordinates();
+      const stride = geometry.getStride();
+      flipXY(flatCoordinates, 0, flatCoordinates.length, stride, flatCoordinates);
+      return encodeDeltas(flatCoordinates, stride, this.factor_);
+    }
+  }
+
+  /**
+   * Encode a list of n-dimensional points and return an encoded string
+   *
+   * Attention: This function will modify the passed array!
+   *
+   * @param {Array<number>} numbers A list of n-dimensional points.
+   * @param {number} stride The number of dimension of the points in the list.
+   * @param {number} [factor] The factor by which the numbers will be
+   *     multiplied. The remaining decimal places will get rounded away.
+   *     Default is `1e5`.
+   * @return {string} The encoded string.
+   * @api
+   */
+  function encodeDeltas(numbers, stride, factor) {
+    factor = factor ? factor : 1e5;
+    let d;
+
+    const lastNumbers = new Array(stride);
+    for (d = 0; d < stride; ++d) {
+      lastNumbers[d] = 0;
+    }
+
+    for (let i = 0, ii = numbers.length; i < ii; ) {
+      for (d = 0; d < stride; ++d, ++i) {
+        const num = numbers[i];
+        const delta = num - lastNumbers[d];
+        lastNumbers[d] = num;
+
+        numbers[i] = delta;
+      }
+    }
+
+    return encodeFloats(numbers, factor);
+  }
+
+  /**
+   * Decode a list of n-dimensional points from an encoded string
+   *
+   * @param {string} encoded An encoded string.
+   * @param {number} stride The number of dimension of the points in the
+   *     encoded string.
+   * @param {number} [factor] The factor by which the resulting numbers will
+   *     be divided. Default is `1e5`.
+   * @return {Array<number>} A list of n-dimensional points.
+   * @api
+   */
+  function decodeDeltas(encoded, stride, factor) {
+    factor = factor ? factor : 1e5;
+    let d;
+
+    /** @type {Array<number>} */
+    const lastNumbers = new Array(stride);
+    for (d = 0; d < stride; ++d) {
+      lastNumbers[d] = 0;
+    }
+
+    const numbers = decodeFloats(encoded, factor);
+
+    for (let i = 0, ii = numbers.length; i < ii; ) {
+      for (d = 0; d < stride; ++d, ++i) {
+        lastNumbers[d] += numbers[i];
+
+        numbers[i] = lastNumbers[d];
+      }
+    }
+
+    return numbers;
+  }
+
+  /**
+   * Encode a list of floating point numbers and return an encoded string
+   *
+   * Attention: This function will modify the passed array!
+   *
+   * @param {Array<number>} numbers A list of floating point numbers.
+   * @param {number} [factor] The factor by which the numbers will be
+   *     multiplied. The remaining decimal places will get rounded away.
+   *     Default is `1e5`.
+   * @return {string} The encoded string.
+   * @api
+   */
+  function encodeFloats(numbers, factor) {
+    factor = factor ? factor : 1e5;
+    for (let i = 0, ii = numbers.length; i < ii; ++i) {
+      numbers[i] = Math.round(numbers[i] * factor);
+    }
+
+    return encodeSignedIntegers(numbers);
+  }
+
+  /**
+   * Decode a list of floating point numbers from an encoded string
+   *
+   * @param {string} encoded An encoded string.
+   * @param {number} [factor] The factor by which the result will be divided.
+   *     Default is `1e5`.
+   * @return {Array<number>} A list of floating point numbers.
+   * @api
+   */
+  function decodeFloats(encoded, factor) {
+    factor = factor ? factor : 1e5;
+    const numbers = decodeSignedIntegers(encoded);
+    for (let i = 0, ii = numbers.length; i < ii; ++i) {
+      numbers[i] /= factor;
+    }
+    return numbers;
+  }
+
+  /**
+   * Encode a list of signed integers and return an encoded string
+   *
+   * Attention: This function will modify the passed array!
+   *
+   * @param {Array<number>} numbers A list of signed integers.
+   * @return {string} The encoded string.
+   */
+  function encodeSignedIntegers(numbers) {
+    for (let i = 0, ii = numbers.length; i < ii; ++i) {
+      const num = numbers[i];
+      numbers[i] = num < 0 ? ~(num << 1) : num << 1;
+    }
+    return encodeUnsignedIntegers(numbers);
+  }
+
+  /**
+   * Decode a list of signed integers from an encoded string
+   *
+   * @param {string} encoded An encoded string.
+   * @return {Array<number>} A list of signed integers.
+   */
+  function decodeSignedIntegers(encoded) {
+    const numbers = decodeUnsignedIntegers(encoded);
+    for (let i = 0, ii = numbers.length; i < ii; ++i) {
+      const num = numbers[i];
+      numbers[i] = num & 1 ? ~(num >> 1) : num >> 1;
+    }
+    return numbers;
+  }
+
+  /**
+   * Encode a list of unsigned integers and return an encoded string
+   *
+   * @param {Array<number>} numbers A list of unsigned integers.
+   * @return {string} The encoded string.
+   */
+  function encodeUnsignedIntegers(numbers) {
+    let encoded = '';
+    for (let i = 0, ii = numbers.length; i < ii; ++i) {
+      encoded += encodeUnsignedInteger(numbers[i]);
+    }
+    return encoded;
+  }
+
+  /**
+   * Decode a list of unsigned integers from an encoded string
+   *
+   * @param {string} encoded An encoded string.
+   * @return {Array<number>} A list of unsigned integers.
+   */
+  function decodeUnsignedIntegers(encoded) {
+    const numbers = [];
+    let current = 0;
+    let shift = 0;
+    for (let i = 0, ii = encoded.length; i < ii; ++i) {
+      const b = encoded.charCodeAt(i) - 63;
+      current |= (b & 0x1f) << shift;
+      if (b < 0x20) {
+        numbers.push(current);
+        current = 0;
+        shift = 0;
+      } else {
+        shift += 5;
+      }
+    }
+    return numbers;
+  }
+
+  /**
+   * Encode one single unsigned integer and return an encoded string
+   *
+   * @param {number} num Unsigned integer that should be encoded.
+   * @return {string} The encoded string.
+   */
+  function encodeUnsignedInteger(num) {
+    let value,
+      encoded = '';
+    while (num >= 0x20) {
+      value = (0x20 | (num & 0x1f)) + 63;
+      encoded += String.fromCharCode(value);
+      num >>= 5;
+    }
+    value = num + 63;
+    encoded += String.fromCharCode(value);
+    return encoded;
+  }
+
+  var format_Polyline = Polyline;
+
+  /**
+   * @module ol/format/TopoJSON
+   */
+
+  /**
+   * @typedef {import("topojson-specification").Topology} TopoJSONTopology
+   * @typedef {import("topojson-specification").GeometryCollection} TopoJSONGeometryCollection
+   * @typedef {import("topojson-specification").GeometryObject} TopoJSONGeometry
+   * @typedef {import("topojson-specification").Point} TopoJSONPoint
+   * @typedef {import("topojson-specification").MultiPoint} TopoJSONMultiPoint
+   * @typedef {import("topojson-specification").LineString} TopoJSONLineString
+   * @typedef {import("topojson-specification").MultiLineString} TopoJSONMultiLineString
+   * @typedef {import("topojson-specification").Polygon} TopoJSONPolygon
+   * @typedef {import("topojson-specification").MultiPolygon} TopoJSONMultiPolygon
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {import("../proj.js").ProjectionLike} [dataProjection='EPSG:4326'] Default data projection.
+   * @property {string} [layerName] Set the name of the TopoJSON topology
+   * `objects`'s children as feature property with the specified name. This means
+   * that when set to `'layer'`, a topology like
+   * ```
+   * {
+   *   "type": "Topology",
+   *   "objects": {
+   *     "example": {
+   *       "type": "GeometryCollection",
+   *       "geometries": []
+   *     }
+   *   }
+   * }
+   * ```
+   * will result in features that have a property `'layer'` set to `'example'`.
+   * When not set, no property will be added to features.
+   * @property {Array<string>} [layers] Names of the TopoJSON topology's
+   * `objects`'s children to read features from.  If not provided, features will
+   * be read from all children.
+   */
+
+  /**
+   * @classdesc
+   * Feature format for reading data in the TopoJSON format.
+   *
+   * @api
+   */
+  class TopoJSON extends JSONFeature$1 {
+    /**
+     * @param {Options} [options] Options.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      /**
+       * @private
+       * @type {string|undefined}
+       */
+      this.layerName_ = options.layerName;
+
+      /**
+       * @private
+       * @type {?Array<string>}
+       */
+      this.layers_ = options.layers ? options.layers : null;
+
+      /**
+       * @type {import("../proj/Projection.js").default}
+       */
+      this.dataProjection = get$2(
+        options.dataProjection ? options.dataProjection : 'EPSG:4326'
+      );
+    }
+
+    /**
+     * @param {Object} object Object.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @protected
+     * @return {Array<Feature>} Features.
+     */
+    readFeaturesFromObject(object, options) {
+      if (object.type == 'Topology') {
+        const topoJSONTopology = /** @type {TopoJSONTopology} */ (object);
+        let transform,
+          scale = null,
+          translate = null;
+        if (topoJSONTopology['transform']) {
+          transform = topoJSONTopology['transform'];
+          scale = transform['scale'];
+          translate = transform['translate'];
+        }
+        const arcs = topoJSONTopology['arcs'];
+        if (transform) {
+          transformArcs(arcs, scale, translate);
+        }
+        /** @type {Array<Feature>} */
+        const features = [];
+        const topoJSONFeatures = topoJSONTopology['objects'];
+        const property = this.layerName_;
+        let feature;
+        for (const objectName in topoJSONFeatures) {
+          if (this.layers_ && !this.layers_.includes(objectName)) {
+            continue;
+          }
+          if (topoJSONFeatures[objectName].type === 'GeometryCollection') {
+            feature = /** @type {TopoJSONGeometryCollection} */ (
+              topoJSONFeatures[objectName]
+            );
+            features.push.apply(
+              features,
+              readFeaturesFromGeometryCollection(
+                feature,
+                arcs,
+                scale,
+                translate,
+                property,
+                objectName,
+                options
+              )
+            );
+          } else {
+            feature = /** @type {TopoJSONGeometry} */ (
+              topoJSONFeatures[objectName]
+            );
+            features.push(
+              readFeatureFromGeometry(
+                feature,
+                arcs,
+                scale,
+                translate,
+                property,
+                objectName,
+                options
+              )
+            );
+          }
+        }
+        return features;
+      }
+      return [];
+    }
+
+    /**
+     * @param {Object} object Object.
+     * @protected
+     * @return {import("../proj/Projection.js").default} Projection.
+     */
+    readProjectionFromObject(object) {
+      return this.dataProjection;
+    }
+  }
+
+  /**
+   * @const
+   * @type {Object<string, function(TopoJSONGeometry, Array, ...Array=): import("../geom/Geometry.js").default>}
+   */
+  const GEOMETRY_READERS = {
+    'Point': readPointGeometry,
+    'LineString': readLineStringGeometry,
+    'Polygon': readPolygonGeometry,
+    'MultiPoint': readMultiPointGeometry,
+    'MultiLineString': readMultiLineStringGeometry,
+    'MultiPolygon': readMultiPolygonGeometry,
+  };
+
+  /**
+   * Concatenate arcs into a coordinate array.
+   * @param {Array<number>} indices Indices of arcs to concatenate.  Negative
+   *     values indicate arcs need to be reversed.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs (already
+   *     transformed).
+   * @return {Array<import("../coordinate.js").Coordinate>} Coordinates array.
+   */
+  function concatenateArcs(indices, arcs) {
+    /** @type {Array<import("../coordinate.js").Coordinate>} */
+    const coordinates = [];
+    let index;
+    for (let i = 0, ii = indices.length; i < ii; ++i) {
+      index = indices[i];
+      if (i > 0) {
+        // splicing together arcs, discard last point
+        coordinates.pop();
+      }
+      if (index >= 0) {
+        // forward arc
+        const arc = arcs[index];
+        for (let j = 0, jj = arc.length; j < jj; ++j) {
+          coordinates.push(arc[j].slice(0));
+        }
+      } else {
+        // reverse arc
+        const arc = arcs[~index];
+        for (let j = arc.length - 1; j >= 0; --j) {
+          coordinates.push(arc[j].slice(0));
+        }
+      }
+    }
+    return coordinates;
+  }
+
+  /**
+   * Create a point from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONPoint} object TopoJSON object.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   * @return {Point} Geometry.
+   */
+  function readPointGeometry(object, scale, translate) {
+    const coordinates = object['coordinates'];
+    if (scale && translate) {
+      transformVertex(coordinates, scale, translate);
+    }
+    return new Point$1(coordinates);
+  }
+
+  /**
+   * Create a multi-point from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONMultiPoint} object TopoJSON object.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   * @return {MultiPoint} Geometry.
+   */
+  function readMultiPointGeometry(object, scale, translate) {
+    const coordinates = object['coordinates'];
+    if (scale && translate) {
+      for (let i = 0, ii = coordinates.length; i < ii; ++i) {
+        transformVertex(coordinates[i], scale, translate);
+      }
+    }
+    return new MultiPoint$1(coordinates);
+  }
+
+  /**
+   * Create a linestring from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONLineString} object TopoJSON object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @return {LineString} Geometry.
+   */
+  function readLineStringGeometry(object, arcs) {
+    const coordinates = concatenateArcs(object['arcs'], arcs);
+    return new LineString$1(coordinates);
+  }
+
+  /**
+   * Create a multi-linestring from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONMultiLineString} object TopoJSON object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @return {MultiLineString} Geometry.
+   */
+  function readMultiLineStringGeometry(object, arcs) {
+    const coordinates = [];
+    for (let i = 0, ii = object['arcs'].length; i < ii; ++i) {
+      coordinates[i] = concatenateArcs(object['arcs'][i], arcs);
+    }
+    return new MultiLineString$1(coordinates);
+  }
+
+  /**
+   * Create a polygon from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONPolygon} object TopoJSON object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @return {Polygon} Geometry.
+   */
+  function readPolygonGeometry(object, arcs) {
+    const coordinates = [];
+    for (let i = 0, ii = object['arcs'].length; i < ii; ++i) {
+      coordinates[i] = concatenateArcs(object['arcs'][i], arcs);
+    }
+    return new Polygon$1(coordinates);
+  }
+
+  /**
+   * Create a multi-polygon from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONMultiPolygon} object TopoJSON object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @return {MultiPolygon} Geometry.
+   */
+  function readMultiPolygonGeometry(object, arcs) {
+    const coordinates = [];
+    for (let i = 0, ii = object['arcs'].length; i < ii; ++i) {
+      // for each polygon
+      const polyArray = object['arcs'][i];
+      const ringCoords = [];
+      for (let j = 0, jj = polyArray.length; j < jj; ++j) {
+        // for each ring
+        ringCoords[j] = concatenateArcs(polyArray[j], arcs);
+      }
+      coordinates[i] = ringCoords;
+    }
+    return new MultiPolygon$1(coordinates);
+  }
+
+  /**
+   * Create features from a TopoJSON GeometryCollection object.
+   *
+   * @param {TopoJSONGeometryCollection} collection TopoJSON Geometry
+   *     object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   * @param {string|undefined} property Property to set the `GeometryCollection`'s parent
+   *     object to.
+   * @param {string} name Name of the `Topology`'s child object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {Array<Feature>} Array of features.
+   */
+  function readFeaturesFromGeometryCollection(
+    collection,
+    arcs,
+    scale,
+    translate,
+    property,
+    name,
+    options
+  ) {
+    const geometries = collection['geometries'];
+    const features = [];
+    for (let i = 0, ii = geometries.length; i < ii; ++i) {
+      features[i] = readFeatureFromGeometry(
+        geometries[i],
+        arcs,
+        scale,
+        translate,
+        property,
+        name,
+        options
+      );
+    }
+    return features;
+  }
+
+  /**
+   * Create a feature from a TopoJSON geometry object.
+   *
+   * @param {TopoJSONGeometry} object TopoJSON geometry object.
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   * @param {string|undefined} property Property to set the `GeometryCollection`'s parent
+   *     object to.
+   * @param {string} name Name of the `Topology`'s child object.
+   * @param {import("./Feature.js").ReadOptions} [options] Read options.
+   * @return {Feature} Feature.
+   */
+  function readFeatureFromGeometry(
+    object,
+    arcs,
+    scale,
+    translate,
+    property,
+    name,
+    options
+  ) {
+    let geometry = null;
+    const type = object.type;
+    if (type) {
+      const geometryReader = GEOMETRY_READERS[type];
+      if (type === 'Point' || type === 'MultiPoint') {
+        geometry = geometryReader(object, scale, translate);
+      } else {
+        geometry = geometryReader(object, arcs);
+      }
+      geometry = transformGeometryWithOptions(geometry, false, options);
+    }
+    const feature = new Feature$1({geometry: geometry});
+    if (object.id !== undefined) {
+      feature.setId(object.id);
+    }
+    let properties = object.properties;
+    if (property) {
+      if (!properties) {
+        properties = {};
+      }
+      properties[property] = name;
+    }
+    if (properties) {
+      feature.setProperties(properties, true);
+    }
+    return feature;
+  }
+
+  /**
+   * Apply a linear transform to array of arcs.  The provided array of arcs is
+   * modified in place.
+   *
+   * @param {Array<Array<import("../coordinate.js").Coordinate>>} arcs Array of arcs.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   */
+  function transformArcs(arcs, scale, translate) {
+    for (let i = 0, ii = arcs.length; i < ii; ++i) {
+      transformArc(arcs[i], scale, translate);
+    }
+  }
+
+  /**
+   * Apply a linear transform to an arc.  The provided arc is modified in place.
+   *
+   * @param {Array<import("../coordinate.js").Coordinate>} arc Arc.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   */
+  function transformArc(arc, scale, translate) {
+    let x = 0;
+    let y = 0;
+    for (let i = 0, ii = arc.length; i < ii; ++i) {
+      const vertex = arc[i];
+      x += vertex[0];
+      y += vertex[1];
+      vertex[0] = x;
+      vertex[1] = y;
+      transformVertex(vertex, scale, translate);
+    }
+  }
+
+  /**
+   * Apply a linear transform to a vertex.  The provided vertex is modified in
+   * place.
+   *
+   * @param {import("../coordinate.js").Coordinate} vertex Vertex.
+   * @param {Array<number>} scale Scale for each dimension.
+   * @param {Array<number>} translate Translation for each dimension.
+   */
+  function transformVertex(vertex, scale, translate) {
+    vertex[0] = vertex[0] * scale[0] + translate[0];
+    vertex[1] = vertex[1] * scale[1] + translate[1];
+  }
+
+  var format_TopoJSON = TopoJSON;
 
   /**
    * @module ol/format/GML32
@@ -53297,7 +56959,7 @@ var ol = (function () {
 
   /**
    * @classdesc
-   * Represents a logical `<Or>` operator between two ore more filter conditions.
+   * Represents a logical `<Or>` operator between two or more filter conditions.
    * @api
    */
   class Or extends LogicalNary$1 {
@@ -54010,10 +57672,12 @@ var ol = (function () {
     readTransactionResponse(source) {
       if (!source) {
         return undefined;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readTransactionResponseFromDocument(doc);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readTransactionResponseFromDocument(
           /** @type {Document} */ (source)
         );
@@ -54034,10 +57698,12 @@ var ol = (function () {
     readFeatureCollectionMetadata(source) {
       if (!source) {
         return undefined;
-      } else if (typeof source === 'string') {
+      }
+      if (typeof source === 'string') {
         const doc = parse(source);
         return this.readFeatureCollectionMetadataFromDocument(doc);
-      } else if (isDocument(source)) {
+      }
+      if (isDocument(source)) {
         return this.readFeatureCollectionMetadataFromDocument(
           /** @type {Document} */ (source)
         );
@@ -54989,6 +58655,919 @@ var ol = (function () {
   var format_WFS = WFS;
 
   /**
+   * @module ol/format/WKB
+   */
+
+  // WKB spec: https://www.ogc.org/standards/sfa
+  // EWKB spec: https://raw.githubusercontent.com/postgis/postgis/2.1.0/doc/ZMSgeoms.txt
+
+  /**
+   * @const
+   * @enum {number}
+   */
+  const WKBGeometryType = {
+    POINT: 1,
+    LINE_STRING: 2,
+    POLYGON: 3,
+    MULTI_POINT: 4,
+    MULTI_LINE_STRING: 5,
+    MULTI_POLYGON: 6,
+    GEOMETRY_COLLECTION: 7,
+
+    /*
+    CIRCULAR_STRING: 8,
+    COMPOUND_CURVE: 9,
+    CURVE_POLYGON: 10,
+
+    MULTI_CURVE: 11,
+    MULTI_SURFACE: 12,
+    CURVE: 13,
+    SURFACE: 14,
+    */
+
+    POLYHEDRAL_SURFACE: 15,
+    TIN: 16,
+    TRIANGLE: 17,
+  };
+
+  class WkbReader {
+    /**
+     * @param {DataView} view source to read
+     */
+    constructor(view) {
+      /** @private */
+      this.view_ = view;
+
+      /**
+       * @type {number}
+       * @private
+       */
+      this.pos_ = 0;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.initialized_ = false;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.isLittleEndian_ = false;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.hasZ_ = false;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.hasM_ = false;
+
+      /**
+       * @type {number|null}
+       * @private
+       */
+      this.srid_ = null;
+
+      /**
+       * @type {import("../geom/Geometry.js").GeometryLayout}
+       * @private
+       */
+      this.layout_ = 'XY';
+    }
+
+    /**
+     * @return {number} value
+     */
+    readUint8() {
+      return this.view_.getUint8(this.pos_++);
+    }
+
+    /**
+     * @param {boolean} [isLittleEndian] Whether read value as little endian
+     * @return {number} value
+     */
+    readUint32(isLittleEndian) {
+      return this.view_.getUint32(
+        (this.pos_ += 4) - 4,
+        isLittleEndian !== undefined ? isLittleEndian : this.isLittleEndian_
+      );
+    }
+
+    /**
+     * @param {boolean} [isLittleEndian] Whether read value as little endian
+     * @return {number} value
+     */
+    readDouble(isLittleEndian) {
+      return this.view_.getFloat64(
+        (this.pos_ += 8) - 8,
+        isLittleEndian !== undefined ? isLittleEndian : this.isLittleEndian_
+      );
+    }
+
+    /**
+     * @return {import('../coordinate.js').Coordinate} coords for Point
+     */
+    readPoint() {
+      /** @type import('../coordinate.js').Coordinate */
+      const coords = [];
+
+      coords.push(this.readDouble());
+      coords.push(this.readDouble());
+      if (this.hasZ_) {
+        coords.push(this.readDouble());
+      }
+      if (this.hasM_) {
+        coords.push(this.readDouble());
+      }
+
+      return coords;
+    }
+
+    /**
+     * @return {Array<import('../coordinate.js').Coordinate>} coords for LineString / LinearRing
+     */
+    readLineString() {
+      const numPoints = this.readUint32();
+
+      /** @type Array<import('../coordinate.js').Coordinate> */
+      const coords = [];
+      for (let i = 0; i < numPoints; i++) {
+        coords.push(this.readPoint());
+      }
+
+      return coords;
+    }
+
+    /**
+     * @return {Array<Array<import('../coordinate.js').Coordinate>>} coords for Polygon like
+     */
+    readPolygon() {
+      const numRings = this.readUint32();
+
+      /** @type Array<Array<import('../coordinate.js').Coordinate>> */
+      const rings = [];
+      for (let i = 0; i < numRings; i++) {
+        rings.push(this.readLineString()); // as a LinearRing
+      }
+
+      return rings;
+    }
+
+    /**
+     * @param {number} [expectedTypeId] Expected WKB Type ID
+     * @return {number} WKB Type ID
+     */
+    readWkbHeader(expectedTypeId) {
+      const byteOrder = this.readUint8();
+      const isLittleEndian = byteOrder > 0;
+
+      const wkbType = this.readUint32(isLittleEndian);
+      const wkbTypeThousandth = Math.floor((wkbType & 0x0fffffff) / 1000);
+      const hasZ =
+        Boolean(wkbType & 0x80000000) ||
+        wkbTypeThousandth === 1 ||
+        wkbTypeThousandth === 3;
+      const hasM =
+        Boolean(wkbType & 0x40000000) ||
+        wkbTypeThousandth === 2 ||
+        wkbTypeThousandth === 3;
+      const hasSRID = Boolean(wkbType & 0x20000000);
+      const typeId = (wkbType & 0x0fffffff) % 1000; // Assume 1000 is an upper limit for type ID
+      const layout = /** @type {import("../geom/Geometry.js").GeometryLayout} */ (
+        ['XY', hasZ ? 'Z' : '', hasM ? 'M' : ''].join('')
+      );
+
+      const srid = hasSRID ? this.readUint32(isLittleEndian) : null;
+
+      if (expectedTypeId !== undefined && expectedTypeId !== typeId) {
+        throw new Error('Unexpected WKB geometry type ' + typeId);
+      }
+
+      if (this.initialized_) {
+        // sanity checks
+        if (this.isLittleEndian_ !== isLittleEndian) {
+          throw new Error('Inconsistent endian');
+        }
+        if (this.layout_ !== layout) {
+          throw new Error('Inconsistent geometry layout');
+        }
+        if (srid && this.srid_ !== srid) {
+          throw new Error('Inconsistent coordinate system (SRID)');
+        }
+      } else {
+        this.isLittleEndian_ = isLittleEndian;
+        this.hasZ_ = hasZ;
+        this.hasM_ = hasM;
+        this.layout_ = layout;
+        this.srid_ = srid;
+        this.initialized_ = true;
+      }
+
+      return typeId;
+    }
+
+    /**
+     * @param {number} typeId WKB Type ID
+     * @return {any} values read
+     */
+    readWkbPayload(typeId) {
+      switch (typeId) {
+        case WKBGeometryType.POINT:
+          return this.readPoint();
+
+        case WKBGeometryType.LINE_STRING:
+          return this.readLineString();
+
+        case WKBGeometryType.POLYGON:
+        case WKBGeometryType.TRIANGLE:
+          return this.readPolygon();
+
+        case WKBGeometryType.MULTI_POINT:
+          return this.readMultiPoint();
+
+        case WKBGeometryType.MULTI_LINE_STRING:
+          return this.readMultiLineString();
+
+        case WKBGeometryType.MULTI_POLYGON:
+        case WKBGeometryType.POLYHEDRAL_SURFACE:
+        case WKBGeometryType.TIN:
+          return this.readMultiPolygon();
+
+        case WKBGeometryType.GEOMETRY_COLLECTION:
+          return this.readGeometryCollection();
+
+        default:
+          throw new Error(
+            'Unsupported WKB geometry type ' + typeId + ' is found'
+          );
+      }
+    }
+
+    /**
+     * @param {number} expectedTypeId Expected WKB Type ID
+     * @return {any} values read
+     */
+    readWkbBlock(expectedTypeId) {
+      return this.readWkbPayload(this.readWkbHeader(expectedTypeId));
+    }
+
+    /**
+     * @param {Function} reader reader function for each item
+     * @param {number} [expectedTypeId] Expected WKB Type ID
+     * @return {any} values read
+     */
+    readWkbCollection(reader, expectedTypeId) {
+      const num = this.readUint32();
+
+      const items = [];
+      for (let i = 0; i < num; i++) {
+        const result = reader.call(this, expectedTypeId);
+        if (result) {
+          items.push(result);
+        }
+      }
+
+      return items;
+    }
+
+    /**
+     * @return {Array<import('../coordinate.js').Coordinate>} coords for MultiPoint
+     */
+    readMultiPoint() {
+      return this.readWkbCollection(this.readWkbBlock, WKBGeometryType.POINT);
+    }
+
+    /**
+     * @return {Array<Array<import('../coordinate.js').Coordinate>>} coords for MultiLineString like
+     */
+    readMultiLineString() {
+      return this.readWkbCollection(
+        this.readWkbBlock,
+        WKBGeometryType.LINE_STRING
+      );
+    }
+
+    /**
+     * @return {Array<Array<Array<import('../coordinate.js').Coordinate>>>} coords for MultiPolygon like
+     */
+    readMultiPolygon() {
+      return this.readWkbCollection(this.readWkbBlock, WKBGeometryType.POLYGON);
+    }
+
+    /**
+     * @return {Array<import('../geom/Geometry.js').default>} array of geometries
+     */
+    readGeometryCollection() {
+      return this.readWkbCollection(this.readGeometry);
+    }
+
+    /**
+     * @return {import('../geom/Geometry.js').default} geometry
+     */
+    readGeometry() {
+      const typeId = this.readWkbHeader();
+      const result = this.readWkbPayload(typeId);
+
+      switch (typeId) {
+        case WKBGeometryType.POINT:
+          return new Point$1(
+            /** @type {import('../coordinate.js').Coordinate} */ (result),
+            this.layout_
+          );
+
+        case WKBGeometryType.LINE_STRING:
+          return new LineString$1(
+            /** @type {Array<import('../coordinate.js').Coordinate>} */ (result),
+            this.layout_
+          );
+
+        case WKBGeometryType.POLYGON:
+        case WKBGeometryType.TRIANGLE:
+          return new Polygon$1(
+            /** @type {Array<Array<import('../coordinate.js').Coordinate>>} */ (
+              result
+            ),
+            this.layout_
+          );
+
+        case WKBGeometryType.MULTI_POINT:
+          return new MultiPoint$1(
+            /** @type {Array<import('../coordinate.js').Coordinate>} */ (result),
+            this.layout_
+          );
+
+        case WKBGeometryType.MULTI_LINE_STRING:
+          return new MultiLineString$1(
+            /** @type {Array<Array<import('../coordinate.js').Coordinate>>} */ (
+              result
+            ),
+            this.layout_
+          );
+
+        case WKBGeometryType.MULTI_POLYGON:
+        case WKBGeometryType.POLYHEDRAL_SURFACE:
+        case WKBGeometryType.TIN:
+          return new MultiPolygon$1(
+            /** @type {Array<Array<Array<import('../coordinate.js').Coordinate>>>} */ (
+              result
+            ),
+            this.layout_
+          );
+
+        case WKBGeometryType.GEOMETRY_COLLECTION:
+          return new GeometryCollection$1(
+            /** @type {Array<import('../geom/Geometry.js').default>} */ (result)
+          );
+
+        default:
+          return null;
+      }
+    }
+
+    /**
+     * @return {number|null} SRID in the EWKB. `null` if not defined.
+     */
+    getSrid() {
+      return this.srid_;
+    }
+  }
+
+  class WkbWriter {
+    /**
+     * @type {Object}
+     * @property {string} [layout] geometryLayout
+     * @property {boolean} [littleEndian=true] littleEndian
+     * @property {boolean} [ewkb=true] Whether writes in EWKB format
+     * @property {Object} [nodata] NoData value for each axes
+     * @param {Object} opts options
+     */
+    constructor(opts) {
+      opts = opts || {};
+
+      /** @type {string} */
+      this.layout_ = opts.layout;
+      this.isLittleEndian_ = opts.littleEndian !== false;
+
+      this.isEWKB_ = opts.ewkb !== false;
+
+      /** @type {Array<Array<number>>} */
+      this.writeQueue_ = [];
+
+      /**
+       * @type {Object}
+       * @property {number} X NoData value for X
+       * @property {number} Y NoData value for Y
+       * @property {number} Z NoData value for Z
+       * @property {number} M NoData value for M
+       */
+      this.nodata_ = Object.assign({X: 0, Y: 0, Z: 0, M: 0}, opts.nodata);
+    }
+
+    /**
+     * @param {number} value value
+     */
+    writeUint8(value) {
+      this.writeQueue_.push([1, value]);
+    }
+
+    /**
+     * @param {number} value value
+     */
+    writeUint32(value) {
+      this.writeQueue_.push([4, value]);
+    }
+
+    /**
+     * @param {number} value value
+     */
+    writeDouble(value) {
+      this.writeQueue_.push([8, value]);
+    }
+
+    /**
+     * @param {import('../coordinate.js').Coordinate} coords coords
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writePoint(coords, layout) {
+      /**
+       * @type {Object}
+       * @property {number} X NoData value for X
+       * @property {number} Y NoData value for Y
+       * @property {number} [Z] NoData value for Z
+       * @property {number} [M] NoData value for M
+       */
+      const coordsObj = Object.assign.apply(
+        null,
+        layout.split('').map((axis, idx) => ({[axis]: coords[idx]}))
+      );
+
+      for (const axis of this.layout_) {
+        this.writeDouble(
+          axis in coordsObj ? coordsObj[axis] : this.nodata_[axis]
+        );
+      }
+    }
+
+    /**
+     * @param {Array<import('../coordinate.js').Coordinate>} coords coords
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writeLineString(coords, layout) {
+      this.writeUint32(coords.length); // numPoints
+      for (let i = 0; i < coords.length; i++) {
+        this.writePoint(coords[i], layout);
+      }
+    }
+
+    /**
+     * @param {Array<Array<import('../coordinate.js').Coordinate>>} rings rings
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writePolygon(rings, layout) {
+      this.writeUint32(rings.length); // numRings
+      for (let i = 0; i < rings.length; i++) {
+        this.writeLineString(rings[i], layout); // as a LinearRing
+      }
+    }
+
+    /**
+     * @param {number} wkbType WKB Type ID
+     * @param {number} [srid] SRID
+     */
+    writeWkbHeader(wkbType, srid) {
+      wkbType %= 1000; // Assume 1000 is an upper limit for type ID
+      if (this.layout_.includes('Z')) {
+        wkbType += this.isEWKB_ ? 0x80000000 : 1000;
+      }
+      if (this.layout_.includes('M')) {
+        wkbType += this.isEWKB_ ? 0x40000000 : 2000;
+      }
+      if (this.isEWKB_ && Number.isInteger(srid)) {
+        wkbType |= 0x20000000;
+      }
+
+      this.writeUint8(this.isLittleEndian_ ? 1 : 0);
+      this.writeUint32(wkbType);
+      if (this.isEWKB_ && Number.isInteger(srid)) {
+        this.writeUint32(srid);
+      }
+    }
+
+    /**
+     * @param {Array<import('../coordinate.js').Coordinate>} coords coords
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writeMultiPoint(coords, layout) {
+      this.writeUint32(coords.length); // numItems
+      for (let i = 0; i < coords.length; i++) {
+        this.writeWkbHeader(1);
+        this.writePoint(coords[i], layout);
+      }
+    }
+
+    /**
+     * @param {Array<Array<import('../coordinate.js').Coordinate>>} coords coords
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writeMultiLineString(coords, layout) {
+      this.writeUint32(coords.length); // numItems
+      for (let i = 0; i < coords.length; i++) {
+        this.writeWkbHeader(2);
+        this.writeLineString(coords[i], layout);
+      }
+    }
+
+    /**
+     * @param {Array<Array<Array<import('../coordinate.js').Coordinate>>>} coords coords
+     * @param {import("../geom/Geometry.js").GeometryLayout} layout layout
+     */
+    writeMultiPolygon(coords, layout) {
+      this.writeUint32(coords.length); // numItems
+      for (let i = 0; i < coords.length; i++) {
+        this.writeWkbHeader(3);
+        this.writePolygon(coords[i], layout);
+      }
+    }
+
+    /**
+     * @param {Array<import('../geom/Geometry.js').default>} geometries geometries
+     */
+    writeGeometryCollection(geometries) {
+      this.writeUint32(geometries.length); // numItems
+
+      for (let i = 0; i < geometries.length; i++) {
+        this.writeGeometry(geometries[i]);
+      }
+    }
+
+    /**
+     * @param {import("../geom/Geometry.js").default} geom geometry
+     * @param {import("../geom/Geometry.js").GeometryLayout} [layout] layout
+     * @return {import("../geom/Geometry.js").GeometryLayout} minimum layout made by common axes
+     */
+    findMinimumLayout(geom, layout = 'XYZM') {
+      /**
+       * @param {import("../geom/Geometry.js").GeometryLayout} a A
+       * @param {import("../geom/Geometry.js").GeometryLayout} b B
+       * @return {import("../geom/Geometry.js").GeometryLayout} minimum layout made by common axes
+       */
+      const GeometryLayout_min = (a, b) => {
+        if (a === b) {
+          return a;
+        }
+
+        if (a === 'XYZM') {
+          // anything `b` is minimum
+          return b;
+        }
+        if (b === 'XYZM') {
+          // anything `a` is minimum
+          return a;
+        }
+
+        // otherwise, incompatible
+        return 'XY';
+      };
+
+      if (geom instanceof SimpleGeometry$1) {
+        return GeometryLayout_min(geom.getLayout(), layout);
+      }
+
+      if (geom instanceof GeometryCollection$1) {
+        const geoms = geom.getGeometriesArray();
+        for (let i = 0; i < geoms.length && layout !== 'XY'; i++) {
+          layout = this.findMinimumLayout(geoms[i], layout);
+        }
+      }
+
+      return layout;
+    }
+
+    /**
+     * @param {import("../geom/Geometry.js").default} geom geometry
+     * @param {number} [srid] SRID
+     */
+    writeGeometry(geom, srid) {
+      /**
+       * @type {Object<import("../geom/Geometry.js").Type, WKBGeometryType>}
+       */
+      const wkblut = {
+        Point: WKBGeometryType.POINT,
+        LineString: WKBGeometryType.LINE_STRING,
+        Polygon: WKBGeometryType.POLYGON,
+        MultiPoint: WKBGeometryType.MULTI_POINT,
+        MultiLineString: WKBGeometryType.MULTI_LINE_STRING,
+        MultiPolygon: WKBGeometryType.MULTI_POLYGON,
+        GeometryCollection: WKBGeometryType.GEOMETRY_COLLECTION,
+      };
+      const geomType = geom.getType();
+      const typeId = wkblut[geomType];
+
+      if (!typeId) {
+        throw new Error('GeometryType ' + geomType + ' is not supported');
+      }
+
+      // first call of writeGeometry() traverse whole geometries to determine its output layout if not specified on constructor.
+      if (!this.layout_) {
+        this.layout_ = this.findMinimumLayout(geom);
+      }
+
+      this.writeWkbHeader(typeId, srid);
+
+      if (geom instanceof SimpleGeometry$1) {
+        const writerLUT = {
+          Point: this.writePoint,
+          LineString: this.writeLineString,
+          Polygon: this.writePolygon,
+          MultiPoint: this.writeMultiPoint,
+          MultiLineString: this.writeMultiLineString,
+          MultiPolygon: this.writeMultiPolygon,
+        };
+        writerLUT[geomType].call(this, geom.getCoordinates(), geom.getLayout());
+      } else if (geom instanceof GeometryCollection$1) {
+        this.writeGeometryCollection(geom.getGeometriesArray());
+      }
+    }
+
+    getBuffer() {
+      const byteLength = this.writeQueue_.reduce((acc, item) => acc + item[0], 0);
+      const buffer = new ArrayBuffer(byteLength);
+      const view = new DataView(buffer);
+
+      let pos = 0;
+      this.writeQueue_.forEach((item) => {
+        switch (item[0]) {
+          case 1:
+            view.setUint8(pos, item[1]);
+            break;
+          case 4:
+            view.setUint32(pos, item[1], this.isLittleEndian_);
+            break;
+          case 8:
+            view.setFloat64(pos, item[1], this.isLittleEndian_);
+            break;
+        }
+
+        pos += item[0];
+      });
+
+      return buffer;
+    }
+  }
+
+  /**
+   * @typedef {Object} Options
+   * @property {boolean} [splitCollection=false] Whether to split GeometryCollections into multiple features on reading.
+   * @property {boolean} [hex=true] Returns hex string instead of ArrayBuffer for output. This also is used as a hint internally whether it should load contents as text or ArrayBuffer on reading.
+   * @property {boolean} [littleEndian=true] Use littleEndian for output.
+   * @property {boolean} [ewkb=true] Use EWKB format for output.
+   * @property {import("../geom/Geometry.js").GeometryLayout} [geometryLayout=null] Use specific coordinate layout for output features (null: auto detect)
+   * @property {number} [nodataZ=0] If the `geometryLayout` doesn't match with geometry to be output, this value is used to fill missing coordinate value of Z.
+   * @property {number} [nodataM=0] If the `geometryLayout` doesn't match with geometry to be output, this value is used to fill missing coordinate value of M.
+   * @property {number|boolean} [srid=true] SRID for output. Specify integer value to enforce the value as a SRID. Specify `true` to extract from `dataProjection`. `false` to suppress the output. This option only takes effect when `ewkb` is `true`.
+   */
+
+  /**
+   * @classdesc
+   * Geometry format for reading and writing data in the `Well-Known Binary` (WKB) format.
+   * Also supports `Extended Well-Known Binary` (EWKB) format, used in PostGIS for example.
+   *
+   * @api
+   */
+  class WKB extends FeatureFormat$1 {
+    /**
+     * @param {Options} [options] Optional configuration object.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      this.splitCollection = Boolean(options.splitCollection);
+
+      this.viewCache_ = null;
+
+      this.hex_ = options.hex !== false;
+      this.littleEndian_ = options.littleEndian !== false;
+      this.ewkb_ = options.ewkb !== false;
+
+      this.layout_ = options.geometryLayout; // null for auto detect
+      this.nodataZ_ = options.nodataZ || 0;
+      this.nodataM_ = options.nodataM || 0;
+
+      this.srid_ = options.srid;
+    }
+
+    /**
+     * @return {import("./Feature.js").Type} Format.
+     */
+    getType() {
+      return this.hex_ ? 'text' : 'arraybuffer';
+    }
+
+    /**
+     * Read a single feature from a source.
+     *
+     * @param {string|ArrayBuffer|ArrayBufferView} source Source.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @return {import("../Feature.js").default} Feature.
+     * @api
+     */
+    readFeature(source, options) {
+      return new Feature$1({
+        geometry: this.readGeometry(source, options),
+      });
+    }
+
+    /**
+     * Read all features from a source.
+     *
+     * @param {string|ArrayBuffer|ArrayBufferView} source Source.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @return {Array<import("../Feature.js").default>} Features.
+     * @api
+     */
+    readFeatures(source, options) {
+      let geometries = [];
+      const geometry = this.readGeometry(source, options);
+      if (this.splitCollection && geometry instanceof GeometryCollection$1) {
+        geometries = geometry.getGeometriesArray();
+      } else {
+        geometries = [geometry];
+      }
+      return geometries.map((geometry) => new Feature$1({geometry}));
+    }
+
+    /**
+     * Read a single geometry from a source.
+     *
+     * @param {string|ArrayBuffer|ArrayBufferView} source Source.
+     * @param {import("./Feature.js").ReadOptions} [options] Read options.
+     * @return {import("../geom/Geometry.js").default} Geometry.
+     * @api
+     */
+    readGeometry(source, options) {
+      const view = getDataView(source);
+      if (!view) {
+        return null;
+      }
+
+      const reader = new WkbReader(view);
+      const geometry = reader.readGeometry();
+
+      this.viewCache_ = view; // cache for internal subsequent call of readProjection()
+      options = this.getReadOptions(source, options);
+      this.viewCache_ = null; // release
+
+      return transformGeometryWithOptions(geometry, false, options);
+    }
+
+    /**
+     * Read the projection from a source.
+     *
+     * @param {string|ArrayBuffer|ArrayBufferView} source Source.
+     * @return {import("../proj/Projection.js").default|undefined} Projection.
+     * @api
+     */
+    readProjection(source) {
+      const view = this.viewCache_ || getDataView(source);
+      if (!view) {
+        return undefined;
+      }
+
+      const reader = new WkbReader(view);
+      reader.readWkbHeader();
+
+      return (
+        (reader.getSrid() && get$2('EPSG:' + reader.getSrid())) ||
+        undefined
+      );
+    }
+
+    /**
+     * Encode a feature in this format.
+     *
+     * @param {import("../Feature.js").default} feature Feature.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {string|ArrayBuffer} Result.
+     * @api
+     */
+    writeFeature(feature, options) {
+      return this.writeGeometry(feature.getGeometry(), options);
+    }
+
+    /**
+     * Encode an array of features in this format.
+     *
+     * @param {Array<import("../Feature.js").default>} features Features.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {string|ArrayBuffer} Result.
+     * @api
+     */
+    writeFeatures(features, options) {
+      return this.writeGeometry(
+        new GeometryCollection$1(features.map((f) => f.getGeometry())),
+        options
+      );
+    }
+
+    /**
+     * Write a single geometry in this format.
+     *
+     * @param {import("../geom/Geometry.js").default} geometry Geometry.
+     * @param {import("./Feature.js").WriteOptions} [options] Write options.
+     * @return {string|ArrayBuffer} Result.
+     * @api
+     */
+    writeGeometry(geometry, options) {
+      options = this.adaptOptions(options);
+
+      const writer = new WkbWriter({
+        layout: this.layout_,
+        littleEndian: this.littleEndian_,
+        ewkb: this.ewkb_,
+
+        nodata: {
+          Z: this.nodataZ_,
+          M: this.nodataM_,
+        },
+      });
+
+      // extract SRID from `dataProjection`
+      let srid = Number.isInteger(this.srid_) ? Number(this.srid_) : null;
+      if (this.srid_ !== false && !Number.isInteger(this.srid_)) {
+        const dataProjection =
+          options.dataProjection && get$2(options.dataProjection);
+        if (dataProjection) {
+          const code = dataProjection.getCode();
+          if (code.startsWith('EPSG:')) {
+            srid = Number(code.substring(5));
+          }
+        }
+      }
+
+      writer.writeGeometry(
+        transformGeometryWithOptions(geometry, true, options),
+        srid
+      );
+      const buffer = writer.getBuffer();
+
+      return this.hex_ ? encodeHexString(buffer) : buffer;
+    }
+  }
+
+  /**
+   * @param {ArrayBuffer} buffer source buffer
+   * @return {string} encoded hex string
+   */
+  function encodeHexString(buffer) {
+    const view = new Uint8Array(buffer);
+    return Array.from(view.values())
+      .map((x) => (x < 16 ? '0' : '') + Number(x).toString(16).toUpperCase())
+      .join('');
+  }
+
+  /**
+   * @param {string} text source text
+   * @return {DataView} decoded binary buffer
+   */
+  function decodeHexString(text) {
+    const buffer = new Uint8Array(text.length / 2);
+    for (let i = 0; i < text.length / 2; i++) {
+      buffer[i] = parseInt(text.substr(i * 2, 2), 16);
+    }
+    return new DataView(buffer.buffer);
+  }
+
+  /**
+   * @param {string | ArrayBuffer | ArrayBufferView} source source
+   * @return {DataView} data view
+   */
+  function getDataView(source) {
+    if (typeof source === 'string') {
+      return decodeHexString(source);
+    }
+    if (ArrayBuffer.isView(source)) {
+      if (source instanceof DataView) {
+        return source;
+      }
+      return new DataView(source.buffer, source.byteOffset, source.byteLength);
+    }
+    if (source instanceof ArrayBuffer) {
+      return new DataView(source);
+    }
+    return null;
+  }
+
+  var format_WKB = WKB;
+
+  /**
    * @module ol/format/WKT
    */
 
@@ -55844,6 +60423,1403 @@ var ol = (function () {
   }
 
   var format_WKT = WKT;
+
+  /**
+   * @module ol/format/WMSCapabilities
+   */
+
+  /**
+   * @const
+   * @type {Array<null|string>}
+   */
+  const NAMESPACE_URIS$1 = [null, 'http://www.opengis.net/wms'];
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const PARSERS$1 = makeStructureNS(NAMESPACE_URIS$1, {
+    'Service': makeObjectPropertySetter(readService),
+    'Capability': makeObjectPropertySetter(readCapability),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CAPABILITY_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Request': makeObjectPropertySetter(readRequest),
+    'Exception': makeObjectPropertySetter(readException),
+    'Layer': makeObjectPropertySetter(readCapabilityLayer),
+  });
+
+  /**
+   * @classdesc
+   * Format for reading WMS capabilities data
+   *
+   * @api
+   */
+  class WMSCapabilities extends XML$1 {
+    constructor() {
+      super();
+
+      /**
+       * @type {string|undefined}
+       */
+      this.version = undefined;
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @return {Object} Object
+     */
+    readFromNode(node) {
+      this.version = node.getAttribute('version').trim();
+      const wmsCapabilityObject = pushParseAndPop(
+        {
+          'version': this.version,
+        },
+        PARSERS$1,
+        node,
+        []
+      );
+      return wmsCapabilityObject ? wmsCapabilityObject : null;
+    }
+  }
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const SERVICE_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Name': makeObjectPropertySetter(readString),
+    'Title': makeObjectPropertySetter(readString),
+    'Abstract': makeObjectPropertySetter(readString),
+    'KeywordList': makeObjectPropertySetter(readKeywordList),
+    'OnlineResource': makeObjectPropertySetter(readHref),
+    'ContactInformation': makeObjectPropertySetter(readContactInformation),
+    'Fees': makeObjectPropertySetter(readString),
+    'AccessConstraints': makeObjectPropertySetter(readString),
+    'LayerLimit': makeObjectPropertySetter(readPositiveInteger),
+    'MaxWidth': makeObjectPropertySetter(readPositiveInteger),
+    'MaxHeight': makeObjectPropertySetter(readPositiveInteger),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONTACT_INFORMATION_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'ContactPersonPrimary': makeObjectPropertySetter(readContactPersonPrimary),
+    'ContactPosition': makeObjectPropertySetter(readString),
+    'ContactAddress': makeObjectPropertySetter(readContactAddress),
+    'ContactVoiceTelephone': makeObjectPropertySetter(readString),
+    'ContactFacsimileTelephone': makeObjectPropertySetter(readString),
+    'ContactElectronicMailAddress': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONTACT_PERSON_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'ContactPerson': makeObjectPropertySetter(readString),
+    'ContactOrganization': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONTACT_ADDRESS_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'AddressType': makeObjectPropertySetter(readString),
+    'Address': makeObjectPropertySetter(readString),
+    'City': makeObjectPropertySetter(readString),
+    'StateOrProvince': makeObjectPropertySetter(readString),
+    'PostCode': makeObjectPropertySetter(readString),
+    'Country': makeObjectPropertySetter(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const EXCEPTION_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Format': makeArrayPusher(readString),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const LAYER_PARSERS$1 = makeStructureNS(NAMESPACE_URIS$1, {
+    'Name': makeObjectPropertySetter(readString),
+    'Title': makeObjectPropertySetter(readString),
+    'Abstract': makeObjectPropertySetter(readString),
+    'KeywordList': makeObjectPropertySetter(readKeywordList),
+    'CRS': makeObjectPropertyPusher(readString),
+    'EX_GeographicBoundingBox': makeObjectPropertySetter(
+      readEXGeographicBoundingBox
+    ),
+    'BoundingBox': makeObjectPropertyPusher(readBoundingBox$1),
+    'Dimension': makeObjectPropertyPusher(readDimension),
+    'Attribution': makeObjectPropertySetter(readAttribution),
+    'AuthorityURL': makeObjectPropertyPusher(readAuthorityURL),
+    'Identifier': makeObjectPropertyPusher(readString),
+    'MetadataURL': makeObjectPropertyPusher(readMetadataURL),
+    'DataURL': makeObjectPropertyPusher(readFormatOnlineresource),
+    'FeatureListURL': makeObjectPropertyPusher(readFormatOnlineresource),
+    'Style': makeObjectPropertyPusher(readStyle$1),
+    'MinScaleDenominator': makeObjectPropertySetter(readDecimal),
+    'MaxScaleDenominator': makeObjectPropertySetter(readDecimal),
+    'Layer': makeObjectPropertyPusher(readLayer$1),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const ATTRIBUTION_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Title': makeObjectPropertySetter(readString),
+    'OnlineResource': makeObjectPropertySetter(readHref),
+    'LogoURL': makeObjectPropertySetter(readSizedFormatOnlineresource),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const EX_GEOGRAPHIC_BOUNDING_BOX_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'westBoundLongitude': makeObjectPropertySetter(readDecimal),
+    'eastBoundLongitude': makeObjectPropertySetter(readDecimal),
+    'southBoundLatitude': makeObjectPropertySetter(readDecimal),
+    'northBoundLatitude': makeObjectPropertySetter(readDecimal),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const REQUEST_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'GetCapabilities': makeObjectPropertySetter(readOperationType),
+    'GetMap': makeObjectPropertySetter(readOperationType),
+    'GetFeatureInfo': makeObjectPropertySetter(readOperationType),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const OPERATIONTYPE_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Format': makeObjectPropertyPusher(readString),
+    'DCPType': makeObjectPropertyPusher(readDCPType),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const DCPTYPE_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'HTTP': makeObjectPropertySetter(readHTTP),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const HTTP_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Get': makeObjectPropertySetter(readFormatOnlineresource),
+    'Post': makeObjectPropertySetter(readFormatOnlineresource),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const STYLE_PARSERS$1 = makeStructureNS(NAMESPACE_URIS$1, {
+    'Name': makeObjectPropertySetter(readString),
+    'Title': makeObjectPropertySetter(readString),
+    'Abstract': makeObjectPropertySetter(readString),
+    'LegendURL': makeObjectPropertyPusher(readSizedFormatOnlineresource),
+    'StyleSheetURL': makeObjectPropertySetter(readFormatOnlineresource),
+    'StyleURL': makeObjectPropertySetter(readFormatOnlineresource),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const FORMAT_ONLINERESOURCE_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Format': makeObjectPropertySetter(readString),
+    'OnlineResource': makeObjectPropertySetter(readHref),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const KEYWORDLIST_PARSERS = makeStructureNS(NAMESPACE_URIS$1, {
+    'Keyword': makeArrayPusher(readString),
+  });
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Attribution object.
+   */
+  function readAttribution(node, objectStack) {
+    return pushParseAndPop({}, ATTRIBUTION_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object} Bounding box object.
+   */
+  function readBoundingBox$1(node, objectStack) {
+    const extent = [
+      readDecimalString(node.getAttribute('minx')),
+      readDecimalString(node.getAttribute('miny')),
+      readDecimalString(node.getAttribute('maxx')),
+      readDecimalString(node.getAttribute('maxy')),
+    ];
+
+    const resolutions = [
+      readDecimalString(node.getAttribute('resx')),
+      readDecimalString(node.getAttribute('resy')),
+    ];
+
+    return {
+      'crs': node.getAttribute('CRS'),
+      'extent': extent,
+      'res': resolutions,
+    };
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {import("../extent.js").Extent|undefined} Bounding box object.
+   */
+  function readEXGeographicBoundingBox(node, objectStack) {
+    const geographicBoundingBox = pushParseAndPop(
+      {},
+      EX_GEOGRAPHIC_BOUNDING_BOX_PARSERS,
+      node,
+      objectStack
+    );
+    if (!geographicBoundingBox) {
+      return undefined;
+    }
+    const westBoundLongitude =
+      /** @type {number|undefined} */
+      (geographicBoundingBox['westBoundLongitude']);
+    const southBoundLatitude =
+      /** @type {number|undefined} */
+      (geographicBoundingBox['southBoundLatitude']);
+    const eastBoundLongitude =
+      /** @type {number|undefined} */
+      (geographicBoundingBox['eastBoundLongitude']);
+    const northBoundLatitude =
+      /** @type {number|undefined} */
+      (geographicBoundingBox['northBoundLatitude']);
+    if (
+      westBoundLongitude === undefined ||
+      southBoundLatitude === undefined ||
+      eastBoundLongitude === undefined ||
+      northBoundLatitude === undefined
+    ) {
+      return undefined;
+    }
+    return [
+      westBoundLongitude,
+      southBoundLatitude,
+      eastBoundLongitude,
+      northBoundLatitude,
+    ];
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Capability object.
+   */
+  function readCapability(node, objectStack) {
+    return pushParseAndPop({}, CAPABILITY_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Service object.
+   */
+  function readService(node, objectStack) {
+    return pushParseAndPop({}, SERVICE_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Contact information object.
+   */
+  function readContactInformation(node, objectStack) {
+    return pushParseAndPop({}, CONTACT_INFORMATION_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Contact person object.
+   */
+  function readContactPersonPrimary(node, objectStack) {
+    return pushParseAndPop({}, CONTACT_PERSON_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Contact address object.
+   */
+  function readContactAddress(node, objectStack) {
+    return pushParseAndPop({}, CONTACT_ADDRESS_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Array<string>|undefined} Format array.
+   */
+  function readException(node, objectStack) {
+    return pushParseAndPop([], EXCEPTION_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Layer object.
+   */
+  function readCapabilityLayer(node, objectStack) {
+    const layerObject = pushParseAndPop({}, LAYER_PARSERS$1, node, objectStack);
+
+    if (layerObject['Layer'] === undefined) {
+      return Object.assign(layerObject, readLayer$1(node, objectStack));
+    }
+
+    return layerObject;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Layer object.
+   */
+  function readLayer$1(node, objectStack) {
+    const parentLayerObject = /**  @type {!Object<string,*>} */ (
+      objectStack[objectStack.length - 1]
+    );
+
+    const layerObject = pushParseAndPop({}, LAYER_PARSERS$1, node, objectStack);
+
+    if (!layerObject) {
+      return undefined;
+    }
+    let queryable = readBooleanString(node.getAttribute('queryable'));
+    if (queryable === undefined) {
+      queryable = parentLayerObject['queryable'];
+    }
+    layerObject['queryable'] = queryable !== undefined ? queryable : false;
+
+    let cascaded = readNonNegativeIntegerString(node.getAttribute('cascaded'));
+    if (cascaded === undefined) {
+      cascaded = parentLayerObject['cascaded'];
+    }
+    layerObject['cascaded'] = cascaded;
+
+    let opaque = readBooleanString(node.getAttribute('opaque'));
+    if (opaque === undefined) {
+      opaque = parentLayerObject['opaque'];
+    }
+    layerObject['opaque'] = opaque !== undefined ? opaque : false;
+
+    let noSubsets = readBooleanString(node.getAttribute('noSubsets'));
+    if (noSubsets === undefined) {
+      noSubsets = parentLayerObject['noSubsets'];
+    }
+    layerObject['noSubsets'] = noSubsets !== undefined ? noSubsets : false;
+
+    let fixedWidth = readDecimalString(node.getAttribute('fixedWidth'));
+    if (!fixedWidth) {
+      fixedWidth = parentLayerObject['fixedWidth'];
+    }
+    layerObject['fixedWidth'] = fixedWidth;
+
+    let fixedHeight = readDecimalString(node.getAttribute('fixedHeight'));
+    if (!fixedHeight) {
+      fixedHeight = parentLayerObject['fixedHeight'];
+    }
+    layerObject['fixedHeight'] = fixedHeight;
+
+    // See 7.2.4.8
+    const addKeys = ['Style', 'CRS', 'AuthorityURL'];
+    addKeys.forEach(function (key) {
+      if (key in parentLayerObject) {
+        const childValue = layerObject[key] || [];
+        layerObject[key] = childValue.concat(parentLayerObject[key]);
+      }
+    });
+
+    const replaceKeys = [
+      'EX_GeographicBoundingBox',
+      'BoundingBox',
+      'Dimension',
+      'Attribution',
+      'MinScaleDenominator',
+      'MaxScaleDenominator',
+    ];
+    replaceKeys.forEach(function (key) {
+      if (!(key in layerObject)) {
+        const parentValue = parentLayerObject[key];
+        layerObject[key] = parentValue;
+      }
+    });
+
+    return layerObject;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object} Dimension object.
+   */
+  function readDimension(node, objectStack) {
+    const dimensionObject = {
+      'name': node.getAttribute('name'),
+      'units': node.getAttribute('units'),
+      'unitSymbol': node.getAttribute('unitSymbol'),
+      'default': node.getAttribute('default'),
+      'multipleValues': readBooleanString(node.getAttribute('multipleValues')),
+      'nearestValue': readBooleanString(node.getAttribute('nearestValue')),
+      'current': readBooleanString(node.getAttribute('current')),
+      'values': readString(node),
+    };
+    return dimensionObject;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Online resource object.
+   */
+  function readFormatOnlineresource(node, objectStack) {
+    return pushParseAndPop({}, FORMAT_ONLINERESOURCE_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Request object.
+   */
+  function readRequest(node, objectStack) {
+    return pushParseAndPop({}, REQUEST_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} DCP type object.
+   */
+  function readDCPType(node, objectStack) {
+    return pushParseAndPop({}, DCPTYPE_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} HTTP object.
+   */
+  function readHTTP(node, objectStack) {
+    return pushParseAndPop({}, HTTP_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Operation type object.
+   */
+  function readOperationType(node, objectStack) {
+    return pushParseAndPop({}, OPERATIONTYPE_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Online resource object.
+   */
+  function readSizedFormatOnlineresource(node, objectStack) {
+    const formatOnlineresource = readFormatOnlineresource(node, objectStack);
+    if (formatOnlineresource) {
+      const size = [
+        readNonNegativeIntegerString(node.getAttribute('width')),
+        readNonNegativeIntegerString(node.getAttribute('height')),
+      ];
+      formatOnlineresource['size'] = size;
+      return formatOnlineresource;
+    }
+    return undefined;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Authority URL object.
+   */
+  function readAuthorityURL(node, objectStack) {
+    const authorityObject = readFormatOnlineresource(node, objectStack);
+    if (authorityObject) {
+      authorityObject['name'] = node.getAttribute('name');
+      return authorityObject;
+    }
+    return undefined;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Metadata URL object.
+   */
+  function readMetadataURL(node, objectStack) {
+    const metadataObject = readFormatOnlineresource(node, objectStack);
+    if (metadataObject) {
+      metadataObject['type'] = node.getAttribute('type');
+      return metadataObject;
+    }
+    return undefined;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Style object.
+   */
+  function readStyle$1(node, objectStack) {
+    return pushParseAndPop({}, STYLE_PARSERS$1, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Array<string>|undefined} Keyword list.
+   */
+  function readKeywordList(node, objectStack) {
+    return pushParseAndPop([], KEYWORDLIST_PARSERS, node, objectStack);
+  }
+
+  var format_WMSCapabilities = WMSCapabilities;
+
+  /**
+   * @module ol/format/WMSGetFeatureInfo
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {Array<string>} [layers] If set, only features of the given layers will be returned by the format when read.
+   */
+
+  /**
+   * @const
+   * @type {string}
+   */
+  const featureIdentifier = '_feature';
+
+  /**
+   * @const
+   * @type {string}
+   */
+  const layerIdentifier = '_layer';
+
+  /**
+   * @classdesc
+   * Format for reading WMSGetFeatureInfo format. It uses
+   * {@link module:ol/format/GML2~GML2} to read features.
+   *
+   * @api
+   */
+  class WMSGetFeatureInfo extends XMLFeature$1 {
+    /**
+     * @param {Options} [options] Options.
+     */
+    constructor(options) {
+      super();
+
+      options = options ? options : {};
+
+      /**
+       * @private
+       * @type {string}
+       */
+      this.featureNS_ = 'http://mapserver.gis.umn.edu/mapserver';
+
+      /**
+       * @private
+       * @type {GML2}
+       */
+      this.gmlFormat_ = new GML2$1();
+
+      /**
+       * @private
+       * @type {Array<string>|null}
+       */
+      this.layers_ = options.layers ? options.layers : null;
+    }
+
+    /**
+     * @return {Array<string>|null} layers
+     */
+    getLayers() {
+      return this.layers_;
+    }
+
+    /**
+     * @param {Array<string>|null} layers Layers to parse.
+     */
+    setLayers(layers) {
+      this.layers_ = layers;
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @param {Array<*>} objectStack Object stack.
+     * @return {Array<import("../Feature.js").default>} Features.
+     * @private
+     */
+    readFeatures_(node, objectStack) {
+      node.setAttribute('namespaceURI', this.featureNS_);
+      const localName = node.localName;
+      /** @type {Array<import("../Feature.js").default>} */
+      let features = [];
+      if (node.childNodes.length === 0) {
+        return features;
+      }
+      if (localName == 'msGMLOutput') {
+        for (let i = 0, ii = node.childNodes.length; i < ii; i++) {
+          const layer = node.childNodes[i];
+          if (layer.nodeType !== Node.ELEMENT_NODE) {
+            continue;
+          }
+
+          const layerElement = /** @type {Element} */ (layer);
+          const context = objectStack[0];
+
+          const toRemove = layerIdentifier;
+          const layerName = layerElement.localName.replace(toRemove, '');
+
+          if (this.layers_ && !this.layers_.includes(layerName)) {
+            continue;
+          }
+
+          const featureType = layerName + featureIdentifier;
+
+          context['featureType'] = featureType;
+          context['featureNS'] = this.featureNS_;
+
+          /** @type {Object<string, import("../xml.js").Parser>} */
+          const parsers = {};
+          parsers[featureType] = makeArrayPusher(
+            this.gmlFormat_.readFeatureElement,
+            this.gmlFormat_
+          );
+          const parsersNS = makeStructureNS(
+            [context['featureNS'], null],
+            parsers
+          );
+          layerElement.setAttribute('namespaceURI', this.featureNS_);
+          const layerFeatures = pushParseAndPop(
+            [],
+            // @ts-ignore
+            parsersNS,
+            layerElement,
+            objectStack,
+            this.gmlFormat_
+          );
+          if (layerFeatures) {
+            extend$1(features, layerFeatures);
+          }
+        }
+      }
+      if (localName == 'FeatureCollection') {
+        const gmlFeatures = pushParseAndPop(
+          [],
+          this.gmlFormat_.FEATURE_COLLECTION_PARSERS,
+          node,
+          [{}],
+          this.gmlFormat_
+        );
+        if (gmlFeatures) {
+          features = gmlFeatures;
+        }
+      }
+      return features;
+    }
+
+    /**
+     * @protected
+     * @param {Element} node Node.
+     * @param {import("./Feature.js").ReadOptions} [options] Options.
+     * @return {Array<import("../Feature.js").default>} Features.
+     */
+    readFeaturesFromNode(node, options) {
+      const internalOptions = {};
+      if (options) {
+        Object.assign(internalOptions, this.getReadOptions(node, options));
+      }
+      return this.readFeatures_(node, [internalOptions]);
+    }
+  }
+
+  var format_WMSGetFeatureInfo = WMSGetFeatureInfo;
+
+  /**
+   * @module ol/format/WMTSCapabilities
+   */
+
+  /**
+   * @const
+   * @type {Array<null|string>}
+   */
+  const NAMESPACE_URIS = [null, 'http://www.opengis.net/wmts/1.0'];
+
+  /**
+   * @const
+   * @type {Array<null|string>}
+   */
+  const OWS_NAMESPACE_URIS = [null, 'http://www.opengis.net/ows/1.1'];
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const PARSERS = makeStructureNS(NAMESPACE_URIS, {
+    'Contents': makeObjectPropertySetter(readContents),
+  });
+
+  /**
+   * @classdesc
+   * Format for reading WMTS capabilities data.
+   *
+   * @api
+   */
+  class WMTSCapabilities extends XML$1 {
+    constructor() {
+      super();
+
+      /**
+       * @type {OWS}
+       * @private
+       */
+      this.owsParser_ = new format_OWS();
+    }
+
+    /**
+     * @param {Element} node Node.
+     * @return {Object} Object
+     */
+    readFromNode(node) {
+      let version = node.getAttribute('version');
+      if (version) {
+        version = version.trim();
+      }
+      let WMTSCapabilityObject = this.owsParser_.readFromNode(node);
+      if (!WMTSCapabilityObject) {
+        return null;
+      }
+      WMTSCapabilityObject['version'] = version;
+      WMTSCapabilityObject = pushParseAndPop(
+        WMTSCapabilityObject,
+        PARSERS,
+        node,
+        []
+      );
+      return WMTSCapabilityObject ? WMTSCapabilityObject : null;
+    }
+  }
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const CONTENTS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+    'Layer': makeObjectPropertyPusher(readLayer),
+    'TileMatrixSet': makeObjectPropertyPusher(readTileMatrixSet),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const LAYER_PARSERS = makeStructureNS(
+    NAMESPACE_URIS,
+    {
+      'Style': makeObjectPropertyPusher(readStyle),
+      'Format': makeObjectPropertyPusher(readString),
+      'TileMatrixSetLink': makeObjectPropertyPusher(readTileMatrixSetLink),
+      'Dimension': makeObjectPropertyPusher(readDimensions),
+      'ResourceURL': makeObjectPropertyPusher(readResourceUrl),
+    },
+    makeStructureNS(OWS_NAMESPACE_URIS, {
+      'Title': makeObjectPropertySetter(readString),
+      'Abstract': makeObjectPropertySetter(readString),
+      'WGS84BoundingBox': makeObjectPropertySetter(readBoundingBox),
+      'Identifier': makeObjectPropertySetter(readString),
+    })
+  );
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const STYLE_PARSERS = makeStructureNS(
+    NAMESPACE_URIS,
+    {
+      'LegendURL': makeObjectPropertyPusher(readLegendUrl),
+    },
+    makeStructureNS(OWS_NAMESPACE_URIS, {
+      'Title': makeObjectPropertySetter(readString),
+      'Identifier': makeObjectPropertySetter(readString),
+    })
+  );
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TMS_LINKS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+    'TileMatrixSet': makeObjectPropertySetter(readString),
+    'TileMatrixSetLimits': makeObjectPropertySetter(readTileMatrixLimitsList),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TMS_LIMITS_LIST_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+    'TileMatrixLimits': makeArrayPusher(readTileMatrixLimits),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TMS_LIMITS_PARSERS = makeStructureNS(NAMESPACE_URIS, {
+    'TileMatrix': makeObjectPropertySetter(readString),
+    'MinTileRow': makeObjectPropertySetter(readPositiveInteger),
+    'MaxTileRow': makeObjectPropertySetter(readPositiveInteger),
+    'MinTileCol': makeObjectPropertySetter(readPositiveInteger),
+    'MaxTileCol': makeObjectPropertySetter(readPositiveInteger),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const DIMENSION_PARSERS = makeStructureNS(
+    NAMESPACE_URIS,
+    {
+      'Default': makeObjectPropertySetter(readString),
+      'Value': makeObjectPropertyPusher(readString),
+    },
+    makeStructureNS(OWS_NAMESPACE_URIS, {
+      'Identifier': makeObjectPropertySetter(readString),
+    })
+  );
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const WGS84_BBOX_READERS = makeStructureNS(OWS_NAMESPACE_URIS, {
+    'LowerCorner': makeArrayPusher(readCoordinates),
+    'UpperCorner': makeArrayPusher(readCoordinates),
+  });
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TMS_PARSERS = makeStructureNS(
+    NAMESPACE_URIS,
+    {
+      'WellKnownScaleSet': makeObjectPropertySetter(readString),
+      'TileMatrix': makeObjectPropertyPusher(readTileMatrix),
+    },
+    makeStructureNS(OWS_NAMESPACE_URIS, {
+      'SupportedCRS': makeObjectPropertySetter(readString),
+      'Identifier': makeObjectPropertySetter(readString),
+      'BoundingBox': makeObjectPropertySetter(readBoundingBox),
+    })
+  );
+
+  /**
+   * @const
+   * @type {Object<string, Object<string, import("../xml.js").Parser>>}
+   */
+  // @ts-ignore
+  const TM_PARSERS = makeStructureNS(
+    NAMESPACE_URIS,
+    {
+      'TopLeftCorner': makeObjectPropertySetter(readCoordinates),
+      'ScaleDenominator': makeObjectPropertySetter(readDecimal),
+      'TileWidth': makeObjectPropertySetter(readPositiveInteger),
+      'TileHeight': makeObjectPropertySetter(readPositiveInteger),
+      'MatrixWidth': makeObjectPropertySetter(readPositiveInteger),
+      'MatrixHeight': makeObjectPropertySetter(readPositiveInteger),
+    },
+    makeStructureNS(OWS_NAMESPACE_URIS, {
+      'Identifier': makeObjectPropertySetter(readString),
+    })
+  );
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Attribution object.
+   */
+  function readContents(node, objectStack) {
+    return pushParseAndPop({}, CONTENTS_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Layers object.
+   */
+  function readLayer(node, objectStack) {
+    return pushParseAndPop({}, LAYER_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Tile Matrix Set object.
+   */
+  function readTileMatrixSet(node, objectStack) {
+    return pushParseAndPop({}, TMS_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Style object.
+   */
+  function readStyle(node, objectStack) {
+    const style = pushParseAndPop({}, STYLE_PARSERS, node, objectStack);
+    if (!style) {
+      return undefined;
+    }
+    const isDefault = node.getAttribute('isDefault') === 'true';
+    style['isDefault'] = isDefault;
+    return style;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Tile Matrix Set Link object.
+   */
+  function readTileMatrixSetLink(node, objectStack) {
+    return pushParseAndPop({}, TMS_LINKS_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Dimension object.
+   */
+  function readDimensions(node, objectStack) {
+    return pushParseAndPop({}, DIMENSION_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Resource URL object.
+   */
+  function readResourceUrl(node, objectStack) {
+    const format = node.getAttribute('format');
+    const template = node.getAttribute('template');
+    const resourceType = node.getAttribute('resourceType');
+    const resource = {};
+    if (format) {
+      resource['format'] = format;
+    }
+    if (template) {
+      resource['template'] = template;
+    }
+    if (resourceType) {
+      resource['resourceType'] = resourceType;
+    }
+    return resource;
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} BBox object.
+   */
+  function readBoundingBox(node, objectStack) {
+    const coordinates = pushParseAndPop(
+      [],
+      WGS84_BBOX_READERS,
+      node,
+      objectStack
+    );
+    if (coordinates.length != 2) {
+      return undefined;
+    }
+    return boundingExtent(coordinates);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Legend object.
+   */
+  function readLegendUrl(node, objectStack) {
+    const legend = {};
+    legend['format'] = node.getAttribute('format');
+    legend['href'] = readHref(node);
+    return legend;
+  }
+
+  /**
+   * @param {Node} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} Coordinates object.
+   */
+  function readCoordinates(node, objectStack) {
+    const coordinates = readString(node).split(/\s+/);
+    if (!coordinates || coordinates.length != 2) {
+      return undefined;
+    }
+    const x = +coordinates[0];
+    const y = +coordinates[1];
+    if (isNaN(x) || isNaN(y)) {
+      return undefined;
+    }
+    return [x, y];
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} TileMatrix object.
+   */
+  function readTileMatrix(node, objectStack) {
+    return pushParseAndPop({}, TM_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} TileMatrixSetLimits Object.
+   */
+  function readTileMatrixLimitsList(node, objectStack) {
+    return pushParseAndPop([], TMS_LIMITS_LIST_PARSERS, node, objectStack);
+  }
+
+  /**
+   * @param {Element} node Node.
+   * @param {Array<*>} objectStack Object stack.
+   * @return {Object|undefined} TileMatrixLimits Array.
+   */
+  function readTileMatrixLimits(node, objectStack) {
+    return pushParseAndPop({}, TMS_LIMITS_PARSERS, node, objectStack);
+  }
+
+  var format_WMTSCapabilities = WMTSCapabilities;
+
+  /**
+   * @module ol/interaction/DblClickDragZoom
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {number} [duration=400] Animation duration in milliseconds. *
+   * @property {number} [delta=1] The zoom delta applied on move of one pixel. *
+   * @property {function(boolean):boolean} [stopDown]
+   * Should the down event be propagated to other interactions, or should be
+   * stopped?
+   */
+
+  /**
+   * @classdesc
+   * Allows the user to zoom the map by double tap/clik then drag up/down
+   * with one finger/left mouse.
+   * @api
+   */
+  class DblClickDragZoom extends Interaction$1 {
+    /**
+     * @param {Options} [opt_options] Options.
+     */
+    constructor(opt_options) {
+      const options = opt_options ? opt_options : {};
+
+      super(
+        /** @type {import("./Interaction.js").InteractionOptions} */ (options)
+      );
+
+      if (options.stopDown) {
+        this.stopDown = options.stopDown;
+      }
+
+      /**
+       * @private
+       * @type {number}
+       */
+      this.scaleDeltaByPixel_ = options.delta ? options.delta : 0.01;
+
+      /**
+       * @private
+       * @type {number}
+       */
+      this.duration_ = options.duration !== undefined ? options.duration : 250;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.handlingDownUpSequence_ = false;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.handlingDoubleDownSequence_ = false;
+
+      /**
+       * @type {ReturnType<typeof setTimeout>}
+       * @private
+       */
+      this.doubleTapTimeoutId_ = undefined;
+
+      /**
+       * @type {!Object<string, PointerEvent>}
+       * @private
+       */
+      this.trackedPointers_ = {};
+
+      /**
+       * @type {Array<PointerEvent>}
+       * @protected
+       */
+      this.targetPointers = [];
+    }
+
+    /**
+     * Handles the {@link module:ol/MapBrowserEvent~MapBrowserEvent  map browser event} and may call into
+     * other functions, if event sequences like e.g. 'drag' or 'down-up' etc. are
+     * detected.
+     * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Map browser event.
+     * @return {boolean} `false` to stop event propagation.
+     * @api
+     */
+    handleEvent(mapBrowserEvent) {
+      if (!mapBrowserEvent.originalEvent) {
+        return true;
+      }
+
+      let stopEvent = false;
+      this.updateTrackedPointers_(mapBrowserEvent);
+      if (this.handlingDownUpSequence_) {
+        if (mapBrowserEvent.type == MapBrowserEventType.POINTERDRAG) {
+          this.handleDragEvent(mapBrowserEvent);
+          // prevent page scrolling during dragging
+          mapBrowserEvent.originalEvent.preventDefault();
+        } else if (mapBrowserEvent.type == MapBrowserEventType.POINTERUP) {
+          const handledUp = this.handleUpEvent(mapBrowserEvent);
+          this.handlingDownUpSequence_ = handledUp;
+        }
+      } else {
+        if (mapBrowserEvent.type == MapBrowserEventType.POINTERDOWN) {
+          if (this.handlingDoubleDownSequence_) {
+            this.handlingDoubleDownSequence_ = false;
+            const handled = this.handleDownEvent(mapBrowserEvent);
+            this.handlingDownUpSequence_ = handled;
+            stopEvent = this.stopDown(handled);
+          } else {
+            stopEvent = this.stopDown(false);
+            this.waitForDblTap_();
+          }
+        }
+      }
+      return !stopEvent;
+    }
+
+    /**
+     * Handle pointer drag events.
+     * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Event.
+     */
+    handleDragEvent(mapBrowserEvent) {
+      let scaleDelta = 1.0;
+
+      const touch0 = this.targetPointers[0];
+      const touch1 = this.down_.originalEvent;
+      const distance = touch0.clientY - touch1.clientY;
+
+      if (this.lastDistance_ !== undefined) {
+        scaleDelta =
+          1 - (this.lastDistance_ - distance) * this.scaleDeltaByPixel_;
+      }
+      this.lastDistance_ = distance;
+
+      if (scaleDelta != 1.0) {
+        this.lastScaleDelta_ = scaleDelta;
+      }
+
+      // scale, bypass the resolution constraint
+      const map = mapBrowserEvent.map;
+      const view = map.getView();
+      map.render();
+      view.adjustResolutionInternal(scaleDelta);
+    }
+
+    /**
+     * Handle pointer down events.
+     * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Event.
+     * @return {boolean} If the event was consumed.
+     */
+    handleDownEvent(mapBrowserEvent) {
+      if (this.targetPointers.length == 1) {
+        const map = mapBrowserEvent.map;
+        this.anchor_ = null;
+        this.lastDistance_ = undefined;
+        this.lastScaleDelta_ = 1;
+        this.down_ = mapBrowserEvent;
+        if (!this.handlingDownUpSequence_) {
+          map.getView().beginInteraction();
+        }
+        return true;
+      }
+      return false;
+    }
+
+    /**
+     * Handle pointer up events zooming out.
+     * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Event.
+     * @return {boolean} If the event was consumed.
+     */
+    handleUpEvent(mapBrowserEvent) {
+      if (this.targetPointers.length == 0) {
+        const map = mapBrowserEvent.map;
+        const view = map.getView();
+        const direction = this.lastScaleDelta_ > 1 ? 1 : -1;
+        view.endInteraction(this.duration_, direction);
+        this.handlingDownUpSequence_ = false;
+        this.handlingDoubleDownSequence_ = false;
+        return false;
+      }
+      return true;
+    }
+
+    /**
+     * This function is used to determine if "down" events should be propagated
+     * to other interactions or should be stopped.
+     * @param {boolean} handled Was the event handled by the interaction?
+     * @return {boolean} Should the `down` event be stopped?
+     */
+    stopDown(handled) {
+      return handled;
+    }
+
+    /**
+     * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Event.
+     * @private
+     */
+    updateTrackedPointers_(mapBrowserEvent) {
+      if (isPointerDraggingEvent(mapBrowserEvent)) {
+        const event = mapBrowserEvent.originalEvent;
+
+        const id = event.pointerId.toString();
+        if (mapBrowserEvent.type == MapBrowserEventType.POINTERUP) {
+          delete this.trackedPointers_[id];
+        } else if (mapBrowserEvent.type == MapBrowserEventType.POINTERDOWN) {
+          this.trackedPointers_[id] = event;
+        } else if (id in this.trackedPointers_) {
+          // update only when there was a pointerdown event for this pointer
+          this.trackedPointers_[id] = event;
+        }
+        this.targetPointers = Object.values(this.trackedPointers_);
+      }
+    }
+
+    /**
+     * Wait the second double finger tap.
+     * @private
+     */
+    waitForDblTap_() {
+      if (this.doubleTapTimeoutId_ !== undefined) {
+        // double-click
+        clearTimeout(this.doubleTapTimeoutId_);
+        this.doubleTapTimeoutId_ = undefined;
+      } else {
+        this.handlingDoubleDownSequence_ = true;
+        this.doubleTapTimeoutId_ = setTimeout(
+          this.endInteraction_.bind(this),
+          250
+        );
+      }
+    }
+
+    /**
+     * @private
+     */
+    endInteraction_() {
+      this.handlingDoubleDownSequence_ = false;
+      this.doubleTapTimeoutId_ = undefined;
+    }
+  }
+
+  /**
+   * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Event.
+   * @return {boolean} Whether the event is a pointerdown, pointerdrag
+   *     or pointerup event.
+   */
+  function isPointerDraggingEvent(mapBrowserEvent) {
+    const type = mapBrowserEvent.type;
+    return (
+      type === MapBrowserEventType.POINTERDOWN ||
+      type === MapBrowserEventType.POINTERDRAG ||
+      type === MapBrowserEventType.POINTERUP
+    );
+  }
+
+  var DblClickDragZoom$1 = DblClickDragZoom;
 
   /**
    * @module ol/interaction/DragAndDrop
@@ -56885,7 +62861,7 @@ var ol = (function () {
       this.downPx_ = null;
 
       /**
-       * @type {?}
+       * @type {ReturnType<typeof setTimeout>}
        * @private
        */
       this.downTimeout_;
@@ -58671,7 +64647,8 @@ var ol = (function () {
       return function (point) {
         return boundingExtent([fixedP1, [point[0], fixedP2[1]]]);
       };
-    } else if (fixedP1[1] == fixedP2[1]) {
+    }
+    if (fixedP1[1] == fixedP2[1]) {
       return function (point) {
         return boundingExtent([fixedP1, [fixedP2[0], point[1]]]);
       };
@@ -60234,6 +66211,11 @@ var ol = (function () {
         map.forEachFeatureAtPixel(
           pixel,
           (feature, layer, geometry) => {
+            if (geometry) {
+              geometry = new Point$1(
+                toUserCoordinate(geometry.getCoordinates(), projection)
+              );
+            }
             const geom = geometry || feature.getGeometry();
             if (
               geom.getType() === 'Point' &&
@@ -60241,7 +66223,7 @@ var ol = (function () {
               this.features_.getArray().includes(feature)
             ) {
               hitPointGeometry = /** @type {Point} */ (geom);
-              const coordinate = hitPointGeometry
+              const coordinate = /** @type {Point} */ (feature.getGeometry())
                 .getFlatCoordinates()
                 .slice(0, 2);
               nodes = [
@@ -61285,6 +67267,57 @@ var ol = (function () {
   var Select$1 = Select;
 
   /**
+   * @module ol/events/SnapEvent
+   */
+
+  /**
+   * @enum {string}
+   */
+  const SnapEventType = {
+    /**
+     * Triggered upon snapping to vertex or edge
+     * @event SnapEvent#snap
+     * @api
+     */
+    SNAP: 'snap',
+  };
+
+  /**
+   * @classdesc
+   * Events emitted by {@link module:ol/interaction/Snap~Snap} instances are instances of this
+   */
+  class SnapEvent extends BaseEvent {
+    /**
+     * @param {SnapEventType} type Type.
+     * @param {Object} options Options.
+     * @param {import("../coordinate.js").Coordinate} options.vertex The snapped vertex.
+     * @param {import("../coordinate.js").Coordinate} options.vertexPixel The pixel of the snapped vertex.
+     * @param {import("../Feature.js").default} options.feature The feature being snapped.
+     */
+    constructor(type, options) {
+      super(type);
+      /**
+       * The Map coordinate of the snapped point.
+       * @type {import("../coordinate.js").Coordinate}
+       * @api
+       */
+      this.vertex = options.vertex;
+      /**
+       * The Map pixel of the snapped point.
+       * @type {Array<number>&Array<number>}
+       * @api
+       */
+      this.vertexPixel = options.vertexPixel;
+      /**
+       * The feature closest to the snapped point.
+       * @type {import("../Feature.js").default<import("../geom/Geometry.js").default>}
+       * @api
+       */
+      this.feature = options.feature;
+    }
+  }
+
+  /**
    * @module ol/interaction/Snap
    */
 
@@ -61292,6 +67325,7 @@ var ol = (function () {
    * @typedef {Object} Result
    * @property {import("../coordinate.js").Coordinate|null} vertex Vertex.
    * @property {import("../pixel.js").Pixel|null} vertexPixel VertexPixel.
+   * @property {import("../Feature.js").default|null} feature Feature.
    */
 
   /**
@@ -61312,7 +67346,7 @@ var ol = (function () {
 
   /**
    * @param  {import("../source/Vector.js").VectorSourceEvent|import("../Collection.js").CollectionEvent<import("../Feature.js").default>} evt Event.
-   * @return {import("../Feature.js").default} Feature.
+   * @return {import("../Feature.js").default|null} Feature.
    */
   function getFeatureFromEvent(evt) {
     if (
@@ -61320,7 +67354,8 @@ var ol = (function () {
     ) {
       return /** @type {import("../source/Vector.js").VectorSourceEvent} */ (evt)
         .feature;
-    } else if (
+    }
+    if (
       /** @type {import("../Collection.js").CollectionEvent<import("../Feature.js").default>} */ (
         evt
       ).element
@@ -61329,9 +67364,20 @@ var ol = (function () {
         evt
       ).element;
     }
+    return null;
   }
 
   const tempSegment = [];
+
+  /***
+   * @template Return
+   * @typedef {import("../Observable").OnSignature<import("../Observable").EventTypes, import("../events/Event.js").default, Return> &
+   *   import("../Observable").OnSignature<import("../ObjectEventType").Types|
+   *     'change:active', import("../Object").ObjectEvent, Return> &
+   *   import("../Observable").OnSignature<'snap', SnapEvent, Return> &
+   *   import("../Observable").CombinedOnSignature<import("../Observable").EventTypes|import("../ObjectEventType").Types|
+   *     'change:active'|'snap', Return>} SnapOnSignature
+   */
 
   /**
    * @classdesc
@@ -61354,6 +67400,7 @@ var ol = (function () {
    *
    *     map.addInteraction(snap);
    *
+   * @fires SnapEvent
    * @api
    */
   class Snap extends PointerInteraction$1 {
@@ -61376,6 +67423,21 @@ var ol = (function () {
       }
 
       super(pointerOptions);
+
+      /***
+       * @type {SnapOnSignature<import("../events").EventsKey>}
+       */
+      this.on;
+
+      /***
+       * @type {SnapOnSignature<import("../events").EventsKey>}
+       */
+      this.once;
+
+      /***
+       * @type {SnapOnSignature<void>}
+       */
+      this.un;
 
       /**
        * @type {import("../source/Vector.js").default|null}
@@ -61526,12 +67588,20 @@ var ol = (function () {
     /**
      * @param {import("../MapBrowserEvent.js").default} evt Map browser event.
      * @return {boolean} `false` to stop event propagation.
+     * @api
      */
     handleEvent(evt) {
       const result = this.snapTo(evt.pixel, evt.coordinate, evt.map);
       if (result) {
         evt.coordinate = result.vertex.slice(0, 2);
         evt.pixel = result.vertexPixel;
+        this.dispatchEvent(
+          new SnapEvent(SnapEventType.SNAP, {
+            vertex: evt.coordinate,
+            vertexPixel: evt.pixel,
+            feature: result.feature,
+          })
+        );
       }
       return super.handleEvent(evt);
     }
@@ -61542,7 +67612,9 @@ var ol = (function () {
      */
     handleFeatureAdd_(evt) {
       const feature = getFeatureFromEvent(evt);
-      this.addFeature(feature);
+      if (feature) {
+        this.addFeature(feature);
+      }
     }
 
     /**
@@ -61551,7 +67623,9 @@ var ol = (function () {
      */
     handleFeatureRemove_(evt) {
       const feature = getFeatureFromEvent(evt);
-      this.removeFeature(feature);
+      if (feature) {
+        this.removeFeature(feature);
+      }
     }
 
     /**
@@ -61691,7 +67765,6 @@ var ol = (function () {
       );
 
       const segments = this.rBush_.getInExtent(box);
-
       const segmentsLength = segments.length;
       if (segmentsLength === 0) {
         return null;
@@ -61699,6 +67772,7 @@ var ol = (function () {
 
       let closestVertex;
       let minSquaredDistance = Infinity;
+      let closestFeature;
 
       const squaredPixelTolerance = this.pixelTolerance_ * this.pixelTolerance_;
       const getResult = () => {
@@ -61712,6 +67786,7 @@ var ol = (function () {
                 Math.round(vertexPixel[0]),
                 Math.round(vertexPixel[1]),
               ],
+              feature: closestFeature,
             };
           }
         }
@@ -61728,6 +67803,7 @@ var ol = (function () {
               if (delta < minSquaredDistance) {
                 closestVertex = vertex;
                 minSquaredDistance = delta;
+                closestFeature = segmentData.feature;
               }
             });
           }
@@ -62198,14 +68274,28 @@ var ol = (function () {
     handleDragEvent(event) {
       if (this.lastCoordinate_) {
         const newCoordinate = event.coordinate;
-        const deltaX = newCoordinate[0] - this.lastCoordinate_[0];
-        const deltaY = newCoordinate[1] - this.lastCoordinate_[1];
+        const projection = event.map.getView().getProjection();
+
+        const newViewCoordinate = fromUserCoordinate(newCoordinate, projection);
+        const lastViewCoordinate = fromUserCoordinate(
+          this.lastCoordinate_,
+          projection
+        );
+        const deltaX = newViewCoordinate[0] - lastViewCoordinate[0];
+        const deltaY = newViewCoordinate[1] - lastViewCoordinate[1];
 
         const features = this.features_ || new Collection$1([this.lastFeature_]);
+        const userProjection = getUserProjection();
 
         features.forEach(function (feature) {
           const geom = feature.getGeometry();
-          geom.translate(deltaX, deltaY);
+          if (userProjection) {
+            geom.transform(userProjection, projection);
+            geom.translate(deltaX, deltaY);
+            geom.transform(projection, userProjection);
+          } else {
+            geom.translate(deltaX, deltaY);
+          }
           feature.setGeometry(geom);
         });
 
@@ -62332,6 +68422,7 @@ var ol = (function () {
   var interaction0 = {
     __proto__: null,
     DoubleClickZoom: DoubleClickZoom$1,
+    DblClickDragZoom: DblClickDragZoom$1,
     DragAndDrop: DragAndDrop$1,
     DragBox: DragBox$1,
     DragPan: DragPan$1,
@@ -62529,26 +68620,32 @@ var ol = (function () {
     /**
      * Populates the buffer with an array of the given size (all values will be zeroes).
      * @param {number} size Array size
+     * @return {WebGLArrayBuffer} This
      */
     ofSize(size) {
       this.array = new (getArrayClassForType(this.type))(size);
+      return this;
     }
 
     /**
      * Populates the buffer with an array of the given size.
      * @param {Array<number>} array Numerical array
+     * @return {WebGLArrayBuffer} This
      */
     fromArray(array) {
       this.array = getArrayClassForType(this.type).from(array);
+      return this;
     }
 
     /**
      * Populates the buffer with a raw binary array buffer.
      * @param {ArrayBuffer} buffer Raw binary buffer to populate the array with. Note that this buffer must have been
      * initialized for the same typed array class.
+     * @return {WebGLArrayBuffer} This
      */
     fromArrayBuffer(buffer) {
       this.array = new (getArrayClassForType(this.type))(buffer);
+      return this;
     }
 
     /**
@@ -62726,6 +68823,7 @@ var ol = (function () {
       this.renderTargetTextureSize_ = null;
 
       this.frameBuffer_ = gl.createFramebuffer();
+      this.depthBuffer_ = gl.createRenderbuffer();
 
       // compile the program for the frame buffer
       // TODO: make compilation errors show up
@@ -62813,6 +68911,7 @@ var ol = (function () {
 
       // rendering goes to my buffer
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.getFrameBuffer());
+      gl.bindRenderbuffer(gl.RENDERBUFFER, this.getDepthBuffer());
       gl.viewport(0, 0, textureSize[0], textureSize[1]);
 
       // if size has changed: adjust canvas & render target texture
@@ -62855,6 +68954,19 @@ var ol = (function () {
           this.renderTargetTexture_,
           0
         );
+
+        gl.renderbufferStorage(
+          gl.RENDERBUFFER,
+          gl.DEPTH_COMPONENT16,
+          textureSize[0],
+          textureSize[1]
+        );
+        gl.framebufferRenderbuffer(
+          gl.FRAMEBUFFER,
+          gl.DEPTH_ATTACHMENT,
+          gl.RENDERBUFFER,
+          this.depthBuffer_
+        );
       }
     }
 
@@ -62885,13 +68997,15 @@ var ol = (function () {
           const attributes = gl.getContextAttributes();
           if (attributes && attributes.preserveDrawingBuffer) {
             gl.clearColor(0.0, 0.0, 0.0, 0.0);
-            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.clearDepth(1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
           }
 
           frameState.renderTargets[canvasId] = true;
         }
       }
 
+      gl.disable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -62931,6 +69045,14 @@ var ol = (function () {
      */
     getFrameBuffer() {
       return this.frameBuffer_;
+    }
+
+    /**
+     * @return {WebGLRenderbuffer} Depth buffer
+     * @api
+     */
+    getDepthBuffer() {
+      return this.depthBuffer_;
     }
 
     /**
@@ -63057,8 +69179,9 @@ var ol = (function () {
     TIME: 'u_time',
     ZOOM: 'u_zoom',
     RESOLUTION: 'u_resolution',
-    SIZE_PX: 'u_sizePx',
+    VIEWPORT_SIZE_PX: 'u_viewportSizePx',
     PIXEL_RATIO: 'u_pixelRatio',
+    HIT_DETECTION: 'u_hitDetection',
   };
 
   /**
@@ -63121,7 +69244,7 @@ var ol = (function () {
 
   /**
    * @typedef {Object} CanvasCacheItem
-   * @property {HTMLCanvasElement} canvas Canvas element.
+   * @property {WebGLRenderingContext} context The context of this canvas.
    * @property {number} users The count of users of this canvas.
    */
 
@@ -63151,20 +69274,23 @@ var ol = (function () {
 
   /**
    * @param {string} key The cache key for the canvas.
-   * @return {HTMLCanvasElement} The canvas.
+   * @return {WebGLRenderingContext} The canvas.
    */
-  function getCanvas(key) {
+  function getOrCreateContext(key) {
     let cacheItem = canvasCache[key];
     if (!cacheItem) {
       const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
       canvas.style.position = 'absolute';
       canvas.style.left = '0';
-      cacheItem = {users: 0, canvas};
+      const context = getContext(canvas);
+      cacheItem = {users: 0, context};
       canvasCache[key] = cacheItem;
     }
 
     cacheItem.users += 1;
-    return cacheItem.canvas;
+    return cacheItem.context;
   }
 
   /**
@@ -63181,12 +69307,14 @@ var ol = (function () {
       return;
     }
 
-    const canvas = cacheItem.canvas;
-    const gl = getContext(canvas);
+    const gl = cacheItem.context;
     const extension = gl.getExtension('WEBGL_lose_context');
     if (extension) {
       extension.loseContext();
     }
+    const canvas = gl.canvas;
+    canvas.width = 1;
+    canvas.height = 1;
 
     delete canvasCache[key];
   }
@@ -63340,15 +69468,9 @@ var ol = (function () {
 
       /**
        * @private
-       * @type {HTMLCanvasElement}
-       */
-      this.canvas_ = getCanvas(this.canvasCacheKey_);
-
-      /**
-       * @private
        * @type {WebGLRenderingContext}
        */
-      this.gl_ = getContext(this.canvas_);
+      this.gl_ = getOrCreateContext(this.canvasCacheKey_);
 
       /**
        * @private
@@ -63368,11 +69490,13 @@ var ol = (function () {
        */
       this.currentProgram_ = null;
 
-      this.canvas_.addEventListener(
+      const canvas = this.gl_.canvas;
+
+      canvas.addEventListener(
         ContextEventType.LOST,
         this.boundHandleWebGLContextLost_
       );
-      this.canvas_.addEventListener(
+      canvas.addEventListener(
         ContextEventType.RESTORED,
         this.boundHandleWebGLContextRestored_
       );
@@ -63397,15 +69521,15 @@ var ol = (function () {
 
       /**
        * @private
-       * @type {Object<string, WebGLUniformLocation>}
+       * @type {Object<string, Object<string, WebGLUniformLocation>>}
        */
-      this.uniformLocations_ = {};
+      this.uniformLocationsByProgram_ = {};
 
       /**
        * @private
-       * @type {Object<string, number>}
+       * @type {Object<string, Object<string, number>>}
        */
-      this.attribLocations_ = {};
+      this.attribLocationsByProgram_ = {};
 
       /**
        * Holds info about custom uniforms used in the post processing pass.
@@ -63418,8 +69542,6 @@ var ol = (function () {
         this.setUniforms(options.uniforms);
       }
 
-      const gl = this.getGL();
-
       /**
        * An array of PostProcessingPass objects is kept in this variable, built from the steps provided in the
        * options. If no post process was given, a default one is used (so as not to have to make an exception to
@@ -63428,16 +69550,17 @@ var ol = (function () {
        * @private
        */
       this.postProcessPasses_ = options.postProcesses
-        ? options.postProcesses.map(function (options) {
-            return new WebGLPostProcessingPass$1({
-              webGlContext: gl,
-              scaleRatio: options.scaleRatio,
-              vertexShader: options.vertexShader,
-              fragmentShader: options.fragmentShader,
-              uniforms: options.uniforms,
-            });
-          })
-        : [new WebGLPostProcessingPass$1({webGlContext: gl})];
+        ? options.postProcesses.map(
+            (options) =>
+              new WebGLPostProcessingPass$1({
+                webGlContext: this.gl_,
+                scaleRatio: options.scaleRatio,
+                vertexShader: options.vertexShader,
+                fragmentShader: options.fragmentShader,
+                uniforms: options.uniforms,
+              })
+          )
+        : [new WebGLPostProcessingPass$1({webGlContext: this.gl_})];
 
       /**
        * @type {string|null}
@@ -63463,7 +69586,6 @@ var ol = (function () {
           value: uniforms[name],
         });
       }
-      this.uniformLocations_ = {};
     }
 
     /**
@@ -63496,7 +69618,7 @@ var ol = (function () {
      * @param {import("./Buffer").default} buffer Buffer.
      */
     bindBuffer(buffer) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       const bufferKey = getUid(buffer);
       let bufferCache = this.bufferCache_[bufferKey];
       if (!bufferCache) {
@@ -63516,7 +69638,7 @@ var ol = (function () {
      * @param {import("./Buffer").default} buffer Buffer.
      */
     flushBufferData(buffer) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       this.bindBuffer(buffer);
       gl.bufferData(buffer.getType(), buffer.getArray(), buffer.getUsage());
     }
@@ -63525,7 +69647,7 @@ var ol = (function () {
      * @param {import("./Buffer.js").default} buf Buffer.
      */
     deleteBuffer(buf) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       const bufferKey = getUid(buf);
       const bufferCacheEntry = this.bufferCache_[bufferKey];
       if (bufferCacheEntry && !gl.isContextLost()) {
@@ -63538,11 +69660,12 @@ var ol = (function () {
      * Clean up.
      */
     disposeInternal() {
-      this.canvas_.removeEventListener(
+      const canvas = this.gl_.canvas;
+      canvas.removeEventListener(
         ContextEventType.LOST,
         this.boundHandleWebGLContextLost_
       );
-      this.canvas_.removeEventListener(
+      canvas.removeEventListener(
         ContextEventType.RESTORED,
         this.boundHandleWebGLContextRestored_
       );
@@ -63550,7 +69673,6 @@ var ol = (function () {
       releaseCanvas(this.canvasCacheKey_);
 
       delete this.gl_;
-      delete this.canvas_;
     }
 
     /**
@@ -63559,17 +69681,23 @@ var ol = (function () {
      * subsequent draw calls.
      * @param {import("../Map.js").FrameState} frameState current frame state
      * @param {boolean} [disableAlphaBlend] If true, no alpha blending will happen.
+     * @param {boolean} [enableDepth] If true, enables depth testing.
      */
-    prepareDraw(frameState, disableAlphaBlend) {
-      const gl = this.getGL();
+    prepareDraw(frameState, disableAlphaBlend, enableDepth) {
+      const gl = this.gl_;
       const canvas = this.getCanvas();
       const size = frameState.size;
       const pixelRatio = frameState.pixelRatio;
 
-      canvas.width = size[0] * pixelRatio;
-      canvas.height = size[1] * pixelRatio;
-      canvas.style.width = size[0] + 'px';
-      canvas.style.height = size[1] + 'px';
+      if (
+        canvas.width !== size[0] * pixelRatio ||
+        canvas.height !== size[1] * pixelRatio
+      ) {
+        canvas.width = size[0] * pixelRatio;
+        canvas.height = size[1] * pixelRatio;
+        canvas.style.width = size[0] + 'px';
+        canvas.style.height = size[1] + 'px';
+      }
 
       // loop backwards in post processes list
       for (let i = this.postProcessPasses_.length - 1; i >= 0; i--) {
@@ -63579,10 +69707,31 @@ var ol = (function () {
       gl.bindTexture(gl.TEXTURE_2D, null);
 
       gl.clearColor(0.0, 0.0, 0.0, 0.0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.depthRange(0.0, 1.0);
+      gl.clearDepth(1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, disableAlphaBlend ? gl.ZERO : gl.ONE_MINUS_SRC_ALPHA);
+      if (enableDepth) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+      } else {
+        gl.disable(gl.DEPTH_TEST);
+      }
+    }
+
+    /**
+     * Prepare a program to use a texture.
+     * @param {WebGLTexture} texture The texture.
+     * @param {number} slot The texture slot.
+     * @param {string} uniformName The corresponding uniform name.
+     */
+    bindTexture(texture, slot, uniformName) {
+      const gl = this.gl_;
+      gl.activeTexture(gl.TEXTURE0 + slot);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.uniform1i(this.getUniformLocation(uniformName), slot);
     }
 
     /**
@@ -63592,18 +69741,33 @@ var ol = (function () {
      * @param {import("../Map.js").FrameState} frameState current frame state
      * @param {import("./RenderTarget.js").default} renderTarget Render target to draw to
      * @param {boolean} [disableAlphaBlend] If true, no alpha blending will happen.
+     * @param {boolean} [enableDepth] If true, enables depth testing.
      */
-    prepareDrawToRenderTarget(frameState, renderTarget, disableAlphaBlend) {
-      const gl = this.getGL();
+    prepareDrawToRenderTarget(
+      frameState,
+      renderTarget,
+      disableAlphaBlend,
+      enableDepth
+    ) {
+      const gl = this.gl_;
       const size = renderTarget.getSize();
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, renderTarget.getFramebuffer());
+      gl.bindRenderbuffer(gl.RENDERBUFFER, renderTarget.getDepthbuffer());
       gl.viewport(0, 0, size[0], size[1]);
       gl.bindTexture(gl.TEXTURE_2D, renderTarget.getTexture());
       gl.clearColor(0.0, 0.0, 0.0, 0.0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.depthRange(0.0, 1.0);
+      gl.clearDepth(1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, disableAlphaBlend ? gl.ZERO : gl.ONE_MINUS_SRC_ALPHA);
+      if (enableDepth) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+      } else {
+        gl.disable(gl.DEPTH_TEST);
+      }
     }
 
     /**
@@ -63612,7 +69776,7 @@ var ol = (function () {
      * @param {number} end End index.
      */
     drawElements(start, end) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       this.getExtension('OES_element_index_uint');
 
       const elementType = gl.UNSIGNED_INT;
@@ -63652,7 +69816,7 @@ var ol = (function () {
      * @return {HTMLCanvasElement} Canvas.
      */
     getCanvas() {
-      return this.canvas_;
+      return /** @type {HTMLCanvasElement} */ (this.gl_.canvas);
     }
 
     /**
@@ -63699,7 +69863,19 @@ var ol = (function () {
         frameState.viewState.resolution
       );
       this.setUniformFloatValue(DefaultUniform.PIXEL_RATIO, pixelRatio);
-      this.setUniformFloatVec2(DefaultUniform.SIZE_PX, [size[0], size[1]]);
+      this.setUniformFloatVec2(DefaultUniform.VIEWPORT_SIZE_PX, [
+        size[0],
+        size[1],
+      ]);
+    }
+
+    /**
+     * Sets the `u_hitDetection` uniform.
+     * @param {boolean} enabled Whether to enable the hit detection code path
+     */
+    applyHitDetectionUniform(enabled) {
+      const loc = this.getUniformLocation(DefaultUniform.HIT_DETECTION);
+      this.getGL().uniform1i(loc, enabled ? 1 : 0);
     }
 
     /**
@@ -63707,7 +69883,7 @@ var ol = (function () {
      * @param {import("../Map.js").FrameState} frameState Frame state.
      */
     applyUniforms(frameState) {
-      const gl = this.getGL();
+      const gl = this.gl_;
 
       let value;
       let textureSlot = 0;
@@ -63798,11 +69974,9 @@ var ol = (function () {
      * @param {import("../Map.js").FrameState} frameState Frame state.
      */
     useProgram(program, frameState) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       gl.useProgram(program);
       this.currentProgram_ = program;
-      this.uniformLocations_ = {};
-      this.attribLocations_ = {};
       this.applyFrameState(frameState);
       this.applyUniforms(frameState);
     }
@@ -63817,7 +69991,7 @@ var ol = (function () {
      * @return {WebGLShader} Shader object
      */
     compileShader(source, type) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
       gl.compileShader(shader);
@@ -63831,7 +70005,7 @@ var ol = (function () {
      * @return {WebGLProgram} Program
      */
     getProgram(fragmentShaderSource, vertexShaderSource) {
-      const gl = this.getGL();
+      const gl = this.gl_;
 
       const fragmentShader = this.compileShader(
         fragmentShaderSource,
@@ -63865,8 +70039,8 @@ var ol = (function () {
       gl.deleteShader(vertexShader);
 
       if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        const message = `GL program linking failed: ${gl.getShaderInfoLog(
-        vertexShader
+        const message = `GL program linking failed: ${gl.getProgramInfoLog(
+        program
       )}`;
         throw new Error(message);
       }
@@ -63880,13 +70054,15 @@ var ol = (function () {
      * @return {WebGLUniformLocation} uniformLocation
      */
     getUniformLocation(name) {
-      if (this.uniformLocations_[name] === undefined) {
-        this.uniformLocations_[name] = this.getGL().getUniformLocation(
-          this.currentProgram_,
-          name
-        );
+      const programUid = getUid(this.currentProgram_);
+      if (this.uniformLocationsByProgram_[programUid] === undefined) {
+        this.uniformLocationsByProgram_[programUid] = {};
       }
-      return this.uniformLocations_[name];
+      if (this.uniformLocationsByProgram_[programUid][name] === undefined) {
+        this.uniformLocationsByProgram_[programUid][name] =
+          this.gl_.getUniformLocation(this.currentProgram_, name);
+      }
+      return this.uniformLocationsByProgram_[programUid][name];
     }
 
     /**
@@ -63895,18 +70071,20 @@ var ol = (function () {
      * @return {number} attribLocation
      */
     getAttributeLocation(name) {
-      if (this.attribLocations_[name] === undefined) {
-        this.attribLocations_[name] = this.getGL().getAttribLocation(
-          this.currentProgram_,
-          name
-        );
+      const programUid = getUid(this.currentProgram_);
+      if (this.attribLocationsByProgram_[programUid] === undefined) {
+        this.attribLocationsByProgram_[programUid] = {};
       }
-      return this.attribLocations_[name];
+      if (this.attribLocationsByProgram_[programUid][name] === undefined) {
+        this.attribLocationsByProgram_[programUid][name] =
+          this.gl_.getAttribLocation(this.currentProgram_, name);
+      }
+      return this.attribLocationsByProgram_[programUid][name];
     }
 
     /**
-     * Modifies the given transform to apply the rotation/translation/scaling of the given frame state.
-     * The resulting transform can be used to convert world space coordinates to view coordinates.
+     * Sets the given transform to apply the rotation/translation/scaling of the given frame state.
+     * The resulting transform can be used to convert world space coordinates to view coordinates in the [-1, 1] range.
      * @param {import("../Map.js").FrameState} frameState Frame state.
      * @param {import("../transform").Transform} transform Transform to update.
      * @return {import("../transform").Transform} The updated transform object.
@@ -63916,8 +70094,6 @@ var ol = (function () {
       const rotation = frameState.viewState.rotation;
       const resolution = frameState.viewState.resolution;
       const center = frameState.viewState.center;
-
-      reset(transform);
       compose(
         transform,
         0,
@@ -63937,7 +70113,7 @@ var ol = (function () {
      * @param {number} value Value
      */
     setUniformFloatValue(uniform, value) {
-      this.getGL().uniform1f(this.getUniformLocation(uniform), value);
+      this.gl_.uniform1f(this.getUniformLocation(uniform), value);
     }
 
     /**
@@ -63946,7 +70122,7 @@ var ol = (function () {
      * @param {Array<number>} value Array of length 4.
      */
     setUniformFloatVec2(uniform, value) {
-      this.getGL().uniform2fv(this.getUniformLocation(uniform), value);
+      this.gl_.uniform2fv(this.getUniformLocation(uniform), value);
     }
 
     /**
@@ -63955,7 +70131,7 @@ var ol = (function () {
      * @param {Array<number>} value Array of length 4.
      */
     setUniformFloatVec4(uniform, value) {
-      this.getGL().uniform4fv(this.getUniformLocation(uniform), value);
+      this.gl_.uniform4fv(this.getUniformLocation(uniform), value);
     }
 
     /**
@@ -63964,11 +70140,7 @@ var ol = (function () {
      * @param {Array<number>} value Matrix value
      */
     setUniformMatrixValue(uniform, value) {
-      this.getGL().uniformMatrix4fv(
-        this.getUniformLocation(uniform),
-        false,
-        value
-      );
+      this.gl_.uniformMatrix4fv(this.getUniformLocation(uniform), false, value);
     }
 
     /**
@@ -63983,19 +70155,12 @@ var ol = (function () {
      */
     enableAttributeArray_(attribName, size, type, stride, offset) {
       const location = this.getAttributeLocation(attribName);
-      // the attribute has not been found in the shaders; do not enable it
+      // the attribute has not been found in the shaders or is not used; do not enable it
       if (location < 0) {
         return;
       }
-      this.getGL().enableVertexAttribArray(location);
-      this.getGL().vertexAttribPointer(
-        location,
-        size,
-        type,
-        false,
-        stride,
-        offset
-      );
+      this.gl_.enableVertexAttribArray(location);
+      this.gl_.vertexAttribPointer(location, size, type, false, stride, offset);
     }
 
     /**
@@ -64046,7 +70211,7 @@ var ol = (function () {
      * @return {WebGLTexture} The generated texture
      */
     createTexture(size, data, texture) {
-      const gl = this.getGL();
+      const gl = this.gl_;
       texture = texture || gl.createTexture();
 
       // set params & size
@@ -64406,6 +70571,12 @@ var ol = (function () {
       this.framebuffer_ = gl.createFramebuffer();
 
       /**
+       * @private
+       * @type {WebGLRenderbuffer}
+       */
+      this.depthbuffer_ = gl.createRenderbuffer();
+
+      /**
        * @type {Array<number>}
        * @private
        */
@@ -64529,6 +70700,13 @@ var ol = (function () {
     }
 
     /**
+     * @return {WebGLRenderbuffer} Depth buffer of the render target
+     */
+    getDepthbuffer() {
+      return this.depthbuffer_;
+    }
+
+    /**
      * @private
      */
     updateSize_() {
@@ -64545,6 +70723,20 @@ var ol = (function () {
         gl.TEXTURE_2D,
         this.texture_,
         0
+      );
+
+      gl.bindRenderbuffer(gl.RENDERBUFFER, this.depthbuffer_);
+      gl.renderbufferStorage(
+        gl.RENDERBUFFER,
+        gl.DEPTH_COMPONENT16,
+        size[0],
+        size[1]
+      );
+      gl.framebufferRenderbuffer(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_ATTACHMENT,
+        gl.RENDERBUFFER,
+        this.depthbuffer_
       );
 
       this.data_ = new Uint8Array(size[0] * size[1] * 4);
@@ -64575,7 +70767,7 @@ var ol = (function () {
    * @property {number} id Message id; will be used both in request and response as a means of identification
    * @property {WebGLWorkerMessageType} type Message type
    * @property {ArrayBuffer} renderInstructions Polygon render instructions raw binary buffer.
-   * @property {number} [customAttributesCount] Amount of custom attributes count in the polygon render instructions.
+   * @property {number} [customAttributesSize] Amount of custom attributes count in the polygon render instructions.
    * @property {ArrayBuffer} [vertexBuffer] Vertices array raw binary buffer (sent by the worker).
    * @property {ArrayBuffer} [indexBuffer] Indices array raw binary buffer (sent by the worker).
    * @property {import("../../transform").Transform} [renderInstructionsTransform] Transformation matrix used to project the instructions coordinates
@@ -65303,7 +71495,7 @@ var ol = (function () {
   }
 
   function create$1() {
-            const source = "const e=\"GENERATE_POLYGON_BUFFERS\",t=\"GENERATE_POINT_BUFFERS\",n=\"GENERATE_LINE_STRING_BUFFERS\",r={1:\"The view center is not defined\",2:\"The view resolution is not defined\",3:\"The view rotation is not defined\",4:\"`image` and `src` cannot be provided at the same time\",5:\"`imgSize` must be set when `image` is provided\",7:\"`format` must be set when `url` is set\",8:\"Unknown `serverType` configured\",9:\"`url` must be configured or set using `#setUrl()`\",10:\"The default `geometryFunction` can only handle `Point` geometries\",11:\"`options.featureTypes` must be an Array\",12:\"`options.geometryName` must also be provided when `options.bbox` is set\",13:\"Invalid corner\",14:\"Invalid color\",15:\"Tried to get a value for a key that does not exist in the cache\",16:\"Tried to set a value for a key that is used already\",17:\"`resolutions` must be sorted in descending order\",18:\"Either `origin` or `origins` must be configured, never both\",19:\"Number of `tileSizes` and `resolutions` must be equal\",20:\"Number of `origins` and `resolutions` must be equal\",22:\"Either `tileSize` or `tileSizes` must be configured, never both\",24:\"Invalid extent or geometry provided as `geometry`\",25:\"Cannot fit empty extent provided as `geometry`\",26:\"Features must have an id set\",27:\"Features must have an id set\",28:'`renderMode` must be `\"hybrid\"` or `\"vector\"`',30:\"The passed `feature` was already added to the source\",31:\"Tried to enqueue an `element` that was already added to the queue\",32:\"Transformation matrix cannot be inverted\",33:\"Invalid units\",34:\"Invalid geometry layout\",36:\"Unknown SRS type\",37:\"Unknown geometry type found\",38:\"`styleMapValue` has an unknown type\",39:\"Unknown geometry type\",40:\"Expected `feature` to have a geometry\",41:\"Expected an `ol/style/Style` or an array of `ol/style/Style.js`\",42:\"Question unknown, the answer is 42\",43:\"Expected `layers` to be an array or a `Collection`\",47:\"Expected `controls` to be an array or an `ol/Collection`\",48:\"Expected `interactions` to be an array or an `ol/Collection`\",49:\"Expected `overlays` to be an array or an `ol/Collection`\",50:\"`options.featureTypes` should be an Array\",51:\"Either `url` or `tileJSON` options must be provided\",52:\"Unknown `serverType` configured\",53:\"Unknown `tierSizeCalculation` configured\",55:\"The {-y} placeholder requires a tile grid with extent\",56:\"mapBrowserEvent must originate from a pointer event\",57:\"At least 2 conditions are required\",59:\"Invalid command found in the PBF\",60:\"Missing or invalid `size`\",61:\"Cannot determine IIIF Image API version from provided image information JSON\",62:\"A `WebGLArrayBuffer` must either be of type `ELEMENT_ARRAY_BUFFER` or `ARRAY_BUFFER`\",64:\"Layer opacity must be a number\",66:\"`forEachFeatureAtCoordinate` cannot be used on a WebGL layer if the hit detection logic has not been enabled. This is done by providing adequate shaders using the `hitVertexShader` and `hitFragmentShader` properties of `WebGLPointsLayerRenderer`\",67:\"A layer can only be added to the map once. Use either `layer.setMap()` or `map.addLayer()`, not both\",68:\"A VectorTile source can only be rendered if it has a projection compatible with the view projection\",69:\"`width` or `height` cannot be provided together with `scale`\"};class o extends Error{constructor(e){const t=r[e];super(t),this.code=e,this.name=\"AssertionError\",this.message=t}}var i=o;function a(e,t){const n=t[0],r=t[1];return t[0]=e[0]*n+e[2]*r+e[4],t[1]=e[1]*n+e[3]*r+e[5],t}function s(e,t){const n=(r=t)[0]*r[3]-r[1]*r[2];var r;!function(e,t){if(!e)throw new i(t)}(0!==n,32);const o=t[0],a=t[1],s=t[2],u=t[3],f=t[4],x=t[5];return e[0]=u/n,e[1]=-a/n,e[2]=-s/n,e[3]=o/n,e[4]=(s*x-u*f)/n,e[5]=-(o*x-a*f)/n,e}new Array(6);var u={};function f(e,t,n){n=n||2;var r,o,i,a,s,u,f,l=t&&t.length,c=l?t[0]*n:e.length,v=x(e,0,c,n,!0),d=[];if(!v||v.next===v.prev)return d;if(l&&(v=function(e,t,n,r){var o,i,a,s=[];for(o=0,i=t.length;o<i;o++)(a=x(e,t[o]*r,o<i-1?t[o+1]*r:e.length,r,!1))===a.next&&(a.steiner=!0),s.push(w(a));for(s.sort(p),o=0;o<s.length;o++)n=b(s[o],n);return n}(e,t,v,n)),e.length>80*n){r=i=e[0],o=a=e[1];for(var y=n;y<c;y+=n)(s=e[y])<r&&(r=s),(u=e[y+1])<o&&(o=u),s>i&&(i=s),u>a&&(a=u);f=0!==(f=Math.max(i-r,a-o))?32767/f:0}return h(v,d,n,r,o,f,0),d}function x(e,t,n,r,o){var i,a;if(o===B(e,t,n,r)>0)for(i=t;i<n;i+=r)a=k(i,e[i],e[i+1],a);else for(i=n-r;i>=t;i-=r)a=k(i,e[i],e[i+1],a);return a&&M(a,a.next)&&(z(a),a=a.next),a}function l(e,t){if(!e)return e;t||(t=e);var n,r=e;do{if(n=!1,r.steiner||!M(r,r.next)&&0!==Z(r.prev,r,r.next))r=r.next;else{if(z(r),(r=t=r.prev)===r.next)break;n=!0}}while(n||r!==t);return t}function h(e,t,n,r,o,i,a){if(e){!a&&i&&function(e,t,n,r){var o=e;do{0===o.z&&(o.z=m(o.x,o.y,t,n,r)),o.prevZ=o.prev,o.nextZ=o.next,o=o.next}while(o!==e);o.prevZ.nextZ=null,o.prevZ=null,function(e){var t,n,r,o,i,a,s,u,f=1;do{for(n=e,e=null,i=null,a=0;n;){for(a++,r=n,s=0,t=0;t<f&&(s++,r=r.nextZ);t++);for(u=f;s>0||u>0&&r;)0!==s&&(0===u||!r||n.z<=r.z)?(o=n,n=n.nextZ,s--):(o=r,r=r.nextZ,u--),i?i.nextZ=o:e=o,o.prevZ=i,i=o;n=r}i.nextZ=null,f*=2}while(a>1)}(o)}(e,r,o,i);for(var s,u,f=e;e.prev!==e.next;)if(s=e.prev,u=e.next,i?v(e,r,o,i):c(e))t.push(s.i/n|0),t.push(e.i/n|0),t.push(u.i/n|0),z(e),e=u.next,f=u.next;else if((e=u)===f){a?1===a?h(e=d(l(e),t,n),t,n,r,o,i,2):2===a&&y(e,t,n,r,o,i):h(l(e),t,n,r,o,i,1);break}}}function c(e){var t=e.prev,n=e,r=e.next;if(Z(t,n,r)>=0)return!1;for(var o=t.x,i=n.x,a=r.x,s=t.y,u=n.y,f=r.y,x=o<i?o<a?o:a:i<a?i:a,l=s<u?s<f?s:f:u<f?u:f,h=o>i?o>a?o:a:i>a?i:a,c=s>u?s>f?s:f:u>f?u:f,v=r.next;v!==t;){if(v.x>=x&&v.x<=h&&v.y>=l&&v.y<=c&&A(o,s,i,u,a,f,v.x,v.y)&&Z(v.prev,v,v.next)>=0)return!1;v=v.next}return!0}function v(e,t,n,r){var o=e.prev,i=e,a=e.next;if(Z(o,i,a)>=0)return!1;for(var s=o.x,u=i.x,f=a.x,x=o.y,l=i.y,h=a.y,c=s<u?s<f?s:f:u<f?u:f,v=x<l?x<h?x:h:l<h?l:h,d=s>u?s>f?s:f:u>f?u:f,y=x>l?x>h?x:h:l>h?l:h,p=m(c,v,t,n,r),b=m(d,y,t,n,r),g=e.prevZ,w=e.nextZ;g&&g.z>=p&&w&&w.z<=b;){if(g.x>=c&&g.x<=d&&g.y>=v&&g.y<=y&&g!==o&&g!==a&&A(s,x,u,l,f,h,g.x,g.y)&&Z(g.prev,g,g.next)>=0)return!1;if(g=g.prevZ,w.x>=c&&w.x<=d&&w.y>=v&&w.y<=y&&w!==o&&w!==a&&A(s,x,u,l,f,h,w.x,w.y)&&Z(w.prev,w,w.next)>=0)return!1;w=w.nextZ}for(;g&&g.z>=p;){if(g.x>=c&&g.x<=d&&g.y>=v&&g.y<=y&&g!==o&&g!==a&&A(s,x,u,l,f,h,g.x,g.y)&&Z(g.prev,g,g.next)>=0)return!1;g=g.prevZ}for(;w&&w.z<=b;){if(w.x>=c&&w.x<=d&&w.y>=v&&w.y<=y&&w!==o&&w!==a&&A(s,x,u,l,f,h,w.x,w.y)&&Z(w.prev,w,w.next)>=0)return!1;w=w.nextZ}return!0}function d(e,t,n){var r=e;do{var o=r.prev,i=r.next.next;!M(o,i)&&F(o,r,r.next,i)&&S(o,i)&&S(i,o)&&(t.push(o.i/n|0),t.push(r.i/n|0),t.push(i.i/n|0),z(r),z(r.next),r=e=i),r=r.next}while(r!==e);return l(r)}function y(e,t,n,r,o,i){var a=e;do{for(var s=a.next.next;s!==a.prev;){if(a.i!==s.i&&E(a,s)){var u=U(a,s);return a=l(a,a.next),u=l(u,u.next),h(a,t,n,r,o,i,0),void h(u,t,n,r,o,i,0)}s=s.next}a=a.next}while(a!==e)}function p(e,t){return e.x-t.x}function b(e,t){var n=function(e,t){var n,r=t,o=e.x,i=e.y,a=-1/0;do{if(i<=r.y&&i>=r.next.y&&r.next.y!==r.y){var s=r.x+(i-r.y)*(r.next.x-r.x)/(r.next.y-r.y);if(s<=o&&s>a&&(a=s,n=r.x<r.next.x?r:r.next,s===o))return n}r=r.next}while(r!==t);if(!n)return null;var u,f=n,x=n.x,l=n.y,h=1/0;r=n;do{o>=r.x&&r.x>=x&&o!==r.x&&A(i<l?o:a,i,x,l,i<l?a:o,i,r.x,r.y)&&(u=Math.abs(i-r.y)/(o-r.x),S(r,e)&&(u<h||u===h&&(r.x>n.x||r.x===n.x&&g(n,r)))&&(n=r,h=u)),r=r.next}while(r!==f);return n}(e,t);if(!n)return t;var r=U(n,e);return l(r,r.next),l(n,n.next)}function g(e,t){return Z(e.prev,e,t.prev)<0&&Z(t.next,e,e.next)<0}function m(e,t,n,r,o){return(e=1431655765&((e=858993459&((e=252645135&((e=16711935&((e=(e-n)*o|0)|e<<8))|e<<4))|e<<2))|e<<1))|(t=1431655765&((t=858993459&((t=252645135&((t=16711935&((t=(t-r)*o|0)|t<<8))|t<<4))|t<<2))|t<<1))<<1}function w(e){var t=e,n=e;do{(t.x<n.x||t.x===n.x&&t.y<n.y)&&(n=t),t=t.next}while(t!==e);return n}function A(e,t,n,r,o,i,a,s){return(o-a)*(t-s)>=(e-a)*(i-s)&&(e-a)*(r-s)>=(n-a)*(t-s)&&(n-a)*(i-s)>=(o-a)*(r-s)}function E(e,t){return e.next.i!==t.i&&e.prev.i!==t.i&&!function(e,t){var n=e;do{if(n.i!==e.i&&n.next.i!==e.i&&n.i!==t.i&&n.next.i!==t.i&&F(n,n.next,e,t))return!0;n=n.next}while(n!==e);return!1}(e,t)&&(S(e,t)&&S(t,e)&&function(e,t){var n=e,r=!1,o=(e.x+t.x)/2,i=(e.y+t.y)/2;do{n.y>i!=n.next.y>i&&n.next.y!==n.y&&o<(n.next.x-n.x)*(i-n.y)/(n.next.y-n.y)+n.x&&(r=!r),n=n.next}while(n!==e);return r}(e,t)&&(Z(e.prev,e,t.prev)||Z(e,t.prev,t))||M(e,t)&&Z(e.prev,e,e.next)>0&&Z(t.prev,t,t.next)>0)}function Z(e,t,n){return(t.y-e.y)*(n.x-t.x)-(t.x-e.x)*(n.y-t.y)}function M(e,t){return e.x===t.x&&e.y===t.y}function F(e,t,n,r){var o=I(Z(e,t,n)),i=I(Z(e,t,r)),a=I(Z(n,r,e)),s=I(Z(n,r,t));return o!==i&&a!==s||(!(0!==o||!T(e,n,t))||(!(0!==i||!T(e,r,t))||(!(0!==a||!T(n,e,r))||!(0!==s||!T(n,t,r)))))}function T(e,t,n){return t.x<=Math.max(e.x,n.x)&&t.x>=Math.min(e.x,n.x)&&t.y<=Math.max(e.y,n.y)&&t.y>=Math.min(e.y,n.y)}function I(e){return e>0?1:e<0?-1:0}function S(e,t){return Z(e.prev,e,e.next)<0?Z(e,t,e.next)>=0&&Z(e,e.prev,t)>=0:Z(e,t,e.prev)<0||Z(e,e.next,t)<0}function U(e,t){var n=new R(e.i,e.x,e.y),r=new R(t.i,t.x,t.y),o=e.next,i=t.prev;return e.next=t,t.prev=e,n.next=o,o.prev=n,r.next=n,n.prev=r,i.next=r,r.prev=i,r}function k(e,t,n,r){var o=new R(e,t,n);return r?(o.next=r.next,o.prev=r,r.next.prev=o,r.next=o):(o.prev=o,o.next=o),o}function z(e){e.next.prev=e.prev,e.prev.next=e.next,e.prevZ&&(e.prevZ.nextZ=e.nextZ),e.nextZ&&(e.nextZ.prevZ=e.prevZ)}function R(e,t,n){this.i=e,this.x=t,this.y=n,this.prev=null,this.next=null,this.z=0,this.prevZ=null,this.nextZ=null,this.steiner=!1}function B(e,t,n,r){for(var o=0,i=t,a=n-r;i<n;i+=r)o+=(e[a]-e[i])*(e[i+1]+e[a+1]),a=i;return o}({get exports(){return u},set exports(e){u=e}}).exports=f,u.default=f,f.deviation=function(e,t,n,r){var o=t&&t.length,i=o?t[0]*n:e.length,a=Math.abs(B(e,0,i,n));if(o)for(var s=0,u=t.length;s<u;s++){var f=t[s]*n,x=s<u-1?t[s+1]*n:e.length;a-=Math.abs(B(e,f,x,n))}var l=0;for(s=0;s<r.length;s+=3){var h=r[s]*n,c=r[s+1]*n,v=r[s+2]*n;l+=Math.abs((e[h]-e[v])*(e[c+1]-e[h+1])-(e[h]-e[c])*(e[v+1]-e[h+1]))}return 0===a&&0===l?0:Math.abs((l-a)/a)},f.flatten=function(e){for(var t=e[0][0].length,n={vertices:[],holes:[],dimensions:t},r=0,o=0;o<e.length;o++){for(var i=0;i<e[o].length;i++)for(var a=0;a<t;a++)n.vertices.push(e[o][i][a]);o>0&&(r+=e[o-1].length,n.holes.push(r))}return n};const N=[],P={vertexPosition:0,indexPosition:0};function C(e,t,n,r,o){e[t+0]=n,e[t+1]=r,e[t+2]=o}function _(e,t,n,r,o,i){const a=3+o,s=e[t+0],u=e[t+1],f=N;f.length=o;for(let n=0;n<f.length;n++)f[n]=e[t+2+n];let x=i?i.vertexPosition:0,l=i?i.indexPosition:0;const h=x/a;return C(n,x,s,u,0),f.length&&n.set(f,x+3),x+=a,C(n,x,s,u,1),f.length&&n.set(f,x+3),x+=a,C(n,x,s,u,2),f.length&&n.set(f,x+3),x+=a,C(n,x,s,u,3),f.length&&n.set(f,x+3),x+=a,r[l++]=h,r[l++]=h+1,r[l++]=h+3,r[l++]=h+1,r[l++]=h+2,r[l++]=h+3,P.vertexPosition=x,P.indexPosition=l,P}function q(e,t,n,r,o,i,s,u,f,x){const l=5+u.length,h=i.length/l,c=[e[t+0],e[t+1]],v=[e[n],e[n+1]],d=a(x,[...c]),y=a(x,[...v]);function p(e,t,n){const r=1e4;return Math.round(1500*t)+Math.round(1500*n)*r+e*r*r}function b(e,t,n){const r=Math.sqrt((t[0]-e[0])*(t[0]-e[0])+(t[1]-e[1])*(t[1]-e[1])),o=[(t[0]-e[0])/r,(t[1]-e[1])/r],i=[-o[1],o[0]],a=Math.sqrt((n[0]-e[0])*(n[0]-e[0])+(n[1]-e[1])*(n[1]-e[1])),s=[(n[0]-e[0])/a,(n[1]-e[1])/a],u=0===r||0===a?0:Math.acos((f=s[0]*o[0]+s[1]*o[1],x=-1,l=1,Math.min(Math.max(f,x),l)));var f,x,l;return s[0]*i[0]+s[1]*i[1]>0?u:2*Math.PI-u}const g=null!==o;let m=0,w=0;if(null!==r){m=b(d,y,a(x,[...[e[r],e[r+1]]]))}if(g){w=b(y,d,a(x,[...[e[o],e[o+1]]]))}i.push(c[0],c[1],v[0],v[1],p(0,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(1,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(2,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(3,m,w)),i.push(...u),s.push(h,h+1,h+2,h+1,h+3,h+2)}function L(e,t,n,r,o){const i=2+o;let a=t;const s=e.slice(a,a+o);a+=o;const f=e[a++];let x=0;const l=new Array(f-1);for(let t=0;t<f;t++)x+=e[a++],t<f-1&&(l[t]=x);const h=e.slice(a,a+2*x),c=u(h,l,2);for(let e=0;e<c.length;e++)r.push(c[e]+n.length/i);for(let e=0;e<h.length;e+=2)n.push(h[e],h[e+1],...s);return a+2*x}const G=self;G.onmessage=r=>{const o=r.data;switch(o.type){case t:{const e=3,t=2,n=o.customAttributesCount,r=t+n,i=new Float32Array(o.renderInstructions),a=i.length/r,s=4*a*(n+e),u=new Uint32Array(6*a),f=new Float32Array(s);let x;for(let e=0;e<i.length;e+=r)x=_(i,e,f,u,n,x);const l=Object.assign({vertexBuffer:f.buffer,indexBuffer:u.buffer,renderInstructions:i.buffer},o);G.postMessage(l,[f.buffer,u.buffer,i.buffer]);break}case n:{const e=[],t=[],n=o.customAttributesCount,r=2,i=new Float32Array(o.renderInstructions);let a=0;const u=o.renderInstructionsTransform,f=[1,0,0,1,0,0];let x,l;for(s(f,u);a<i.length;){l=Array.from(i.slice(a,a+n)),a+=n,x=i[a++];for(let n=0;n<x-1;n++)q(i,a+n*r,a+(n+1)*r,n>0?a+(n-1)*r:null,n<x-2?a+(n+2)*r:null,e,t,l,0,f);a+=x*r}const h=Uint32Array.from(t),c=Float32Array.from(e),v=Object.assign({vertexBuffer:c.buffer,indexBuffer:h.buffer,renderInstructions:i.buffer},o);G.postMessage(v,[c.buffer,h.buffer,i.buffer]);break}case e:{const e=[],t=[],n=o.customAttributesCount,r=new Float32Array(o.renderInstructions);let i=0;for(;i<r.length;)i=L(r,i,e,t,n);const a=Uint32Array.from(t),s=Float32Array.from(e),u=Object.assign({vertexBuffer:s.buffer,indexBuffer:a.buffer,renderInstructions:r.buffer},o);G.postMessage(u,[s.buffer,a.buffer,r.buffer]);break}}};";
+            const source = "const e=\"GENERATE_POLYGON_BUFFERS\",t=\"GENERATE_POINT_BUFFERS\",n=\"GENERATE_LINE_STRING_BUFFERS\",r={1:\"The view center is not defined\",2:\"The view resolution is not defined\",3:\"The view rotation is not defined\",4:\"`image` and `src` cannot be provided at the same time\",5:\"`imgSize` must be set when `image` is provided\",7:\"`format` must be set when `url` is set\",8:\"Unknown `serverType` configured\",9:\"`url` must be configured or set using `#setUrl()`\",10:\"The default `geometryFunction` can only handle `Point` geometries\",11:\"`options.featureTypes` must be an Array\",12:\"`options.geometryName` must also be provided when `options.bbox` is set\",13:\"Invalid corner\",14:\"Invalid color\",15:\"Tried to get a value for a key that does not exist in the cache\",16:\"Tried to set a value for a key that is used already\",17:\"`resolutions` must be sorted in descending order\",18:\"Either `origin` or `origins` must be configured, never both\",19:\"Number of `tileSizes` and `resolutions` must be equal\",20:\"Number of `origins` and `resolutions` must be equal\",22:\"Either `tileSize` or `tileSizes` must be configured, never both\",24:\"Invalid extent or geometry provided as `geometry`\",25:\"Cannot fit empty extent provided as `geometry`\",26:\"Features must have an id set\",27:\"Features must have an id set\",28:'`renderMode` must be `\"hybrid\"` or `\"vector\"`',30:\"The passed `feature` was already added to the source\",31:\"Tried to enqueue an `element` that was already added to the queue\",32:\"Transformation matrix cannot be inverted\",33:\"Invalid units\",34:\"Invalid geometry layout\",36:\"Unknown SRS type\",37:\"Unknown geometry type found\",38:\"`styleMapValue` has an unknown type\",39:\"Unknown geometry type\",40:\"Expected `feature` to have a geometry\",41:\"Expected an `ol/style/Style` or an array of `ol/style/Style.js`\",42:\"Question unknown, the answer is 42\",43:\"Expected `layers` to be an array or a `Collection`\",47:\"Expected `controls` to be an array or an `ol/Collection`\",48:\"Expected `interactions` to be an array or an `ol/Collection`\",49:\"Expected `overlays` to be an array or an `ol/Collection`\",50:\"`options.featureTypes` should be an Array\",51:\"Either `url` or `tileJSON` options must be provided\",52:\"Unknown `serverType` configured\",53:\"Unknown `tierSizeCalculation` configured\",55:\"The {-y} placeholder requires a tile grid with extent\",56:\"mapBrowserEvent must originate from a pointer event\",57:\"At least 2 conditions are required\",59:\"Invalid command found in the PBF\",60:\"Missing or invalid `size`\",61:\"Cannot determine IIIF Image API version from provided image information JSON\",62:\"A `WebGLArrayBuffer` must either be of type `ELEMENT_ARRAY_BUFFER` or `ARRAY_BUFFER`\",64:\"Layer opacity must be a number\",66:\"`forEachFeatureAtCoordinate` cannot be used on a WebGL layer if the hit detection logic has not been enabled. This is done by providing adequate shaders using the `hitVertexShader` and `hitFragmentShader` properties of `WebGLPointsLayerRenderer`\",67:\"A layer can only be added to the map once. Use either `layer.setMap()` or `map.addLayer()`, not both\",68:\"A VectorTile source can only be rendered if it has a projection compatible with the view projection\",69:\"`width` or `height` cannot be provided together with `scale`\"};class o extends Error{constructor(e){const t=r[e];super(t),this.code=e,this.name=\"AssertionError\",this.message=t}}var i=o;function a(e,t){const n=t[0],r=t[1];return t[0]=e[0]*n+e[2]*r+e[4],t[1]=e[1]*n+e[3]*r+e[5],t}function s(e,t){const n=(r=t)[0]*r[3]-r[1]*r[2];var r;!function(e,t){if(!e)throw new i(t)}(0!==n,32);const o=t[0],a=t[1],s=t[2],u=t[3],f=t[4],x=t[5];return e[0]=u/n,e[1]=-a/n,e[2]=-s/n,e[3]=o/n,e[4]=(s*x-u*f)/n,e[5]=-(o*x-a*f)/n,e}function u(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,\"default\")?e.default:e}new Array(6);var f={exports:{}};function x(e,t,n){n=n||2;var r,o,i,a,s,u,f,x=t&&t.length,h=x?t[0]*n:e.length,v=l(e,0,h,n,!0),d=[];if(!v||v.next===v.prev)return d;if(x&&(v=function(e,t,n,r){var o,i,a,s=[];for(o=0,i=t.length;o<i;o++)(a=l(e,t[o]*r,o<i-1?t[o+1]*r:e.length,r,!1))===a.next&&(a.steiner=!0),s.push(A(a));for(s.sort(b),o=0;o<s.length;o++)n=g(s[o],n);return n}(e,t,v,n)),e.length>80*n){r=i=e[0],o=a=e[1];for(var y=n;y<h;y+=n)(s=e[y])<r&&(r=s),(u=e[y+1])<o&&(o=u),s>i&&(i=s),u>a&&(a=u);f=0!==(f=Math.max(i-r,a-o))?32767/f:0}return c(v,d,n,r,o,f,0),d}function l(e,t,n,r,o){var i,a;if(o===P(e,t,n,r)>0)for(i=t;i<n;i+=r)a=k(i,e[i],e[i+1],a);else for(i=n-r;i>=t;i-=r)a=k(i,e[i],e[i+1],a);return a&&F(a,a.next)&&(R(a),a=a.next),a}function h(e,t){if(!e)return e;t||(t=e);var n,r=e;do{if(n=!1,r.steiner||!F(r,r.next)&&0!==Z(r.prev,r,r.next))r=r.next;else{if(R(r),(r=t=r.prev)===r.next)break;n=!0}}while(n||r!==t);return t}function c(e,t,n,r,o,i,a){if(e){!a&&i&&function(e,t,n,r){var o=e;do{0===o.z&&(o.z=w(o.x,o.y,t,n,r)),o.prevZ=o.prev,o.nextZ=o.next,o=o.next}while(o!==e);o.prevZ.nextZ=null,o.prevZ=null,function(e){var t,n,r,o,i,a,s,u,f=1;do{for(n=e,e=null,i=null,a=0;n;){for(a++,r=n,s=0,t=0;t<f&&(s++,r=r.nextZ);t++);for(u=f;s>0||u>0&&r;)0!==s&&(0===u||!r||n.z<=r.z)?(o=n,n=n.nextZ,s--):(o=r,r=r.nextZ,u--),i?i.nextZ=o:e=o,o.prevZ=i,i=o;n=r}i.nextZ=null,f*=2}while(a>1)}(o)}(e,r,o,i);for(var s,u,f=e;e.prev!==e.next;)if(s=e.prev,u=e.next,i?d(e,r,o,i):v(e))t.push(s.i/n|0),t.push(e.i/n|0),t.push(u.i/n|0),R(e),e=u.next,f=u.next;else if((e=u)===f){a?1===a?c(e=y(h(e),t,n),t,n,r,o,i,2):2===a&&p(e,t,n,r,o,i):c(h(e),t,n,r,o,i,1);break}}}function v(e){var t=e.prev,n=e,r=e.next;if(Z(t,n,r)>=0)return!1;for(var o=t.x,i=n.x,a=r.x,s=t.y,u=n.y,f=r.y,x=o<i?o<a?o:a:i<a?i:a,l=s<u?s<f?s:f:u<f?u:f,h=o>i?o>a?o:a:i>a?i:a,c=s>u?s>f?s:f:u>f?u:f,v=r.next;v!==t;){if(v.x>=x&&v.x<=h&&v.y>=l&&v.y<=c&&E(o,s,i,u,a,f,v.x,v.y)&&Z(v.prev,v,v.next)>=0)return!1;v=v.next}return!0}function d(e,t,n,r){var o=e.prev,i=e,a=e.next;if(Z(o,i,a)>=0)return!1;for(var s=o.x,u=i.x,f=a.x,x=o.y,l=i.y,h=a.y,c=s<u?s<f?s:f:u<f?u:f,v=x<l?x<h?x:h:l<h?l:h,d=s>u?s>f?s:f:u>f?u:f,y=x>l?x>h?x:h:l>h?l:h,p=w(c,v,t,n,r),b=w(d,y,t,n,r),g=e.prevZ,m=e.nextZ;g&&g.z>=p&&m&&m.z<=b;){if(g.x>=c&&g.x<=d&&g.y>=v&&g.y<=y&&g!==o&&g!==a&&E(s,x,u,l,f,h,g.x,g.y)&&Z(g.prev,g,g.next)>=0)return!1;if(g=g.prevZ,m.x>=c&&m.x<=d&&m.y>=v&&m.y<=y&&m!==o&&m!==a&&E(s,x,u,l,f,h,m.x,m.y)&&Z(m.prev,m,m.next)>=0)return!1;m=m.nextZ}for(;g&&g.z>=p;){if(g.x>=c&&g.x<=d&&g.y>=v&&g.y<=y&&g!==o&&g!==a&&E(s,x,u,l,f,h,g.x,g.y)&&Z(g.prev,g,g.next)>=0)return!1;g=g.prevZ}for(;m&&m.z<=b;){if(m.x>=c&&m.x<=d&&m.y>=v&&m.y<=y&&m!==o&&m!==a&&E(s,x,u,l,f,h,m.x,m.y)&&Z(m.prev,m,m.next)>=0)return!1;m=m.nextZ}return!0}function y(e,t,n){var r=e;do{var o=r.prev,i=r.next.next;!F(o,i)&&T(o,r,r.next,i)&&z(o,i)&&z(i,o)&&(t.push(o.i/n|0),t.push(r.i/n|0),t.push(i.i/n|0),R(r),R(r.next),r=e=i),r=r.next}while(r!==e);return h(r)}function p(e,t,n,r,o,i){var a=e;do{for(var s=a.next.next;s!==a.prev;){if(a.i!==s.i&&M(a,s)){var u=U(a,s);return a=h(a,a.next),u=h(u,u.next),c(a,t,n,r,o,i,0),void c(u,t,n,r,o,i,0)}s=s.next}a=a.next}while(a!==e)}function b(e,t){return e.x-t.x}function g(e,t){var n=function(e,t){var n,r=t,o=e.x,i=e.y,a=-1/0;do{if(i<=r.y&&i>=r.next.y&&r.next.y!==r.y){var s=r.x+(i-r.y)*(r.next.x-r.x)/(r.next.y-r.y);if(s<=o&&s>a&&(a=s,n=r.x<r.next.x?r:r.next,s===o))return n}r=r.next}while(r!==t);if(!n)return null;var u,f=n,x=n.x,l=n.y,h=1/0;r=n;do{o>=r.x&&r.x>=x&&o!==r.x&&E(i<l?o:a,i,x,l,i<l?a:o,i,r.x,r.y)&&(u=Math.abs(i-r.y)/(o-r.x),z(r,e)&&(u<h||u===h&&(r.x>n.x||r.x===n.x&&m(n,r)))&&(n=r,h=u)),r=r.next}while(r!==f);return n}(e,t);if(!n)return t;var r=U(n,e);return h(r,r.next),h(n,n.next)}function m(e,t){return Z(e.prev,e,t.prev)<0&&Z(t.next,e,e.next)<0}function w(e,t,n,r,o){return(e=1431655765&((e=858993459&((e=252645135&((e=16711935&((e=(e-n)*o|0)|e<<8))|e<<4))|e<<2))|e<<1))|(t=1431655765&((t=858993459&((t=252645135&((t=16711935&((t=(t-r)*o|0)|t<<8))|t<<4))|t<<2))|t<<1))<<1}function A(e){var t=e,n=e;do{(t.x<n.x||t.x===n.x&&t.y<n.y)&&(n=t),t=t.next}while(t!==e);return n}function E(e,t,n,r,o,i,a,s){return(o-a)*(t-s)>=(e-a)*(i-s)&&(e-a)*(r-s)>=(n-a)*(t-s)&&(n-a)*(i-s)>=(o-a)*(r-s)}function M(e,t){return e.next.i!==t.i&&e.prev.i!==t.i&&!function(e,t){var n=e;do{if(n.i!==e.i&&n.next.i!==e.i&&n.i!==t.i&&n.next.i!==t.i&&T(n,n.next,e,t))return!0;n=n.next}while(n!==e);return!1}(e,t)&&(z(e,t)&&z(t,e)&&function(e,t){var n=e,r=!1,o=(e.x+t.x)/2,i=(e.y+t.y)/2;do{n.y>i!=n.next.y>i&&n.next.y!==n.y&&o<(n.next.x-n.x)*(i-n.y)/(n.next.y-n.y)+n.x&&(r=!r),n=n.next}while(n!==e);return r}(e,t)&&(Z(e.prev,e,t.prev)||Z(e,t.prev,t))||F(e,t)&&Z(e.prev,e,e.next)>0&&Z(t.prev,t,t.next)>0)}function Z(e,t,n){return(t.y-e.y)*(n.x-t.x)-(t.x-e.x)*(n.y-t.y)}function F(e,t){return e.x===t.x&&e.y===t.y}function T(e,t,n,r){var o=S(Z(e,t,n)),i=S(Z(e,t,r)),a=S(Z(n,r,e)),s=S(Z(n,r,t));return o!==i&&a!==s||(!(0!==o||!I(e,n,t))||(!(0!==i||!I(e,r,t))||(!(0!==a||!I(n,e,r))||!(0!==s||!I(n,t,r)))))}function I(e,t,n){return t.x<=Math.max(e.x,n.x)&&t.x>=Math.min(e.x,n.x)&&t.y<=Math.max(e.y,n.y)&&t.y>=Math.min(e.y,n.y)}function S(e){return e>0?1:e<0?-1:0}function z(e,t){return Z(e.prev,e,e.next)<0?Z(e,t,e.next)>=0&&Z(e,e.prev,t)>=0:Z(e,t,e.prev)<0||Z(e,e.next,t)<0}function U(e,t){var n=new B(e.i,e.x,e.y),r=new B(t.i,t.x,t.y),o=e.next,i=t.prev;return e.next=t,t.prev=e,n.next=o,o.prev=n,r.next=n,n.prev=r,i.next=r,r.prev=i,r}function k(e,t,n,r){var o=new B(e,t,n);return r?(o.next=r.next,o.prev=r,r.next.prev=o,r.next=o):(o.prev=o,o.next=o),o}function R(e){e.next.prev=e.prev,e.prev.next=e.next,e.prevZ&&(e.prevZ.nextZ=e.nextZ),e.nextZ&&(e.nextZ.prevZ=e.prevZ)}function B(e,t,n){this.i=e,this.x=t,this.y=n,this.prev=null,this.next=null,this.z=0,this.prevZ=null,this.nextZ=null,this.steiner=!1}function P(e,t,n,r){for(var o=0,i=t,a=n-r;i<n;i+=r)o+=(e[a]-e[i])*(e[i+1]+e[a+1]),a=i;return o}f.exports=x,f.exports.default=x,x.deviation=function(e,t,n,r){var o=t&&t.length,i=o?t[0]*n:e.length,a=Math.abs(P(e,0,i,n));if(o)for(var s=0,u=t.length;s<u;s++){var f=t[s]*n,x=s<u-1?t[s+1]*n:e.length;a-=Math.abs(P(e,f,x,n))}var l=0;for(s=0;s<r.length;s+=3){var h=r[s]*n,c=r[s+1]*n,v=r[s+2]*n;l+=Math.abs((e[h]-e[v])*(e[c+1]-e[h+1])-(e[h]-e[c])*(e[v+1]-e[h+1]))}return 0===a&&0===l?0:Math.abs((l-a)/a)},x.flatten=function(e){for(var t=e[0][0].length,n={vertices:[],holes:[],dimensions:t},r=0,o=0;o<e.length;o++){for(var i=0;i<e[o].length;i++)for(var a=0;a<t;a++)n.vertices.push(e[o][i][a]);o>0&&(r+=e[o-1].length,n.holes.push(r))}return n};var N=u(f.exports);const _=[],O={vertexPosition:0,indexPosition:0};function q(e,t,n,r,o){e[t+0]=n,e[t+1]=r,e[t+2]=o}function L(e,t,n,r,o,i){const a=3+o,s=e[t+0],u=e[t+1],f=_;f.length=o;for(let n=0;n<f.length;n++)f[n]=e[t+2+n];let x=i?i.vertexPosition:0,l=i?i.indexPosition:0;const h=x/a;return q(n,x,s,u,0),f.length&&n.set(f,x+3),x+=a,q(n,x,s,u,1),f.length&&n.set(f,x+3),x+=a,q(n,x,s,u,2),f.length&&n.set(f,x+3),x+=a,q(n,x,s,u,3),f.length&&n.set(f,x+3),x+=a,r[l++]=h,r[l++]=h+1,r[l++]=h+3,r[l++]=h+1,r[l++]=h+2,r[l++]=h+3,O.vertexPosition=x,O.indexPosition=l,O}function C(e,t,n,r,o,i,s,u,f,x){const l=5+u.length,h=i.length/l,c=[e[t+0],e[t+1]],v=[e[n],e[n+1]],d=a(x,[...c]),y=a(x,[...v]);function p(e,t,n){const r=1e4;return Math.round(1500*t)+Math.round(1500*n)*r+e*r*r}function b(e,t,n){const r=Math.sqrt((t[0]-e[0])*(t[0]-e[0])+(t[1]-e[1])*(t[1]-e[1])),o=[(t[0]-e[0])/r,(t[1]-e[1])/r],i=[-o[1],o[0]],a=Math.sqrt((n[0]-e[0])*(n[0]-e[0])+(n[1]-e[1])*(n[1]-e[1])),s=[(n[0]-e[0])/a,(n[1]-e[1])/a],u=0===r||0===a?0:Math.acos((f=s[0]*o[0]+s[1]*o[1],x=-1,l=1,Math.min(Math.max(f,x),l)));var f,x,l;return s[0]*i[0]+s[1]*i[1]>0?u:2*Math.PI-u}const g=null!==o;let m=0,w=0;if(null!==r){m=b(d,y,a(x,[...[e[r],e[r+1]]]))}if(g){w=b(y,d,a(x,[...[e[o],e[o+1]]]))}i.push(c[0],c[1],v[0],v[1],p(0,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(1,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(2,m,w)),i.push(...u),i.push(c[0],c[1],v[0],v[1],p(3,m,w)),i.push(...u),s.push(h,h+1,h+2,h+1,h+3,h+2)}function G(e,t,n,r,o){const i=2+o;let a=t;const s=e.slice(a,a+o);a+=o;const u=e[a++];let f=0;const x=new Array(u-1);for(let t=0;t<u;t++)f+=e[a++],t<u-1&&(x[t]=f);const l=e.slice(a,a+2*f),h=N(l,x,2);for(let e=0;e<h.length;e++)r.push(h[e]+n.length/i);for(let e=0;e<l.length;e+=2)n.push(l[e],l[e+1],...s);return a+2*f}const j=self;j.onmessage=r=>{const o=r.data;switch(o.type){case t:{const e=3,t=2,n=o.customAttributesSize,r=t+n,i=new Float32Array(o.renderInstructions),a=i.length/r,s=4*a*(n+e),u=new Uint32Array(6*a),f=new Float32Array(s);let x;for(let e=0;e<i.length;e+=r)x=L(i,e,f,u,n,x);const l=Object.assign({vertexBuffer:f.buffer,indexBuffer:u.buffer,renderInstructions:i.buffer},o);j.postMessage(l,[f.buffer,u.buffer,i.buffer]);break}case n:{const e=[],t=[],n=o.customAttributesSize,r=2,i=new Float32Array(o.renderInstructions);let a=0;const u=o.renderInstructionsTransform,f=[1,0,0,1,0,0];let x,l;for(s(f,u);a<i.length;){l=Array.from(i.slice(a,a+n)),a+=n,x=i[a++];for(let n=0;n<x-1;n++)C(i,a+n*r,a+(n+1)*r,n>0?a+(n-1)*r:null,n<x-2?a+(n+2)*r:null,e,t,l,0,f);a+=x*r}const h=Uint32Array.from(t),c=Float32Array.from(e),v=Object.assign({vertexBuffer:c.buffer,indexBuffer:h.buffer,renderInstructions:i.buffer},o);j.postMessage(v,[c.buffer,h.buffer,i.buffer]);break}case e:{const e=[],t=[],n=o.customAttributesSize,r=new Float32Array(o.renderInstructions);let i=0;for(;i<r.length;)i=G(r,i,e,t,n);const a=Uint32Array.from(t),s=Float32Array.from(e),u=Object.assign({vertexBuffer:s.buffer,indexBuffer:a.buffer,renderInstructions:r.buffer},o);j.postMessage(u,[s.buffer,a.buffer,r.buffer]);break}}};";
             return new Worker(typeof Blob === 'undefined'
               ? 'data:application/javascript;base64,' + Buffer.from(source, 'binary').toString('base64')
               : URL.createObjectURL(new Blob([source], {type: 'application/javascript'})));
@@ -65339,8 +71531,7 @@ var ol = (function () {
    * Please note that these can only be numerical values.
    * @property {string} vertexShader Vertex shader source, mandatory.
    * @property {string} fragmentShader Fragment shader source, mandatory.
-   * @property {string} [hitVertexShader] Vertex shader source for hit detection rendering.
-   * @property {string} [hitFragmentShader] Fragment shader source for hit detection rendering.
+   * @property {boolean} [hitDetectionEnabled] Whether shader is hit detection aware.
    * @property {Object<string,import("../../webgl/Helper").UniformValue>} [uniforms] Uniform definitions for the post process steps
    * Please note that `u_texture` is reserved for the main texture slot and `u_opacity` is reserved for the layer opacity.
    * @property {Array<import("./Layer").PostProcessesOptions>} [postProcesses] Post-processes definitions
@@ -65424,12 +71615,9 @@ var ol = (function () {
         postProcesses: options.postProcesses,
       });
 
-      this.ready = false;
-
       this.sourceRevision_ = -1;
 
       this.verticesBuffer_ = new WebGLArrayBuffer$1(ARRAY_BUFFER, DYNAMIC_DRAW);
-      this.hitVerticesBuffer_ = new WebGLArrayBuffer$1(ARRAY_BUFFER, DYNAMIC_DRAW);
       this.indicesBuffer_ = new WebGLArrayBuffer$1(
         ELEMENT_ARRAY_BUFFER,
         DYNAMIC_DRAW
@@ -65455,24 +71643,7 @@ var ol = (function () {
        * @type {boolean}
        * @private
        */
-      this.hitDetectionEnabled_ =
-        options.hitFragmentShader && options.hitVertexShader ? true : false;
-
-      /**
-       * @private
-       */
-      this.hitVertexShader_ = options.hitVertexShader;
-
-      /**
-       * @private
-       */
-      this.hitFragmentShader_ = options.hitFragmentShader;
-
-      /**
-       * @type {WebGLProgram}
-       * @private
-       */
-      this.hitProgram_;
+      this.hitDetectionEnabled_ = options.hitDetectionEnabled ?? true;
 
       const customAttributes = options.attributes
         ? options.attributes.map(function (attribute) {
@@ -65500,34 +71671,21 @@ var ol = (function () {
           size: 1,
           type: AttributeType.FLOAT,
         },
-      ].concat(customAttributes);
+      ];
 
-      /**
-       * A list of attributes used for hit detection.
-       * @type {Array<import('../../webgl/Helper.js').AttributeDescription>}
-       */
-      this.hitDetectionAttributes = [
-        {
-          name: 'a_position',
-          size: 2,
-          type: AttributeType.FLOAT,
-        },
-        {
-          name: 'a_index',
-          size: 1,
-          type: AttributeType.FLOAT,
-        },
-        {
+      if (this.hitDetectionEnabled_) {
+        this.attributes.push({
           name: 'a_hitColor',
           size: 4,
           type: AttributeType.FLOAT,
-        },
-        {
+        });
+        this.attributes.push({
           name: 'a_featureUid',
           size: 1,
           type: AttributeType.FLOAT,
-        },
-      ].concat(customAttributes);
+        });
+      }
+      this.attributes.push(...customAttributes);
 
       this.customAttributes = options.attributes ? options.attributes : [];
 
@@ -65562,13 +71720,6 @@ var ol = (function () {
       this.renderInstructions_ = new Float32Array(0);
 
       /**
-       * These instructions are used for hit detection
-       * @type {Float32Array}
-       * @private
-       */
-      this.hitRenderInstructions_ = new Float32Array(0);
-
-      /**
        * @type {WebGLRenderTarget}
        * @private
        */
@@ -65579,7 +71730,7 @@ var ol = (function () {
        * @type {number}
        * @private
        */
-      this.generateBuffersRun_ = 0;
+      this.lastSentId = 0;
 
       /**
        * @private
@@ -65595,13 +71746,8 @@ var ol = (function () {
           const received = event.data;
           if (received.type === WebGLWorkerMessageType.GENERATE_POINT_BUFFERS) {
             const projectionTransform = received.projectionTransform;
-            if (received.hitDetection) {
-              this.hitVerticesBuffer_.fromArrayBuffer(received.vertexBuffer);
-              this.helper.flushBufferData(this.hitVerticesBuffer_);
-            } else {
-              this.verticesBuffer_.fromArrayBuffer(received.vertexBuffer);
-              this.helper.flushBufferData(this.verticesBuffer_);
-            }
+            this.verticesBuffer_.fromArrayBuffer(received.vertexBuffer);
+            this.helper.flushBufferData(this.verticesBuffer_);
             this.indicesBuffer_.fromArrayBuffer(received.indexBuffer);
             this.helper.flushBufferData(this.indicesBuffer_);
 
@@ -65610,19 +71756,12 @@ var ol = (function () {
               this.invertRenderTransform_,
               this.renderTransform_
             );
-            if (received.hitDetection) {
-              this.hitRenderInstructions_ = new Float32Array(
-                event.data.renderInstructions
-              );
-            } else {
-              this.renderInstructions_ = new Float32Array(
-                event.data.renderInstructions
-              );
-              if (received.generateBuffersRun === this.generateBuffersRun_) {
-                this.ready = true;
-              }
+            this.renderInstructions_ = new Float32Array(
+              event.data.renderInstructions
+            );
+            if (received.id === this.lastSentId) {
+              this.ready = true;
             }
-
             this.getLayer().changed();
           }
         }
@@ -65686,11 +71825,6 @@ var ol = (function () {
       );
 
       if (this.hitDetectionEnabled_) {
-        this.hitProgram_ = this.helper.getProgram(
-          this.hitFragmentShader_,
-          this.hitVertexShader_
-        );
-
         this.hitRenderTarget_ = new WebGLRenderTarget$1(this.helper);
       }
     }
@@ -65749,6 +71883,36 @@ var ol = (function () {
       const gl = this.helper.getGL();
       this.preRender(gl, frameState);
 
+      const [startWorld, endWorld, worldWidth] =
+        this.getWorldParameters_(frameState);
+
+      // draw the normal canvas
+      this.renderWorlds(frameState, false, startWorld, endWorld, worldWidth);
+
+      this.helper.finalizeDraw(
+        frameState,
+        this.dispatchPreComposeEvent,
+        this.dispatchPostComposeEvent
+      );
+      const canvas = this.helper.getCanvas();
+
+      if (this.hitDetectionEnabled_) {
+        this.renderWorlds(frameState, true, startWorld, endWorld, worldWidth);
+        this.hitRenderTarget_.clearCachedData();
+      }
+
+      this.postRender(gl, frameState);
+
+      return canvas;
+    }
+
+    /**
+     * Compute world params
+     * @private
+     * @param {import("../../Map.js").FrameState} frameState Frame state.
+     * @return {Array<number>} The world start, end and width.
+     */
+    getWorldParameters_(frameState) {
       const projection = frameState.viewState.projection;
       const layer = this.getLayer();
       const vectorSource = layer.getSource();
@@ -65766,34 +71930,7 @@ var ol = (function () {
         ? Math.floor((extent[0] - projectionExtent[0]) / worldWidth)
         : 0;
 
-      let world = startWorld;
-      const renderCount = this.indicesBuffer_.getSize();
-
-      do {
-        // apply the current projection transform with the invert of the one used to fill buffers
-        this.helper.makeProjectionTransform(frameState, this.currentTransform_);
-        translate$1(this.currentTransform_, world * worldWidth, 0);
-        multiply(this.currentTransform_, this.invertRenderTransform_);
-        this.helper.applyUniforms(frameState);
-
-        this.helper.drawElements(0, renderCount);
-      } while (++world < endWorld);
-
-      this.helper.finalizeDraw(
-        frameState,
-        this.dispatchPreComposeEvent,
-        this.dispatchPostComposeEvent
-      );
-      const canvas = this.helper.getCanvas();
-
-      if (this.hitDetectionEnabled_) {
-        this.renderHitDetection(frameState, startWorld, endWorld, worldWidth);
-        this.hitRenderTarget_.clearCachedData();
-      }
-
-      this.postRender(gl, frameState);
-
-      return canvas;
+      return [startWorld, endWorld, worldWidth];
     }
 
     /**
@@ -65849,38 +71986,22 @@ var ol = (function () {
       const projectionTransform = create$3();
       this.helper.makeProjectionTransform(frameState, projectionTransform);
 
-      // here we anticipate the amount of render instructions that we well generate
-      // this can be done since we know that for normal render we only have x, y as base instructions,
-      // and x, y, r, g, b, a and featureUid for hit render instructions
-      // and we also know the amount of custom attributes to append to these
-      const totalInstructionsCount =
-        (2 + this.customAttributes.length) * this.featureCount_;
+      const baseInstructionLength = this.hitDetectionEnabled_ ? 7 : 2; // see below
+      const singleInstructionLength =
+        baseInstructionLength + this.customAttributes.length;
+      const totalSize = singleInstructionLength * this.featureCount_;
       if (
         !this.renderInstructions_ ||
-        this.renderInstructions_.length !== totalInstructionsCount
+        this.renderInstructions_.length !== totalSize
       ) {
-        this.renderInstructions_ = new Float32Array(totalInstructionsCount);
-      }
-      if (this.hitDetectionEnabled_) {
-        const totalHitInstructionsCount =
-          (7 + this.customAttributes.length) * this.featureCount_;
-        if (
-          !this.hitRenderInstructions_ ||
-          this.hitRenderInstructions_.length !== totalHitInstructionsCount
-        ) {
-          this.hitRenderInstructions_ = new Float32Array(
-            totalHitInstructionsCount
-          );
-        }
+        this.renderInstructions_ = new Float32Array(totalSize);
       }
 
       // loop on features to fill the buffer
       let featureCache, geometry;
       const tmpCoords = [];
       const tmpColor = [];
-      let renderIndex = 0;
-      let hitIndex = 0;
-      let hitColor;
+      let idx = -1;
       for (const featureUid in this.featureCache_) {
         featureCache = this.featureCache_[featureUid];
         geometry = /** @type {import("../../geom").Point} */ (
@@ -65889,71 +72010,46 @@ var ol = (function () {
         if (!geometry || geometry.getType() !== 'Point') {
           continue;
         }
-
         tmpCoords[0] = geometry.getFlatCoordinates()[0];
         tmpCoords[1] = geometry.getFlatCoordinates()[1];
         apply(projectionTransform, tmpCoords);
 
-        hitColor = colorEncodeId(hitIndex + 6, tmpColor);
-
-        this.renderInstructions_[renderIndex++] = tmpCoords[0];
-        this.renderInstructions_[renderIndex++] = tmpCoords[1];
+        this.renderInstructions_[++idx] = tmpCoords[0];
+        this.renderInstructions_[++idx] = tmpCoords[1];
 
         // for hit detection, the feature uid is saved in the opacity value
         // and the index of the opacity value is encoded in the color values
         if (this.hitDetectionEnabled_) {
-          this.hitRenderInstructions_[hitIndex++] = tmpCoords[0];
-          this.hitRenderInstructions_[hitIndex++] = tmpCoords[1];
-          this.hitRenderInstructions_[hitIndex++] = hitColor[0];
-          this.hitRenderInstructions_[hitIndex++] = hitColor[1];
-          this.hitRenderInstructions_[hitIndex++] = hitColor[2];
-          this.hitRenderInstructions_[hitIndex++] = hitColor[3];
-          this.hitRenderInstructions_[hitIndex++] = Number(featureUid);
+          const hitColor = colorEncodeId(idx + 5, tmpColor);
+          this.renderInstructions_[++idx] = hitColor[0];
+          this.renderInstructions_[++idx] = hitColor[1];
+          this.renderInstructions_[++idx] = hitColor[2];
+          this.renderInstructions_[++idx] = hitColor[3];
+          this.renderInstructions_[++idx] = Number(featureUid);
         }
 
         // pushing custom attributes
-        let value;
         for (let j = 0; j < this.customAttributes.length; j++) {
-          value = this.customAttributes[j].callback(
+          const value = this.customAttributes[j].callback(
             featureCache.feature,
             featureCache.properties
           );
-          this.renderInstructions_[renderIndex++] = value;
-          if (this.hitDetectionEnabled_) {
-            this.hitRenderInstructions_[hitIndex++] = value;
-          }
+          this.renderInstructions_[++idx] = value;
         }
       }
 
       /** @type {import('../../render/webgl/constants.js').WebGLWorkerGenerateBuffersMessage} */
       const message = {
-        id: 0,
+        id: ++this.lastSentId,
         type: WebGLWorkerMessageType.GENERATE_POINT_BUFFERS,
         renderInstructions: this.renderInstructions_.buffer,
-        customAttributesCount: this.customAttributes.length,
+        customAttributesSize: singleInstructionLength - 2,
       };
       // additional properties will be sent back as-is by the worker
       message['projectionTransform'] = projectionTransform;
-      message['generateBuffersRun'] = ++this.generateBuffersRun_;
       this.ready = false;
       this.worker_.postMessage(message, [this.renderInstructions_.buffer]);
       this.renderInstructions_ = null;
-
-      /** @type {import('../../render/webgl/constants.js').WebGLWorkerGenerateBuffersMessage} */
-      if (this.hitDetectionEnabled_) {
-        const hitMessage = {
-          id: 0,
-          type: WebGLWorkerMessageType.GENERATE_POINT_BUFFERS,
-          renderInstructions: this.hitRenderInstructions_.buffer,
-          customAttributesCount: 5 + this.customAttributes.length,
-        };
-        hitMessage['projectionTransform'] = projectionTransform;
-        hitMessage['hitDetection'] = true;
-        this.worker_.postMessage(hitMessage, [
-          this.hitRenderInstructions_.buffer,
-        ]);
-        this.hitRenderInstructions_ = null;
-      }
     }
 
     /**
@@ -65973,7 +72069,7 @@ var ol = (function () {
       matches
     ) {
       assert(this.hitDetectionEnabled_, 66);
-      if (!this.hitRenderInstructions_) {
+      if (!this.renderInstructions_ || !this.hitDetectionEnabled_) {
         return undefined;
       }
 
@@ -65985,7 +72081,7 @@ var ol = (function () {
       const data = this.hitRenderTarget_.readPixel(pixel[0] / 2, pixel[1] / 2);
       const color = [data[0] / 255, data[1] / 255, data[2] / 255, data[3] / 255];
       const index = colorDecodeId(color);
-      const opacity = this.hitRenderInstructions_[index];
+      const opacity = this.renderInstructions_[index];
       const uid = Math.floor(opacity).toString();
 
       const source = this.getLayer().getSource();
@@ -65997,42 +72093,40 @@ var ol = (function () {
     }
 
     /**
-     * Render the hit detection data to the corresponding render target
+     * Render the world, either to the main framebuffer or to the hit framebuffer
      * @param {import("../../Map.js").FrameState} frameState current frame state
+     * @param {boolean} forHitDetection whether the rendering is for hit detection
      * @param {number} startWorld the world to render in the first iteration
      * @param {number} endWorld the last world to render
      * @param {number} worldWidth the width of the worlds being rendered
      */
-    renderHitDetection(frameState, startWorld, endWorld, worldWidth) {
-      // skip render entirely if vertex buffers not ready/generated yet
-      if (!this.hitVerticesBuffer_.getSize()) {
-        return;
-      }
-
+    renderWorlds(frameState, forHitDetection, startWorld, endWorld, worldWidth) {
       let world = startWorld;
 
-      this.hitRenderTarget_.setSize([
-        Math.floor(frameState.size[0] / 2),
-        Math.floor(frameState.size[1] / 2),
-      ]);
+      this.helper.useProgram(this.program_, frameState);
 
-      this.helper.useProgram(this.hitProgram_, frameState);
-      this.helper.prepareDrawToRenderTarget(
-        frameState,
-        this.hitRenderTarget_,
-        true
-      );
+      if (forHitDetection) {
+        this.hitRenderTarget_.setSize([
+          Math.floor(frameState.size[0] / 2),
+          Math.floor(frameState.size[1] / 2),
+        ]);
+        this.helper.prepareDrawToRenderTarget(
+          frameState,
+          this.hitRenderTarget_,
+          true
+        );
+      }
 
-      this.helper.bindBuffer(this.hitVerticesBuffer_);
+      this.helper.bindBuffer(this.verticesBuffer_);
       this.helper.bindBuffer(this.indicesBuffer_);
-      this.helper.enableAttributes(this.hitDetectionAttributes);
+      this.helper.enableAttributes(this.attributes);
 
       do {
         this.helper.makeProjectionTransform(frameState, this.currentTransform_);
         translate$1(this.currentTransform_, world * worldWidth, 0);
         multiply(this.currentTransform_, this.invertRenderTransform_);
         this.helper.applyUniforms(frameState);
-
+        this.helper.applyHitDetectionUniform(forHitDetection);
         const renderCount = this.indicesBuffer_.getSize();
         this.helper.drawElements(0, renderCount);
       } while (++world < endWorld);
@@ -66237,44 +72331,8 @@ var ol = (function () {
             },
           },
         ],
+        hitDetectionEnabled: true,
         vertexShader: `
-        precision mediump float;
-        uniform mat4 u_projectionMatrix;
-        uniform mat4 u_offsetScaleMatrix;
-        uniform float u_size;
-        attribute vec2 a_position;
-        attribute float a_index;
-        attribute float a_weight;
-
-        varying vec2 v_texCoord;
-        varying float v_weight;
-
-        void main(void) {
-          mat4 offsetMatrix = u_offsetScaleMatrix;
-          float offsetX = a_index == 0.0 || a_index == 3.0 ? -u_size / 2.0 : u_size / 2.0;
-          float offsetY = a_index == 0.0 || a_index == 1.0 ? -u_size / 2.0 : u_size / 2.0;
-          vec4 offsets = offsetMatrix * vec4(offsetX, offsetY, 0.0, 0.0);
-          gl_Position = u_projectionMatrix * vec4(a_position, 0.0, 1.0) + offsets;
-          float u = a_index == 0.0 || a_index == 3.0 ? 0.0 : 1.0;
-          float v = a_index == 0.0 || a_index == 1.0 ? 0.0 : 1.0;
-          v_texCoord = vec2(u, v);
-          v_weight = a_weight;
-        }`,
-        fragmentShader: `
-        precision mediump float;
-        uniform float u_blurSlope;
-
-        varying vec2 v_texCoord;
-        varying float v_weight;
-
-        void main(void) {
-          vec2 texCoord = v_texCoord * 2.0 - vec2(1.0, 1.0);
-          float sqRadius = texCoord.x * texCoord.x + texCoord.y * texCoord.y;
-          float value = (1.0 - sqrt(sqRadius)) * u_blurSlope;
-          float alpha = smoothstep(0.0, 1.0, value) * v_weight;
-          gl_FragColor = vec4(alpha, alpha, alpha, alpha);
-        }`,
-        hitVertexShader: `
         precision mediump float;
         uniform mat4 u_projectionMatrix;
         uniform mat4 u_offsetScaleMatrix;
@@ -66300,9 +72358,10 @@ var ol = (function () {
           v_hitColor = a_hitColor;
           v_weight = a_weight;
         }`,
-        hitFragmentShader: `
+        fragmentShader: `
         precision mediump float;
         uniform float u_blurSlope;
+        uniform mediump int u_hitDetection;
 
         varying vec2 v_texCoord;
         varying float v_weight;
@@ -66313,12 +72372,14 @@ var ol = (function () {
           float sqRadius = texCoord.x * texCoord.x + texCoord.y * texCoord.y;
           float value = (1.0 - sqrt(sqRadius)) * u_blurSlope;
           float alpha = smoothstep(0.0, 1.0, value) * v_weight;
-          if (alpha < 0.05) {
-            discard;
+          gl_FragColor = vec4(alpha, alpha, alpha, alpha);
+          if (u_hitDetection > 0) {
+            if (alpha < 0.05) {
+              discard;
+            }
+            gl_FragColor = v_hitColor;
           }
-
-          gl_FragColor = v_hitColor;
-        }`,
+      }`,
         uniforms: {
           u_size: () => {
             return (this.get(Property.RADIUS) + this.get(Property.BLUR)) * 2;
@@ -66865,7 +72926,7 @@ var ol = (function () {
         this.sourceProj_.canWrapX() &&
         !!maxSourceExtent &&
         !!this.sourceProj_.getExtent() &&
-        getWidth(maxSourceExtent) == getWidth(this.sourceProj_.getExtent());
+        getWidth(maxSourceExtent) >= getWidth(this.sourceProj_.getExtent());
 
       /**
        * @type {?number}
@@ -66895,7 +72956,7 @@ var ol = (function () {
       /*
        * The maxSubdivision controls how many splittings of the target area can
        * be done. The idea here is to do a linear mapping of the target areas
-       * but the actual overal reprojection (can be) extremely non-linear. The
+       * but the actual overall reprojection (can be) extremely non-linear. The
        * default value of MAX_SUBDIVISION was chosen based on mapping a 256x256
        * tile size. However this function is also called to remap canvas rendered
        * layers which can be much larger. This calculation increases the maxSubdivision
@@ -70229,24 +76290,6 @@ var ol = (function () {
     }
 
     /**
-     * Get the extent for a tile range.
-     * @param {number} z Integer zoom level.
-     * @param {import("../TileRange.js").default} tileRange Tile range.
-     * @param {import("../extent.js").Extent} [tempExtent] Temporary import("../extent.js").Extent object.
-     * @return {import("../extent.js").Extent} Extent.
-     */
-    getTileRangeExtent(z, tileRange, tempExtent) {
-      const origin = this.getOrigin(z);
-      const resolution = this.getResolution(z);
-      const tileSize = toSize(this.getTileSize(z), this.tmpSize_);
-      const minX = origin[0] + tileRange.minX * tileSize[0] * resolution;
-      const maxX = origin[0] + (tileRange.maxX + 1) * tileSize[0] * resolution;
-      const minY = origin[1] + tileRange.minY * tileSize[1] * resolution;
-      const maxY = origin[1] + (tileRange.maxY + 1) * tileSize[1] * resolution;
-      return createOrUpdate$2(minX, minY, maxX, maxY, tempExtent);
-    }
-
-    /**
      * Get a tile range for the given extent and integer zoom level.
      * @param {import("../extent.js").Extent} extent Extent.
      * @param {number} z Integer zoom level.
@@ -71959,8 +78002,18 @@ var ol = (function () {
       getImageFunction,
       interpolate
     ) {
-      const maxSourceExtent = sourceProj.getExtent();
-      const maxTargetExtent = targetProj.getExtent();
+      let maxSourceExtent = sourceProj.getExtent();
+      if (maxSourceExtent && sourceProj.canWrapX()) {
+        maxSourceExtent = maxSourceExtent.slice();
+        maxSourceExtent[0] = -Infinity;
+        maxSourceExtent[2] = Infinity;
+      }
+      let maxTargetExtent = targetProj.getExtent();
+      if (maxTargetExtent && targetProj.canWrapX()) {
+        maxTargetExtent = maxTargetExtent.slice();
+        maxTargetExtent[0] = -Infinity;
+        maxTargetExtent[2] = Infinity;
+      }
 
       const limitedTargetExtent = maxTargetExtent
         ? getIntersection(targetExtent, maxTargetExtent)
@@ -71986,11 +78039,9 @@ var ol = (function () {
       );
 
       const sourceExtent = triangulation.calculateSourceExtent();
-      const sourceImage = getImageFunction(
-        sourceExtent,
-        sourceResolution,
-        pixelRatio
-      );
+      const sourceImage = isEmpty(sourceExtent)
+        ? null
+        : getImageFunction(sourceExtent, sourceResolution, pixelRatio);
       const state = sourceImage ? ImageState.IDLE : ImageState.EMPTY;
       const sourcePixelRatio = sourceImage ? sourceImage.getPixelRatio() : 1;
 
@@ -73200,7 +79251,7 @@ var ol = (function () {
        */
       this.tileQueue_ = new TileQueue$1(function () {
         return 1;
-      }, this.changed.bind(this));
+      }, this.processSources_.bind(this));
 
       /**
        * The most recently requested frame state.
@@ -73367,6 +79418,8 @@ var ol = (function () {
         return null;
       }
 
+      this.tileQueue_.loadMoreTiles(16, 16);
+
       resolution = this.findNearestResolution(resolution);
       const frameState = this.updateFrameState_(extent, resolution, projection);
       this.requestedFrameState_ = frameState;
@@ -73389,8 +79442,6 @@ var ol = (function () {
       ) {
         this.processSources_();
       }
-
-      frameState.tileQueue.loadMoreTiles(16, 16);
 
       if (frameState.animate) {
         requestAnimationFrame(this.changed.bind(this));
@@ -73468,15 +79519,16 @@ var ol = (function () {
       }
       context.putImageData(output, 0, 0);
 
-      this.changed();
+      if (frameState.animate) {
+        requestAnimationFrame(this.changed.bind(this));
+      } else {
+        this.changed();
+      }
       this.renderedRevision_ = this.getRevision();
 
       this.dispatchEvent(
         new RasterSourceEvent(RasterEventType.AFTEROPERATIONS, frameState, data)
       );
-      if (frameState.animate) {
-        requestAnimationFrame(this.changed.bind(this));
-      }
     }
 
     /**
@@ -74101,6 +80153,101 @@ var ol = (function () {
     document.head.appendChild(script);
   }
 
+  class ResponseError extends Error {
+    /**
+     * @param {XMLHttpRequest} response The XHR object.
+     */
+    constructor(response) {
+      const message = 'Unexpected response status: ' + response.status;
+      super(message);
+
+      /**
+       * @type {string}
+       */
+      this.name = 'ResponseError';
+
+      /**
+       * @type {XMLHttpRequest}
+       */
+      this.response = response;
+    }
+  }
+
+  class ClientError extends Error {
+    /**
+     * @param {XMLHttpRequest} client The XHR object.
+     */
+    constructor(client) {
+      super('Failed to issue request');
+
+      /**
+       * @type {string}
+       */
+      this.name = 'ClientError';
+
+      /**
+       * @type {XMLHttpRequest}
+       */
+      this.client = client;
+    }
+  }
+
+  /**
+   * @param {string} url The URL.
+   * @return {Promise<Object>} A promise that resolves to the JSON response.
+   */
+  function getJSON(url) {
+    return new Promise(function (resolve, reject) {
+      /**
+       * @param {ProgressEvent<XMLHttpRequest>} event The load event.
+       */
+      function onLoad(event) {
+        const client = event.target;
+        // status will be 0 for file:// urls
+        if (!client.status || (client.status >= 200 && client.status < 300)) {
+          let data;
+          try {
+            data = JSON.parse(client.responseText);
+          } catch (err) {
+            const message = 'Error parsing response text as JSON: ' + err.message;
+            reject(new Error(message));
+            return;
+          }
+          resolve(data);
+          return;
+        }
+
+        reject(new ResponseError(client));
+      }
+
+      /**
+       * @param {ProgressEvent<XMLHttpRequest>} event The error event.
+       */
+      function onError(event) {
+        reject(new ClientError(event.target));
+      }
+
+      const client = new XMLHttpRequest();
+      client.addEventListener('load', onLoad);
+      client.addEventListener('error', onError);
+      client.open('GET', url);
+      client.setRequestHeader('Accept', 'application/json');
+      client.send();
+    });
+  }
+
+  /**
+   * @param {string} base The base URL.
+   * @param {string} url The potentially relative URL.
+   * @return {string} The full URL.
+   */
+  function resolveUrl(base, url) {
+    if (url.includes('://')) {
+      return url;
+    }
+    return new URL(url, base).href;
+  }
+
   /**
    * @module ol/source/TileJSON
    */
@@ -74300,6 +80447,10 @@ var ol = (function () {
   }
 
   var TileJSON$1 = TileJSON;
+
+  function getDefaultExportFromCjs (x) {
+  	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+  }
 
   var csscolorparser = {};
 
@@ -77676,6 +83827,8 @@ var ol = (function () {
       return this.sampleCurveY(this.solveCurveX(x, epsilon));
   };
 
+  var UnitBezier$1 = /*@__PURE__*/getDefaultExportFromCjs(unitbezier);
+
   //      
   function number(a, b, t) {
       return a * (1 - t) + b * t;
@@ -77690,10 +83843,10 @@ var ol = (function () {
   }
 
   var interpolate = /*#__PURE__*/Object.freeze({
-    __proto__: null,
-    number: number,
-    color: color,
-    array: array
+  	__proto__: null,
+  	number: number,
+  	color: color,
+  	array: array
   });
 
   //      
@@ -77812,7 +83965,7 @@ var ol = (function () {
           t = exponentialInterpolation(input, 1, lower, upper);
       } else if (interpolation.name === 'cubic-bezier') {
           var c = interpolation.controlPoints;
-          var ub = new unitbezier(c[0], c[1], c[2], c[3]);
+          var ub = new UnitBezier$1(c[0], c[1], c[2], c[3]);
           t = ub.solve(exponentialInterpolation(input, 1, lower, upper));
       }
       return t;
@@ -79721,7 +85874,7 @@ var ol = (function () {
 
   //      
   function supportsPropertyExpression(spec) {
-      return spec['property-type'] === 'data-driven' || spec['property-type'] === 'cross-faded-data-driven';
+      return spec['property-type'] === 'data-driven';
   }
   function supportsZoomExpression(spec) {
       return !!spec.expression && spec.expression.parameters.indexOf('zoom') > -1;
@@ -79951,7 +86104,7 @@ var ol = (function () {
       return unbundle(value);
   }
 
-  var spec = {"$version":8,"$root":{"version":{"required":true,"type":"enum","values":[8]},"name":{"type":"string"},"metadata":{"type":"*"},"center":{"type":"array","value":"number"},"zoom":{"type":"number"},"bearing":{"type":"number","default":0,"period":360,"units":"degrees"},"pitch":{"type":"number","default":0,"units":"degrees"},"light":{"type":"light"},"terrain":{"type":"terrain"},"fog":{"type":"fog"},"sources":{"required":true,"type":"sources"},"sprite":{"type":"string"},"glyphs":{"type":"string"},"transition":{"type":"transition"},"projection":{"type":"projection"},"layers":{"required":true,"type":"array","value":"layer"}},"sources":{"*":{"type":"source"}},"source":["source_vector","source_raster","source_raster_dem","source_geojson","source_video","source_image"],"source_vector":{"type":{"required":true,"type":"enum","values":{"vector":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"scheme":{"type":"enum","values":{"xyz":{},"tms":{}},"default":"xyz"},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"attribution":{"type":"string"},"promoteId":{"type":"promoteId"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_raster":{"type":{"required":true,"type":"enum","values":{"raster":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"tileSize":{"type":"number","default":512,"units":"pixels"},"scheme":{"type":"enum","values":{"xyz":{},"tms":{}},"default":"xyz"},"attribution":{"type":"string"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_raster_dem":{"type":{"required":true,"type":"enum","values":{"raster-dem":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"tileSize":{"type":"number","default":512,"units":"pixels"},"attribution":{"type":"string"},"encoding":{"type":"enum","values":{"terrarium":{},"mapbox":{}},"default":"mapbox"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_geojson":{"type":{"required":true,"type":"enum","values":{"geojson":{}}},"data":{"type":"*"},"maxzoom":{"type":"number","default":18},"attribution":{"type":"string"},"buffer":{"type":"number","default":128,"maximum":512,"minimum":0},"filter":{"type":"*"},"tolerance":{"type":"number","default":0.375},"cluster":{"type":"boolean","default":false},"clusterRadius":{"type":"number","default":50,"minimum":0},"clusterMaxZoom":{"type":"number"},"clusterMinPoints":{"type":"number"},"clusterProperties":{"type":"*"},"lineMetrics":{"type":"boolean","default":false},"generateId":{"type":"boolean","default":false},"promoteId":{"type":"promoteId"}},"source_video":{"type":{"required":true,"type":"enum","values":{"video":{}}},"urls":{"required":true,"type":"array","value":"string"},"coordinates":{"required":true,"type":"array","length":4,"value":{"type":"array","length":2,"value":"number"}}},"source_image":{"type":{"required":true,"type":"enum","values":{"image":{}}},"url":{"required":true,"type":"string"},"coordinates":{"required":true,"type":"array","length":4,"value":{"type":"array","length":2,"value":"number"}}},"layer":{"id":{"type":"string","required":true},"type":{"type":"enum","values":{"fill":{},"line":{},"symbol":{},"circle":{},"heatmap":{},"fill-extrusion":{},"raster":{},"hillshade":{},"background":{},"sky":{}},"required":true},"metadata":{"type":"*"},"source":{"type":"string"},"source-layer":{"type":"string"},"minzoom":{"type":"number","minimum":0,"maximum":24},"maxzoom":{"type":"number","minimum":0,"maximum":24},"filter":{"type":"filter"},"layout":{"type":"layout"},"paint":{"type":"paint"}},"layout":["layout_fill","layout_line","layout_circle","layout_heatmap","layout_fill-extrusion","layout_symbol","layout_raster","layout_hillshade","layout_background","layout_sky"],"layout_background":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_sky":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_fill":{"fill-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_circle":{"circle-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_heatmap":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_fill-extrusion":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"},"fill-extrusion-edge-radius":{"type":"number","private":true,"default":0,"minimum":0,"maximum":1,"property-type":"constant"}},"layout_line":{"line-cap":{"type":"enum","values":{"butt":{},"round":{},"square":{}},"default":"butt","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-join":{"type":"enum","values":{"bevel":{},"round":{},"miter":{}},"default":"miter","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-miter-limit":{"type":"number","default":2,"requires":[{"line-join":"miter"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-round-limit":{"type":"number","default":1.05,"requires":[{"line-join":"round"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_symbol":{"symbol-placement":{"type":"enum","values":{"point":{},"line":{},"line-center":{}},"default":"point","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-spacing":{"type":"number","default":250,"minimum":1,"units":"pixels","requires":[{"symbol-placement":"line"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-avoid-edges":{"type":"boolean","default":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"symbol-z-order":{"type":"enum","values":{"auto":{},"viewport-y":{},"source":{}},"default":"auto","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-allow-overlap":{"type":"boolean","default":false,"requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-ignore-placement":{"type":"boolean","default":false,"requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-optional":{"type":"boolean","default":false,"requires":["icon-image","text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-rotation-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-size":{"type":"number","default":1,"minimum":0,"units":"factor of the original icon size","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-text-fit":{"type":"enum","values":{"none":{},"width":{},"height":{},"both":{}},"default":"none","requires":["icon-image","text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-text-fit-padding":{"type":"array","value":"number","length":4,"default":[0,0,0,0],"units":"pixels","requires":["icon-image","text-field",{"icon-text-fit":["both","width","height"]}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-image":{"type":"resolvedImage","tokens":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-rotate":{"type":"number","default":0,"period":360,"units":"degrees","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-padding":{"type":"number","default":2,"minimum":0,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-keep-upright":{"type":"boolean","default":false,"requires":["icon-image",{"icon-rotation-alignment":"map"},{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-offset":{"type":"array","value":"number","length":2,"default":[0,0],"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-anchor":{"type":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"default":"center","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-rotation-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-field":{"type":"formatted","default":"","tokens":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-font":{"type":"array","value":"string","default":["Open Sans Regular","Arial Unicode MS Regular"],"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-size":{"type":"number","default":16,"minimum":0,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-max-width":{"type":"number","default":10,"minimum":0,"units":"ems","requires":["text-field",{"symbol-placement":["point"]}],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-line-height":{"type":"number","default":1.2,"units":"ems","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-letter-spacing":{"type":"number","default":0,"units":"ems","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-justify":{"type":"enum","values":{"auto":{},"left":{},"center":{},"right":{}},"default":"center","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-radial-offset":{"type":"number","units":"ems","default":0,"requires":["text-field"],"property-type":"data-driven","expression":{"interpolated":true,"parameters":["zoom","feature"]}},"text-variable-anchor":{"type":"array","value":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"requires":["text-field",{"symbol-placement":["point"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-anchor":{"type":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"default":"center","requires":["text-field",{"!":"text-variable-anchor"}],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-max-angle":{"type":"number","default":45,"units":"degrees","requires":["text-field",{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-writing-mode":{"type":"array","value":"enum","values":{"horizontal":{},"vertical":{}},"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-rotate":{"type":"number","default":0,"period":360,"units":"degrees","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-padding":{"type":"number","default":2,"minimum":0,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-keep-upright":{"type":"boolean","default":true,"requires":["text-field",{"text-rotation-alignment":"map"},{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-transform":{"type":"enum","values":{"none":{},"uppercase":{},"lowercase":{}},"default":"none","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-offset":{"type":"array","value":"number","units":"ems","length":2,"default":[0,0],"requires":["text-field",{"!":"text-radial-offset"}],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-allow-overlap":{"type":"boolean","default":false,"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-ignore-placement":{"type":"boolean","default":false,"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-optional":{"type":"boolean","default":false,"requires":["text-field","icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_raster":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_hillshade":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"filter":{"type":"array","value":"*"},"filter_symbol":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature","pitch","distance-from-center"]}},"filter_fill":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_line":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_circle":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_fill-extrusion":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_heatmap":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_operator":{"type":"enum","values":{"==":{},"!=":{},">":{},">=":{},"<":{},"<=":{},"in":{},"!in":{},"all":{},"any":{},"none":{},"has":{},"!has":{},"within":{}}},"geometry_type":{"type":"enum","values":{"Point":{},"LineString":{},"Polygon":{}}},"function":{"expression":{"type":"expression"},"stops":{"type":"array","value":"function_stop"},"base":{"type":"number","default":1,"minimum":0},"property":{"type":"string","default":"$zoom"},"type":{"type":"enum","values":{"identity":{},"exponential":{},"interval":{},"categorical":{}},"default":"exponential"},"colorSpace":{"type":"enum","values":{"rgb":{},"lab":{},"hcl":{}},"default":"rgb"},"default":{"type":"*","required":false}},"function_stop":{"type":"array","minimum":0,"maximum":24,"value":["number","color"],"length":2},"expression":{"type":"array","value":"*","minimum":1},"expression_name":{"type":"enum","values":{"let":{"group":"Variable binding"},"var":{"group":"Variable binding"},"literal":{"group":"Types"},"array":{"group":"Types"},"at":{"group":"Lookup"},"in":{"group":"Lookup"},"index-of":{"group":"Lookup"},"slice":{"group":"Lookup"},"case":{"group":"Decision"},"match":{"group":"Decision"},"coalesce":{"group":"Decision"},"step":{"group":"Ramps, scales, curves"},"interpolate":{"group":"Ramps, scales, curves"},"interpolate-hcl":{"group":"Ramps, scales, curves"},"interpolate-lab":{"group":"Ramps, scales, curves"},"ln2":{"group":"Math"},"pi":{"group":"Math"},"e":{"group":"Math"},"typeof":{"group":"Types"},"string":{"group":"Types"},"number":{"group":"Types"},"boolean":{"group":"Types"},"object":{"group":"Types"},"collator":{"group":"Types"},"format":{"group":"Types"},"image":{"group":"Types"},"number-format":{"group":"Types"},"to-string":{"group":"Types"},"to-number":{"group":"Types"},"to-boolean":{"group":"Types"},"to-rgba":{"group":"Color"},"to-color":{"group":"Types"},"rgb":{"group":"Color"},"rgba":{"group":"Color"},"get":{"group":"Lookup"},"has":{"group":"Lookup"},"length":{"group":"Lookup"},"properties":{"group":"Feature data"},"feature-state":{"group":"Feature data"},"geometry-type":{"group":"Feature data"},"id":{"group":"Feature data"},"zoom":{"group":"Camera"},"pitch":{"group":"Camera"},"distance-from-center":{"group":"Camera"},"heatmap-density":{"group":"Heatmap"},"line-progress":{"group":"Feature data"},"sky-radial-progress":{"group":"sky"},"accumulated":{"group":"Feature data"},"+":{"group":"Math"},"*":{"group":"Math"},"-":{"group":"Math"},"/":{"group":"Math"},"%":{"group":"Math"},"^":{"group":"Math"},"sqrt":{"group":"Math"},"log10":{"group":"Math"},"ln":{"group":"Math"},"log2":{"group":"Math"},"sin":{"group":"Math"},"cos":{"group":"Math"},"tan":{"group":"Math"},"asin":{"group":"Math"},"acos":{"group":"Math"},"atan":{"group":"Math"},"min":{"group":"Math"},"max":{"group":"Math"},"round":{"group":"Math"},"abs":{"group":"Math"},"ceil":{"group":"Math"},"floor":{"group":"Math"},"distance":{"group":"Math"},"==":{"group":"Decision"},"!=":{"group":"Decision"},">":{"group":"Decision"},"<":{"group":"Decision"},">=":{"group":"Decision"},"<=":{"group":"Decision"},"all":{"group":"Decision"},"any":{"group":"Decision"},"!":{"group":"Decision"},"within":{"group":"Decision"},"is-supported-script":{"group":"String"},"upcase":{"group":"String"},"downcase":{"group":"String"},"concat":{"group":"String"},"resolved-locale":{"group":"String"}}},"fog":{"range":{"type":"array","default":[0.5,10],"minimum":-20,"maximum":20,"length":2,"value":"number","property-type":"data-constant","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]}},"color":{"type":"color","property-type":"data-constant","default":"#ffffff","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"high-color":{"type":"color","property-type":"data-constant","default":"#245cdf","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"space-color":{"type":"color","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],4,"#010b19",7,"#367ab9"],"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"horizon-blend":{"type":"number","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],4,0.2,7,0.1],"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"star-intensity":{"type":"number","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],5,0.35,6,0],"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}},"light":{"anchor":{"type":"enum","default":"viewport","values":{"map":{},"viewport":{}},"property-type":"data-constant","transition":false,"expression":{"interpolated":false,"parameters":["zoom"]}},"position":{"type":"array","default":[1.15,210,30],"length":3,"value":"number","property-type":"data-constant","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]}},"color":{"type":"color","property-type":"data-constant","default":"#ffffff","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"intensity":{"type":"number","property-type":"data-constant","default":0.5,"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}},"projection":{"name":{"type":"enum","values":{"albers":{},"equalEarth":{},"equirectangular":{},"lambertConformalConic":{},"mercator":{},"naturalEarth":{},"winkelTripel":{},"globe":{}},"default":"mercator","required":true},"center":{"type":"array","length":2,"value":"number","property-type":"data-constant","minimum":[-180,-90],"maximum":[180,90],"transition":false,"requires":[{"name":["albers","lambertConformalConic"]}]},"parallels":{"type":"array","length":2,"value":"number","property-type":"data-constant","minimum":[-90,-90],"maximum":[90,90],"transition":false,"requires":[{"name":["albers","lambertConformalConic"]}]}},"terrain":{"source":{"type":"string","required":true},"exaggeration":{"type":"number","property-type":"data-constant","default":1,"minimum":0,"maximum":1000,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true,"requires":["source"]}},"paint":["paint_fill","paint_line","paint_circle","paint_heatmap","paint_fill-extrusion","paint_symbol","paint_raster","paint_hillshade","paint_background","paint_sky"],"paint_fill":{"fill-antialias":{"type":"boolean","default":true,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"fill-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-outline-color":{"type":"color","transition":true,"requires":[{"!":"fill-pattern"},{"fill-antialias":true}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["fill-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-pattern":{"type":"resolvedImage","transition":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"cross-faded-data-driven"}},"paint_fill-extrusion":{"fill-extrusion-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"fill-extrusion-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["fill-extrusion-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-pattern":{"type":"resolvedImage","transition":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"cross-faded-data-driven"},"fill-extrusion-height":{"type":"number","default":0,"minimum":0,"units":"meters","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-base":{"type":"number","default":0,"minimum":0,"units":"meters","transition":true,"requires":["fill-extrusion-height"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-vertical-gradient":{"type":"boolean","default":true,"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-ambient-occlusion-intensity":{"property-type":"data-constant","type":"number","private":true,"default":0,"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"fill-extrusion-ambient-occlusion-radius":{"property-type":"data-constant","type":"number","private":true,"default":3,"minimum":0,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}},"paint_line":{"line-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"line-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["line-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"line-width":{"type":"number","default":1,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-gap-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-offset":{"type":"number","default":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-dasharray":{"type":"array","value":"number","minimum":0,"transition":true,"units":"line widths","requires":[{"!":"line-pattern"}],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"cross-faded-data-driven"},"line-pattern":{"type":"resolvedImage","transition":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"cross-faded-data-driven"},"line-gradient":{"type":"color","transition":false,"requires":[{"!":"line-pattern"},{"source":"geojson","has":{"lineMetrics":true}}],"expression":{"interpolated":true,"parameters":["line-progress"]},"property-type":"color-ramp"},"line-trim-offset":{"type":"array","value":"number","length":2,"default":[0,0],"minimum":[0,0],"maximum":[1,1],"transition":false,"requires":[{"source":"geojson","has":{"lineMetrics":true}}],"property-type":"constant"}},"paint_circle":{"circle-radius":{"type":"number","default":5,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-blur":{"type":"number","default":0,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"circle-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["circle-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-pitch-scale":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{}},"default":"viewport","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-stroke-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-stroke-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-stroke-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"}},"paint_heatmap":{"heatmap-radius":{"type":"number","default":30,"minimum":1,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"heatmap-weight":{"type":"number","default":1,"minimum":0,"transition":false,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"heatmap-intensity":{"type":"number","default":1,"minimum":0,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"heatmap-color":{"type":"color","default":["interpolate",["linear"],["heatmap-density"],0,"rgba(0, 0, 255, 0)",0.1,"royalblue",0.3,"cyan",0.5,"lime",0.7,"yellow",1,"red"],"transition":false,"expression":{"interpolated":true,"parameters":["heatmap-density"]},"property-type":"color-ramp"},"heatmap-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_symbol":{"icon-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-color":{"type":"color","default":"#000000","transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-color":{"type":"color","default":"rgba(0, 0, 0, 0)","transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["icon-image","icon-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-color":{"type":"color","default":"#000000","transition":true,"overridable":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-color":{"type":"color","default":"rgba(0, 0, 0, 0)","transition":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["text-field","text-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_raster":{"raster-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-hue-rotate":{"type":"number","default":0,"period":360,"transition":true,"units":"degrees","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-brightness-min":{"type":"number","default":0,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-brightness-max":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-saturation":{"type":"number","default":0,"minimum":-1,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-contrast":{"type":"number","default":0,"minimum":-1,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-resampling":{"type":"enum","values":{"linear":{},"nearest":{}},"default":"linear","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"raster-fade-duration":{"type":"number","default":300,"minimum":0,"transition":false,"units":"milliseconds","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_hillshade":{"hillshade-illumination-direction":{"type":"number","default":335,"minimum":0,"maximum":359,"transition":false,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-illumination-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"viewport","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-exaggeration":{"type":"number","default":0.5,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-shadow-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-highlight-color":{"type":"color","default":"#FFFFFF","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-accent-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_background":{"background-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"background-pattern"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"background-pattern":{"type":"resolvedImage","transition":true,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"cross-faded"},"background-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_sky":{"sky-type":{"type":"enum","values":{"gradient":{},"atmosphere":{}},"default":"atmosphere","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-atmosphere-sun":{"type":"array","value":"number","length":2,"units":"degrees","minimum":[0,0],"maximum":[360,180],"transition":false,"requires":[{"sky-type":"atmosphere"}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-atmosphere-sun-intensity":{"type":"number","requires":[{"sky-type":"atmosphere"}],"default":10,"minimum":0,"maximum":100,"transition":false,"property-type":"data-constant"},"sky-gradient-center":{"type":"array","requires":[{"sky-type":"gradient"}],"value":"number","default":[0,0],"length":2,"units":"degrees","minimum":[0,0],"maximum":[360,180],"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-gradient-radius":{"type":"number","requires":[{"sky-type":"gradient"}],"default":90,"minimum":0,"maximum":180,"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-gradient":{"type":"color","default":["interpolate",["linear"],["sky-radial-progress"],0.8,"#87ceeb",1,"white"],"transition":false,"requires":[{"sky-type":"gradient"}],"expression":{"interpolated":true,"parameters":["sky-radial-progress"]},"property-type":"color-ramp"},"sky-atmosphere-halo-color":{"type":"color","default":"white","transition":false,"requires":[{"sky-type":"atmosphere"}],"property-type":"data-constant"},"sky-atmosphere-color":{"type":"color","default":"white","transition":false,"requires":[{"sky-type":"atmosphere"}],"property-type":"data-constant"},"sky-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"transition":{"duration":{"type":"number","default":300,"minimum":0,"units":"milliseconds"},"delay":{"type":"number","default":0,"minimum":0,"units":"milliseconds"}},"property-type":{"data-driven":{"type":"property-type"},"cross-faded":{"type":"property-type"},"cross-faded-data-driven":{"type":"property-type"},"color-ramp":{"type":"property-type"},"data-constant":{"type":"property-type"},"constant":{"type":"property-type"}},"promoteId":{"*":{"type":"string"}}};
+  var spec = {"$version":8,"$root":{"version":{"required":true,"type":"enum","values":[8]},"name":{"type":"string"},"metadata":{"type":"*"},"center":{"type":"array","value":"number"},"zoom":{"type":"number"},"bearing":{"type":"number","default":0,"period":360,"units":"degrees"},"pitch":{"type":"number","default":0,"units":"degrees"},"light":{"type":"light"},"terrain":{"type":"terrain"},"fog":{"type":"fog"},"sources":{"required":true,"type":"sources"},"sprite":{"type":"string"},"glyphs":{"type":"string"},"transition":{"type":"transition"},"projection":{"type":"projection"},"layers":{"required":true,"type":"array","value":"layer"}},"sources":{"*":{"type":"source"}},"source":["source_vector","source_raster","source_raster_dem","source_geojson","source_video","source_image"],"source_vector":{"type":{"required":true,"type":"enum","values":{"vector":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"scheme":{"type":"enum","values":{"xyz":{},"tms":{}},"default":"xyz"},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"attribution":{"type":"string"},"promoteId":{"type":"promoteId"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_raster":{"type":{"required":true,"type":"enum","values":{"raster":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"tileSize":{"type":"number","default":512,"units":"pixels"},"scheme":{"type":"enum","values":{"xyz":{},"tms":{}},"default":"xyz"},"attribution":{"type":"string"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_raster_dem":{"type":{"required":true,"type":"enum","values":{"raster-dem":{}}},"url":{"type":"string"},"tiles":{"type":"array","value":"string"},"bounds":{"type":"array","value":"number","length":4,"default":[-180,-85.051129,180,85.051129]},"minzoom":{"type":"number","default":0},"maxzoom":{"type":"number","default":22},"tileSize":{"type":"number","default":512,"units":"pixels"},"attribution":{"type":"string"},"encoding":{"type":"enum","values":{"terrarium":{},"mapbox":{}},"default":"mapbox"},"volatile":{"type":"boolean","default":false},"*":{"type":"*"}},"source_geojson":{"type":{"required":true,"type":"enum","values":{"geojson":{}}},"data":{"type":"*"},"maxzoom":{"type":"number","default":18},"attribution":{"type":"string"},"buffer":{"type":"number","default":128,"maximum":512,"minimum":0},"filter":{"type":"*"},"tolerance":{"type":"number","default":0.375},"cluster":{"type":"boolean","default":false},"clusterRadius":{"type":"number","default":50,"minimum":0},"clusterMaxZoom":{"type":"number"},"clusterMinPoints":{"type":"number"},"clusterProperties":{"type":"*"},"lineMetrics":{"type":"boolean","default":false},"generateId":{"type":"boolean","default":false},"promoteId":{"type":"promoteId"}},"source_video":{"type":{"required":true,"type":"enum","values":{"video":{}}},"urls":{"required":true,"type":"array","value":"string"},"coordinates":{"required":true,"type":"array","length":4,"value":{"type":"array","length":2,"value":"number"}}},"source_image":{"type":{"required":true,"type":"enum","values":{"image":{}}},"url":{"required":true,"type":"string"},"coordinates":{"required":true,"type":"array","length":4,"value":{"type":"array","length":2,"value":"number"}}},"layer":{"id":{"type":"string","required":true},"type":{"type":"enum","values":{"fill":{},"line":{},"symbol":{},"circle":{},"heatmap":{},"fill-extrusion":{},"raster":{},"hillshade":{},"background":{},"sky":{}},"required":true},"metadata":{"type":"*"},"source":{"type":"string"},"source-layer":{"type":"string"},"minzoom":{"type":"number","minimum":0,"maximum":24},"maxzoom":{"type":"number","minimum":0,"maximum":24},"filter":{"type":"filter"},"layout":{"type":"layout"},"paint":{"type":"paint"}},"layout":["layout_fill","layout_line","layout_circle","layout_heatmap","layout_fill-extrusion","layout_symbol","layout_raster","layout_hillshade","layout_background","layout_sky"],"layout_background":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_sky":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_fill":{"fill-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_circle":{"circle-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_heatmap":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_fill-extrusion":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"},"fill-extrusion-edge-radius":{"type":"number","private":true,"default":0,"minimum":0,"maximum":1,"property-type":"constant"}},"layout_line":{"line-cap":{"type":"enum","values":{"butt":{},"round":{},"square":{}},"default":"butt","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-join":{"type":"enum","values":{"bevel":{},"round":{},"miter":{}},"default":"miter","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-miter-limit":{"type":"number","default":2,"requires":[{"line-join":"miter"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-round-limit":{"type":"number","default":1.05,"requires":[{"line-join":"round"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_symbol":{"symbol-placement":{"type":"enum","values":{"point":{},"line":{},"line-center":{}},"default":"point","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-spacing":{"type":"number","default":250,"minimum":1,"units":"pixels","requires":[{"symbol-placement":"line"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-avoid-edges":{"type":"boolean","default":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"symbol-sort-key":{"type":"number","expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"symbol-z-order":{"type":"enum","values":{"auto":{},"viewport-y":{},"source":{}},"default":"auto","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-allow-overlap":{"type":"boolean","default":false,"requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-ignore-placement":{"type":"boolean","default":false,"requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-optional":{"type":"boolean","default":false,"requires":["icon-image","text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-rotation-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-size":{"type":"number","default":1,"minimum":0,"units":"factor of the original icon size","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-text-fit":{"type":"enum","values":{"none":{},"width":{},"height":{},"both":{}},"default":"none","requires":["icon-image","text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-text-fit-padding":{"type":"array","value":"number","length":4,"default":[0,0,0,0],"units":"pixels","requires":["icon-image","text-field",{"icon-text-fit":["both","width","height"]}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-image":{"type":"resolvedImage","tokens":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-rotate":{"type":"number","default":0,"period":360,"units":"degrees","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-padding":{"type":"number","default":2,"minimum":0,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-keep-upright":{"type":"boolean","default":false,"requires":["icon-image",{"icon-rotation-alignment":"map"},{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"icon-offset":{"type":"array","value":"number","length":2,"default":[0,0],"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-anchor":{"type":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"default":"center","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"icon-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-rotation-alignment":{"type":"enum","values":{"map":{},"viewport":{},"auto":{}},"default":"auto","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-field":{"type":"formatted","default":"","tokens":true,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-font":{"type":"array","value":"string","default":["Open Sans Regular","Arial Unicode MS Regular"],"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-size":{"type":"number","default":16,"minimum":0,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-max-width":{"type":"number","default":10,"minimum":0,"units":"ems","requires":["text-field",{"symbol-placement":["point"]}],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-line-height":{"type":"number","default":1.2,"units":"ems","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-letter-spacing":{"type":"number","default":0,"units":"ems","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-justify":{"type":"enum","values":{"auto":{},"left":{},"center":{},"right":{}},"default":"center","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-radial-offset":{"type":"number","units":"ems","default":0,"requires":["text-field"],"property-type":"data-driven","expression":{"interpolated":true,"parameters":["zoom","feature"]}},"text-variable-anchor":{"type":"array","value":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"requires":["text-field",{"symbol-placement":["point"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-anchor":{"type":"enum","values":{"center":{},"left":{},"right":{},"top":{},"bottom":{},"top-left":{},"top-right":{},"bottom-left":{},"bottom-right":{}},"default":"center","requires":["text-field",{"!":"text-variable-anchor"}],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-max-angle":{"type":"number","default":45,"units":"degrees","requires":["text-field",{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-writing-mode":{"type":"array","value":"enum","values":{"horizontal":{},"vertical":{}},"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-rotate":{"type":"number","default":0,"period":360,"units":"degrees","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-padding":{"type":"number","default":2,"minimum":0,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-keep-upright":{"type":"boolean","default":true,"requires":["text-field",{"text-rotation-alignment":"map"},{"symbol-placement":["line","line-center"]}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-transform":{"type":"enum","values":{"none":{},"uppercase":{},"lowercase":{}},"default":"none","requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-offset":{"type":"array","value":"number","units":"ems","length":2,"default":[0,0],"requires":["text-field",{"!":"text-radial-offset"}],"expression":{"interpolated":true,"parameters":["zoom","feature"]},"property-type":"data-driven"},"text-allow-overlap":{"type":"boolean","default":false,"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-ignore-placement":{"type":"boolean","default":false,"requires":["text-field"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-optional":{"type":"boolean","default":false,"requires":["text-field","icon-image"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_raster":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"layout_hillshade":{"visibility":{"type":"enum","values":{"visible":{},"none":{}},"default":"visible","property-type":"constant"}},"filter":{"type":"array","value":"*"},"filter_symbol":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature","pitch","distance-from-center"]}},"filter_fill":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_line":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_circle":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_fill-extrusion":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_heatmap":{"type":"boolean","default":false,"transition":false,"property-type":"data-driven","expression":{"interpolated":false,"parameters":["zoom","feature"]}},"filter_operator":{"type":"enum","values":{"==":{},"!=":{},">":{},">=":{},"<":{},"<=":{},"in":{},"!in":{},"all":{},"any":{},"none":{},"has":{},"!has":{},"within":{}}},"geometry_type":{"type":"enum","values":{"Point":{},"LineString":{},"Polygon":{}}},"function":{"expression":{"type":"expression"},"stops":{"type":"array","value":"function_stop"},"base":{"type":"number","default":1,"minimum":0},"property":{"type":"string","default":"$zoom"},"type":{"type":"enum","values":{"identity":{},"exponential":{},"interval":{},"categorical":{}},"default":"exponential"},"colorSpace":{"type":"enum","values":{"rgb":{},"lab":{},"hcl":{}},"default":"rgb"},"default":{"type":"*","required":false}},"function_stop":{"type":"array","minimum":0,"maximum":24,"value":["number","color"],"length":2},"expression":{"type":"array","value":"*","minimum":1},"expression_name":{"type":"enum","values":{"let":{"group":"Variable binding"},"var":{"group":"Variable binding"},"literal":{"group":"Types"},"array":{"group":"Types"},"at":{"group":"Lookup"},"in":{"group":"Lookup"},"index-of":{"group":"Lookup"},"slice":{"group":"Lookup"},"case":{"group":"Decision"},"match":{"group":"Decision"},"coalesce":{"group":"Decision"},"step":{"group":"Ramps, scales, curves"},"interpolate":{"group":"Ramps, scales, curves"},"interpolate-hcl":{"group":"Ramps, scales, curves"},"interpolate-lab":{"group":"Ramps, scales, curves"},"ln2":{"group":"Math"},"pi":{"group":"Math"},"e":{"group":"Math"},"typeof":{"group":"Types"},"string":{"group":"Types"},"number":{"group":"Types"},"boolean":{"group":"Types"},"object":{"group":"Types"},"collator":{"group":"Types"},"format":{"group":"Types"},"image":{"group":"Types"},"number-format":{"group":"Types"},"to-string":{"group":"Types"},"to-number":{"group":"Types"},"to-boolean":{"group":"Types"},"to-rgba":{"group":"Color"},"to-color":{"group":"Types"},"rgb":{"group":"Color"},"rgba":{"group":"Color"},"get":{"group":"Lookup"},"has":{"group":"Lookup"},"length":{"group":"Lookup"},"properties":{"group":"Feature data"},"feature-state":{"group":"Feature data"},"geometry-type":{"group":"Feature data"},"id":{"group":"Feature data"},"zoom":{"group":"Camera"},"pitch":{"group":"Camera"},"distance-from-center":{"group":"Camera"},"heatmap-density":{"group":"Heatmap"},"line-progress":{"group":"Feature data"},"sky-radial-progress":{"group":"sky"},"accumulated":{"group":"Feature data"},"+":{"group":"Math"},"*":{"group":"Math"},"-":{"group":"Math"},"/":{"group":"Math"},"%":{"group":"Math"},"^":{"group":"Math"},"sqrt":{"group":"Math"},"log10":{"group":"Math"},"ln":{"group":"Math"},"log2":{"group":"Math"},"sin":{"group":"Math"},"cos":{"group":"Math"},"tan":{"group":"Math"},"asin":{"group":"Math"},"acos":{"group":"Math"},"atan":{"group":"Math"},"min":{"group":"Math"},"max":{"group":"Math"},"round":{"group":"Math"},"abs":{"group":"Math"},"ceil":{"group":"Math"},"floor":{"group":"Math"},"distance":{"group":"Math"},"==":{"group":"Decision"},"!=":{"group":"Decision"},">":{"group":"Decision"},"<":{"group":"Decision"},">=":{"group":"Decision"},"<=":{"group":"Decision"},"all":{"group":"Decision"},"any":{"group":"Decision"},"!":{"group":"Decision"},"within":{"group":"Decision"},"is-supported-script":{"group":"String"},"upcase":{"group":"String"},"downcase":{"group":"String"},"concat":{"group":"String"},"resolved-locale":{"group":"String"}}},"fog":{"range":{"type":"array","default":[0.5,10],"minimum":-20,"maximum":20,"length":2,"value":"number","property-type":"data-constant","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]}},"color":{"type":"color","property-type":"data-constant","default":"#ffffff","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"high-color":{"type":"color","property-type":"data-constant","default":"#245cdf","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"space-color":{"type":"color","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],4,"#010b19",7,"#367ab9"],"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"horizon-blend":{"type":"number","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],4,0.2,7,0.1],"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"star-intensity":{"type":"number","property-type":"data-constant","default":["interpolate",["linear"],["zoom"],5,0.35,6,0],"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}},"light":{"anchor":{"type":"enum","default":"viewport","values":{"map":{},"viewport":{}},"property-type":"data-constant","transition":false,"expression":{"interpolated":false,"parameters":["zoom"]}},"position":{"type":"array","default":[1.15,210,30],"length":3,"value":"number","property-type":"data-constant","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]}},"color":{"type":"color","property-type":"data-constant","default":"#ffffff","expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"intensity":{"type":"number","property-type":"data-constant","default":0.5,"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true}},"projection":{"name":{"type":"enum","values":{"albers":{},"equalEarth":{},"equirectangular":{},"lambertConformalConic":{},"mercator":{},"naturalEarth":{},"winkelTripel":{},"globe":{}},"default":"mercator","required":true},"center":{"type":"array","length":2,"value":"number","property-type":"data-constant","minimum":[-180,-90],"maximum":[180,90],"transition":false,"requires":[{"name":["albers","lambertConformalConic"]}]},"parallels":{"type":"array","length":2,"value":"number","property-type":"data-constant","minimum":[-90,-90],"maximum":[90,90],"transition":false,"requires":[{"name":["albers","lambertConformalConic"]}]}},"terrain":{"source":{"type":"string","required":true},"exaggeration":{"type":"number","property-type":"data-constant","default":1,"minimum":0,"maximum":1000,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true,"requires":["source"]}},"paint":["paint_fill","paint_line","paint_circle","paint_heatmap","paint_fill-extrusion","paint_symbol","paint_raster","paint_hillshade","paint_background","paint_sky"],"paint_fill":{"fill-antialias":{"type":"boolean","default":true,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"fill-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-outline-color":{"type":"color","transition":true,"requires":[{"!":"fill-pattern"},{"fill-antialias":true}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["fill-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-pattern":{"type":"resolvedImage","transition":false,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"}},"paint_fill-extrusion":{"fill-extrusion-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"fill-extrusion-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["fill-extrusion-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-pattern":{"type":"resolvedImage","transition":false,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"fill-extrusion-height":{"type":"number","default":0,"minimum":0,"units":"meters","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-base":{"type":"number","default":0,"minimum":0,"units":"meters","transition":true,"requires":["fill-extrusion-height"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"fill-extrusion-vertical-gradient":{"type":"boolean","default":true,"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"fill-extrusion-ambient-occlusion-intensity":{"property-type":"data-constant","type":"number","private":true,"default":0,"minimum":0,"maximum":1,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true},"fill-extrusion-ambient-occlusion-radius":{"property-type":"data-constant","type":"number","private":true,"default":3,"minimum":0,"expression":{"interpolated":true,"parameters":["zoom"]},"transition":true,"requires":["fill-extrusion-edge-radius"]}},"paint_line":{"line-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"line-pattern"}],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"line-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["line-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"line-width":{"type":"number","default":1,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-gap-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-offset":{"type":"number","default":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"line-dasharray":{"type":"array","value":"number","minimum":0,"transition":false,"units":"line widths","requires":[{"!":"line-pattern"}],"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-pattern":{"type":"resolvedImage","transition":false,"expression":{"interpolated":false,"parameters":["zoom","feature"]},"property-type":"data-driven"},"line-gradient":{"type":"color","transition":false,"requires":[{"!":"line-pattern"},{"source":"geojson","has":{"lineMetrics":true}}],"expression":{"interpolated":true,"parameters":["line-progress"]},"property-type":"color-ramp"},"line-trim-offset":{"type":"array","value":"number","length":2,"default":[0,0],"minimum":[0,0],"maximum":[1,1],"transition":false,"requires":[{"source":"geojson","has":{"lineMetrics":true}}],"property-type":"constant"}},"paint_circle":{"circle-radius":{"type":"number","default":5,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-blur":{"type":"number","default":0,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"circle-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["circle-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-pitch-scale":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-pitch-alignment":{"type":"enum","values":{"map":{},"viewport":{}},"default":"viewport","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"circle-stroke-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-stroke-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"circle-stroke-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"}},"paint_heatmap":{"heatmap-radius":{"type":"number","default":30,"minimum":1,"transition":true,"units":"pixels","expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"heatmap-weight":{"type":"number","default":1,"minimum":0,"transition":false,"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"heatmap-intensity":{"type":"number","default":1,"minimum":0,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"heatmap-color":{"type":"color","default":["interpolate",["linear"],["heatmap-density"],0,"rgba(0, 0, 255, 0)",0.1,"royalblue",0.3,"cyan",0.5,"lime",0.7,"yellow",1,"red"],"transition":false,"expression":{"interpolated":true,"parameters":["heatmap-density"]},"property-type":"color-ramp"},"heatmap-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_symbol":{"icon-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-color":{"type":"color","default":"#000000","transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-color":{"type":"color","default":"rgba(0, 0, 0, 0)","transition":true,"requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-halo-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"icon-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","requires":["icon-image"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"icon-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["icon-image","icon-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"text-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-color":{"type":"color","default":"#000000","transition":true,"overridable":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-color":{"type":"color","default":"rgba(0, 0, 0, 0)","transition":true,"requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-width":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-halo-blur":{"type":"number","default":0,"minimum":0,"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom","feature","feature-state"]},"property-type":"data-driven"},"text-translate":{"type":"array","value":"number","length":2,"default":[0,0],"transition":true,"units":"pixels","requires":["text-field"],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"text-translate-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"map","requires":["text-field","text-translate"],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_raster":{"raster-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-hue-rotate":{"type":"number","default":0,"period":360,"transition":true,"units":"degrees","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-brightness-min":{"type":"number","default":0,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-brightness-max":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-saturation":{"type":"number","default":0,"minimum":-1,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-contrast":{"type":"number","default":0,"minimum":-1,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"raster-resampling":{"type":"enum","values":{"linear":{},"nearest":{}},"default":"linear","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"raster-fade-duration":{"type":"number","default":300,"minimum":0,"transition":false,"units":"milliseconds","expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_hillshade":{"hillshade-illumination-direction":{"type":"number","default":335,"minimum":0,"maximum":359,"transition":false,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-illumination-anchor":{"type":"enum","values":{"map":{},"viewport":{}},"default":"viewport","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-exaggeration":{"type":"number","default":0.5,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-shadow-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-highlight-color":{"type":"color","default":"#FFFFFF","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"hillshade-accent-color":{"type":"color","default":"#000000","transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_background":{"background-color":{"type":"color","default":"#000000","transition":true,"requires":[{"!":"background-pattern"}],"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"},"background-pattern":{"type":"resolvedImage","transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"background-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"paint_sky":{"sky-type":{"type":"enum","values":{"gradient":{},"atmosphere":{}},"default":"atmosphere","expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-atmosphere-sun":{"type":"array","value":"number","length":2,"units":"degrees","minimum":[0,0],"maximum":[360,180],"transition":false,"requires":[{"sky-type":"atmosphere"}],"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-atmosphere-sun-intensity":{"type":"number","requires":[{"sky-type":"atmosphere"}],"default":10,"minimum":0,"maximum":100,"transition":false,"property-type":"data-constant"},"sky-gradient-center":{"type":"array","requires":[{"sky-type":"gradient"}],"value":"number","default":[0,0],"length":2,"units":"degrees","minimum":[0,0],"maximum":[360,180],"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-gradient-radius":{"type":"number","requires":[{"sky-type":"gradient"}],"default":90,"minimum":0,"maximum":180,"transition":false,"expression":{"interpolated":false,"parameters":["zoom"]},"property-type":"data-constant"},"sky-gradient":{"type":"color","default":["interpolate",["linear"],["sky-radial-progress"],0.8,"#87ceeb",1,"white"],"transition":false,"requires":[{"sky-type":"gradient"}],"expression":{"interpolated":true,"parameters":["sky-radial-progress"]},"property-type":"color-ramp"},"sky-atmosphere-halo-color":{"type":"color","default":"white","transition":false,"requires":[{"sky-type":"atmosphere"}],"property-type":"data-constant"},"sky-atmosphere-color":{"type":"color","default":"white","transition":false,"requires":[{"sky-type":"atmosphere"}],"property-type":"data-constant"},"sky-opacity":{"type":"number","default":1,"minimum":0,"maximum":1,"transition":true,"expression":{"interpolated":true,"parameters":["zoom"]},"property-type":"data-constant"}},"transition":{"duration":{"type":"number","default":300,"minimum":0,"units":"milliseconds"},"delay":{"type":"number","default":0,"minimum":0,"units":"milliseconds"}},"property-type":{"data-driven":{"type":"property-type"},"color-ramp":{"type":"property-type"},"data-constant":{"type":"property-type"},"constant":{"type":"property-type"}},"promoteId":{"*":{"type":"string"}}};
 
   //      
   function isExpressionFilter(filter) {
@@ -80398,6 +86551,8 @@ var ol = (function () {
       return cssData[0] + sp + cssData[1] + sp + size + 'px' + (lineHeight ? '/' + lineHeight : '') + sp + cssData[2];
   };
 
+  var mb2css = /*@__PURE__*/getDefaultExportFromCjs(mapboxToCssFont);
+
   var mapboxBaseUrl = 'https://api.mapbox.com';
   /**
    * Gets the path from a mapbox:// URL.
@@ -80477,16 +86632,559 @@ var ol = (function () {
       return ("https://{a-d}.tiles.mapbox.com/v4/" + mapboxPath + "/{z}/{x}/{y}.vector.pbf?access_token=" + token);
   }
 
+  /*
+  ol-mapbox-style - Use Mapbox Style objects with OpenLayers
+  Copyright 2016-present ol-mapbox-style contributors
+  License: https://raw.githubusercontent.com/openlayers/ol-mapbox-style/master/LICENSE
+  */
+  /**
+   * @typedef {Object} Options
+   * @property {string} [accessToken] Access token for 'mapbox://' urls.
+   * @property {function(string, ResourceType): (Request|void)} [transformRequest]
+   * Function for controlling how `ol-mapbox-style` fetches resources. Can be used for modifying
+   * the url, adding headers or setting credentials options. Called with the url and the resource
+   * type as arguments, this function is supposed to return a `Request` object. Without a return value,
+   * the original request will not be modified. For `Tiles` and `GeoJSON` resources, only the `url` of
+   * the returned request will be respected.
+   * @property {string} [projection='EPSG:3857'] Only useful when working with non-standard projections.
+   * Code of a projection registered with OpenLayers. All sources of the style must be provided in this
+   * projection. The projection must also have a valid extent defined, which will be used to determine the
+   * origin and resolutions of the tile grid for all tiled sources of the style. When provided, the bbox
+   * placeholder in tile and geojson urls changes: the default is `{bbox-epsg-3857}`, when projection is e.g.
+   * set to `EPSG:4326`, the bbox placeholder will be `{bbox-epsg-4326}`.
+   * @property {Array<number>} [resolutions] Only useful when working with non-standard projections.
+   * Resolutions for mapping resolution to the `zoom` used in the Mapbox style.
+   * @property {string} [styleUrl] URL of the Mapbox GL style. Required for styles that were provided
+   * as object, when they contain a relative sprite url, or sources referencing data by relative url.
+   * @property {function(VectorLayer|VectorTileLayer, string):HTMLImageElement|HTMLCanvasElement|string|undefined} [getImage=undefined]
+   * Function that returns an image for an icon name. If the result is an HTMLImageElement, it must already be
+   * loaded. The layer can be used to call layer.changed() when the loading and processing of the image has finished.
+   * This function be used for icons not in the sprite or to override sprite icons.
+   * @property {string} [accessTokenParam='access_token'] Access token param. For internal use.
+   */
+  /**
+   * @typedef {Object} ApplyStyleOptions
+   * @property {string} [source=''] Source. Default is `''`, which causes the first source in the
+   * style to be used.
+   * @property {Array<string>} [layers] Layers. If no source is provided, the layers with the
+   * provided ids will be used from the style's `layers` array. All layers need to use the same source.
+   * @property {boolean} [updateSource=true] Update or create vector (tile) layer source with parameters
+   * specified for the source in the mapbox style definition.
+   */
+  /** @typedef {'Style'|'Source'|'Sprite'|'SpriteImage'|'Tiles'|'GeoJSON'} ResourceType */
+  /**
+   * @param {import("ol/proj/Projection.js").default} projection Projection.
+   * @param {number} [tileSize=512] Tile size.
+   * @return {Array<number>} Resolutions.
+   */
+  function getTileResolutions(projection, tileSize) {
+      if ( tileSize === void 0 ) tileSize = 512;
+
+      return projection.getExtent() ? createXYZ({
+          extent: projection.getExtent(),
+          tileSize: tileSize,
+          maxZoom: 22
+      }).getResolutions() : defaultResolutions;
+  }
+  /**
+   * @param {string} styleUrl Style URL.
+   * @param {Options} options Options.
+   * @return {Options} Completed options with accessToken and accessTokenParam.
+   */
+  function completeOptions(styleUrl, options) {
+      if (!options.accessToken) {
+          options = Object.assign({}, options);
+          var searchParams = new URL(styleUrl).searchParams;
+          // The last search parameter is the access token
+          searchParams.forEach(function (value, key) {
+              options.accessToken = value;
+              options.accessTokenParam = key;
+          });
+      }
+      return options;
+  }
+  /**
+   * Applies a style function to an `ol/layer/VectorTile` or `ol/layer/Vector`
+   * with an `ol/source/VectorTile` or an `ol/source/Vector`. If the layer does not have a source
+   * yet, it will be created and populated from the information in the `glStyle` (unless `updateSource` is
+   * set to `false`).
+   *
+   * **Example:**
+   * ```js
+   * import {applyStyle} from 'ol-mapbox-style';
+   * import {VectorTile} from 'ol/layer.js';
+   *
+   * const layer = new VectorTile({declutter: true});
+   * applyStyle(layer, 'https://api.maptiler.com/maps/basic/style.json?key=YOUR_OPENMAPTILES_TOKEN');
+   * ```
+   *
+   * The style function will render all layers from the `glStyle` object that use the source
+   * of the first layer, the specified `source`, or a subset of layers from the same source. The
+   * source needs to be a `"type": "vector"` or `"type": "geojson"` source.
+   *
+   * Two additional properties will be set on the provided layer:
+   *
+   *  * `mapbox-source`: The `id` of the Mapbox Style document's source that the
+   *    OpenLayers layer was created from. Usually `apply()` creates one
+   *    OpenLayers layer per Mapbox Style source, unless the layer stack has
+   *    layers from different sources in between.
+   *  * `mapbox-layers`: The `id`s of the Mapbox Style document's layers that are
+   *    included in the OpenLayers layer.
+   *
+   * @param {VectorTileLayer|VectorLayer} layer OpenLayers layer. When the layer has a source configured,
+   * it will be modified to use the configuration from the glStyle's `source`. Options specified on the
+   * layer's source will override those from the glStyle's `source`, except for `url` and
+   * `tileUrlFunction`. When the source projection is the default (`EPSG:3857`), the `tileGrid` will
+   * also be overridden. If you'd rather not have ol-mapbox-style modify the source, configure `applyStyle()`
+   * with the `updateSource: false` option.
+   * @param {string|Object} glStyle Mapbox Style object.
+   * @param {string|Array<string>|Options&ApplyStyleOptions} [sourceOrLayersOrOptions] Options or
+   * `source` key or an array of layer `id`s from the Mapbox Style object. When a `source` key is
+   * provided, all layers for the specified source will be included in the style function. When layer
+   * `id`s are provided, they must be from layers that use the same source. When not provided or a falsey
+   * value, all layers using the first source specified in the glStyle will be rendered.
+   * @param {Options&ApplyStyleOptions|string} [optionsOrPath] **Deprecated**. Options. Alternatively the path of the style file
+   * (only required when a relative path is used for the `"sprite"` property of the style).
+   * @param {Array<number>} [resolutions] **Deprecated**. Resolutions for mapping resolution to zoom level.
+   * Only needed when working with non-standard tile grids or projections, can also be supplied with
+   * options.
+   * @return {Promise} Promise which will be resolved when the style can be used
+   * for rendering.
+   */
+  function applyStyle(layer, glStyle, sourceOrLayersOrOptions, optionsOrPath, resolutions) {
+      if ( sourceOrLayersOrOptions === void 0 ) sourceOrLayersOrOptions = '';
+      if ( optionsOrPath === void 0 ) optionsOrPath = {};
+      if ( resolutions === void 0 ) resolutions = undefined;
+
+      var styleUrl, sourceId;
+      /** @type {Options&ApplyStyleOptions} */
+      var options;
+      var sourceOrLayers;
+      var updateSource = true;
+      if (typeof sourceOrLayersOrOptions !== 'string' && !Array.isArray(sourceOrLayersOrOptions)) {
+          options = sourceOrLayersOrOptions;
+          sourceOrLayers = options.source || options.layers;
+          optionsOrPath = options;
+      } else {
+          sourceOrLayers = sourceOrLayersOrOptions;
+      }
+      if (typeof optionsOrPath === 'string') {
+          styleUrl = optionsOrPath;
+          options = {};
+      } else {
+          styleUrl = optionsOrPath.styleUrl;
+          options = optionsOrPath;
+      }
+      if (options.updateSource === false) {
+          updateSource = false;
+      }
+      if (!resolutions) {
+          resolutions = options.resolutions;
+      }
+      if (!styleUrl && typeof glStyle === 'string' && !glStyle.trim().startsWith('{')) {
+          styleUrl = glStyle;
+      }
+      if (styleUrl) {
+          styleUrl = styleUrl.startsWith('data:') ? location.href : normalizeStyleUrl(styleUrl, options.accessToken);
+          options = completeOptions(styleUrl, options);
+      }
+      return new Promise(function (resolve, reject) {
+          // TODO: figure out where best place to check source type is
+          // Note that the source arg is an array of gl layer ids and each must be
+          // dereferenced to get source type to validate
+          getGlStyle(glStyle, options).then(function (glStyle) {
+              if (glStyle.version != 8) {
+                  return reject(new Error('glStyle version 8 required.'));
+              }
+              if (!(layer instanceof VectorLayer$1 || layer instanceof VectorTileLayer$1)) {
+                  return reject(new Error('Can only apply to VectorLayer or VectorTileLayer'));
+              }
+              var type = layer instanceof VectorTileLayer$1 ? 'vector' : 'geojson';
+              if (!sourceOrLayers) {
+                  sourceId = Object.keys(glStyle.sources).find(function (key) {
+                      return glStyle.sources[key].type === type;
+                  });
+                  sourceOrLayers = sourceId;
+              } else if (Array.isArray(sourceOrLayers)) {
+                  sourceId = glStyle.layers.find(function (layer) {
+                      return layer.id === sourceOrLayers[0];
+                  }).source;
+              } else {
+                  sourceId = sourceOrLayers;
+              }
+              if (!sourceId) {
+                  return reject(new Error(("No " + type + " source found in the glStyle.")));
+              }
+              function assignSource() {
+                  if (!updateSource) {
+                      return Promise.resolve();
+                  }
+                  if (layer instanceof VectorTileLayer$1) {
+                      return setupVectorSource(glStyle.sources[sourceId], styleUrl, options).then(function (source) {
+                          var targetSource = layer.getSource();
+                          if (!targetSource) {
+                              layer.setSource(source);
+                          } else if (source !== targetSource) {
+                              targetSource.setTileUrlFunction(source.getTileUrlFunction());
+                              if (typeof targetSource.setUrls === 'function' && typeof source.getUrls === 'function') {
+                                  // to get correct keys for tile cache and queue
+                                  targetSource.setUrls(source.getUrls());
+                              }
+                              //@ts-ignore
+                              if (!targetSource.format_) {
+                                  //@ts-ignore
+                                  targetSource.format_ = source.format_;
+                              }
+                              if (!targetSource.getAttributions()) {
+                                  targetSource.setAttributions(source.getAttributions());
+                              }
+                              if (targetSource.getTileLoadFunction() === defaultLoadFunction) {
+                                  targetSource.setTileLoadFunction(source.getTileLoadFunction());
+                              }
+                              if (equivalent(targetSource.getProjection(), source.getProjection())) {
+                                  targetSource.tileGrid = source.getTileGrid();
+                              }
+                          }
+                          if (!isFinite(layer.getMaxResolution()) && !isFinite(layer.getMinZoom())) {
+                              var tileGrid = layer.getSource().getTileGrid();
+                              layer.setMaxResolution(tileGrid.getResolution(tileGrid.getMinZoom()));
+                          }
+                      });
+                  }
+                  var glSource = glStyle.sources[sourceId];
+                  var source = layer.getSource();
+                  if (!source || source.get('mapbox-source') !== glSource) {
+                      source = setupGeoJSONSource(glSource, styleUrl, options);
+                  }
+                  var targetSource = layer.getSource();
+                  if (!targetSource) {
+                      layer.setSource(source);
+                  } else if (source !== targetSource) {
+                      if (!targetSource.getAttributions()) {
+                          targetSource.setAttributions(source.getAttributions());
+                      }
+                      //@ts-ignore
+                      if (!targetSource.format_) {
+                          //@ts-ignore
+                          targetSource.format_ = source.getFormat();
+                      }
+                      //@ts-ignore
+                      targetSource.url_ = source.getUrl();
+                  }
+                  return Promise.resolve();
+              }
+              var spriteScale, spriteData, spriteImageUrl, style;
+              function onChange() {
+                  if (!style && (!glStyle.sprite || spriteData)) {
+                      if (options.projection && !resolutions) {
+                          var projection = get$2(options.projection);
+                          var units = projection.getUnits();
+                          if (units !== 'm') {
+                              resolutions = defaultResolutions.map(function (resolution) { return resolution / METERS_PER_UNIT$1[units]; });
+                          }
+                      }
+                      style = stylefunction(layer, glStyle, sourceOrLayers, resolutions, spriteData, spriteImageUrl, getFonts, options.getImage);
+                      if (!layer.getStyle()) {
+                          reject(new Error(("Nothing to show for source [" + sourceId + "]")));
+                      } else {
+                          assignSource().then(resolve).catch(reject);
+                      }
+                  } else if (style) {
+                      layer.setStyle(style);
+                      assignSource().then(resolve).catch(reject);
+                  } else {
+                      reject(new Error('Something went wrong trying to apply style.'));
+                  }
+              }
+              if (glStyle.sprite) {
+                  var sprite = new URL(normalizeSpriteUrl(glStyle.sprite, options.accessToken, styleUrl || location.href));
+                  spriteScale = window.devicePixelRatio >= 1.5 ? 0.5 : 1;
+                  var sizeFactor = spriteScale == 0.5 ? '@2x' : '';
+                  var spriteUrl = sprite.origin + sprite.pathname + sizeFactor + '.json' + sprite.search;
+                  new Promise(function (resolve, reject) {
+                      fetchResource('Sprite', spriteUrl, options).then(resolve).catch(function (error) {
+                          spriteUrl = sprite.origin + sprite.pathname + '.json' + sprite.search;
+                          fetchResource('Sprite', spriteUrl, options).then(resolve).catch(reject);
+                      });
+                  }).then(function (spritesJson) {
+                      if (spritesJson === undefined) {
+                          reject(new Error('No sprites found.'));
+                      }
+                      spriteData = spritesJson;
+                      spriteImageUrl = sprite.origin + sprite.pathname + sizeFactor + '.png' + sprite.search;
+                      if (options.transformRequest) {
+                          var transformed = options.transformRequest(spriteImageUrl, 'SpriteImage');
+                          if (transformed instanceof Request) {
+                              spriteImageUrl = encodeURI(transformed.url);
+                          }
+                      }
+                      onChange();
+                  }).catch(function (err) {
+                      reject(new Error(("Sprites cannot be loaded: " + spriteUrl + ": " + (err.message))));
+                  });
+              } else {
+                  onChange();
+              }
+          }).catch(reject);
+      });
+  }
+  var emptyObj$1 = {};
+  function setFirstBackground(mapOrLayer, glStyle, options) {
+      glStyle.layers.some(function (layer) {
+          if (layer.type === 'background') {
+              if (mapOrLayer instanceof Layer$1) {
+                  mapOrLayer.setBackground(function (resolution) {
+                      return getBackgroundColor(layer, resolution, options, {});
+                  });
+                  return true;
+              }
+              if (mapOrLayer instanceof Map$2 || mapOrLayer instanceof LayerGroup$1) {
+                  mapOrLayer.getLayers().push(setupBackgroundLayer(layer, options, {}));
+                  return true;
+              }
+          }
+      });
+  }
+  /**
+   * Applies properties of the Mapbox Style's first `background` layer to the
+   * provided map or layer (group).
+   *
+   * **Example:**
+   * ```js
+   * import {applyBackground} from 'ol-mapbox-style';
+   * import {Map} from 'ol';
+   *
+   * const map = new Map({target: 'map'});
+   * applyBackground(map, 'https://api.maptiler.com/maps/basic/style.json?key=YOUR_OPENMAPTILES_TOKEN');
+   * ```
+   * @param {Map|import("ol/layer/Base.js").default} mapOrLayer OpenLayers Map or layer (group).
+   * @param {Object|string} glStyle Mapbox Style object or url.
+   * @param {Options} options Options.
+   * @return {Promise} Promise that resolves when the background is applied.
+   */
+  function applyBackground(mapOrLayer, glStyle, options) {
+      if ( options === void 0 ) options = {};
+
+      return getGlStyle(glStyle, options).then(function (glStyle) {
+          setFirstBackground(mapOrLayer, glStyle, options);
+      });
+  }
+  function extentFromTileJSON(tileJSON, projection) {
+      var bounds = tileJSON.bounds;
+      if (bounds) {
+          var ll = fromLonLat([
+              bounds[0],
+              bounds[1]
+          ], projection);
+          var tr = fromLonLat([
+              bounds[2],
+              bounds[3]
+          ], projection);
+          return [
+              ll[0],
+              ll[1],
+              tr[0],
+              tr[1]
+          ];
+      }
+      return get$2(projection).getExtent();
+  }
+  function sourceOptionsFromTileJSON(glSource, tileJSON, options) {
+      var tileJSONSource = new TileJSON$1({
+          tileJSON: tileJSON,
+          tileSize: glSource.tileSize || tileJSON.tileSize || 512
+      });
+      var tileJSONDoc = tileJSONSource.getTileJSON();
+      var tileGrid = tileJSONSource.getTileGrid();
+      var projection = get$2(options.projection || 'EPSG:3857');
+      var extent = extentFromTileJSON(tileJSONDoc, projection);
+      var projectionExtent = projection.getExtent();
+      var minZoom = tileJSONDoc.minzoom || 0;
+      var maxZoom = tileJSONDoc.maxzoom || 22;
+      /** @type {import("ol/source/VectorTile.js").Options} */
+      var sourceOptions = {
+          attributions: tileJSONSource.getAttributions(),
+          projection: projection,
+          tileGrid: new TileGrid$1({
+              origin: projectionExtent ? getTopLeft(projectionExtent) : tileGrid.getOrigin(0),
+              extent: extent || tileGrid.getExtent(),
+              minZoom: minZoom,
+              resolutions: getTileResolutions(projection, tileJSON.tileSize).slice(0, maxZoom + 1),
+              tileSize: tileGrid.getTileSize(0)
+          })
+      };
+      if (Array.isArray(tileJSONDoc.tiles)) {
+          sourceOptions.urls = tileJSONDoc.tiles;
+      } else {
+          sourceOptions.url = tileJSONDoc.tiles;
+      }
+      return sourceOptions;
+  }
+  function getBackgroundColor(glLayer, resolution, options, functionCache) {
+      var background = {
+          id: glLayer.id,
+          type: glLayer.type
+      };
+      var layout = glLayer.layout || {};
+      var paint = glLayer.paint || {};
+      background['paint'] = paint;
+      var zoom = getZoomForResolution(resolution, options.resolutions || defaultResolutions);
+      var bg, opacity;
+      if (paint['background-color'] !== undefined) {
+          bg = getValue(background, 'paint', 'background-color', zoom, emptyObj$1, functionCache);
+      }
+      if (paint['background-opacity'] !== undefined) {
+          opacity = getValue(background, 'paint', 'background-opacity', zoom, emptyObj$1, functionCache);
+      }
+      return layout.visibility == 'none' ? undefined : colorWithOpacity(bg, opacity);
+  }
+  /**
+   * @param {Object} glLayer Mapbox Style layer object.
+   * @param {Options} options Options.
+   * @param {Object} functionCache Cache for functions.
+   * @return {Layer} OpenLayers layer.
+   */
+  function setupBackgroundLayer(glLayer, options, functionCache) {
+      var div = document.createElement('div');
+      div.className = 'ol-mapbox-style-background';
+      div.style.position = 'absolute';
+      div.style.width = '100%';
+      div.style.height = '100%';
+      return new Layer$1({
+          source: new Source$1({}),
+          render: function render(frameState) {
+              var color = getBackgroundColor(glLayer, frameState.viewState.resolution, options, functionCache);
+              div.style.backgroundColor = color;
+              return div;
+          }
+      });
+  }
+  /**
+   * Creates an OpenLayers VectorTile source for a gl source entry.
+   * @param {Object} glSource "source" entry from a Mapbox Style object.
+   * @param {string|undefined} styleUrl URL to use for the source. This is expected to be the complete http(s) url,
+   * with access key applied.
+   * @param {Options} options Options.
+   * @return {Promise<import("ol/source/VectorTile").default>} Promise resolving to a VectorTile source.
+   * @private
+   */
+  function setupVectorSource(glSource, styleUrl, options) {
+      return new Promise(function (resolve, reject) {
+          getTileJson(glSource, styleUrl, options).then(function (tileJSON) {
+              var sourceOptions = sourceOptionsFromTileJSON(glSource, tileJSON, options);
+              sourceOptions.format = new format_MVT();
+              resolve(new VectorTileSource(sourceOptions));
+          }).catch(reject);
+      });
+  }
+  function getBboxTemplate(projection) {
+      var projCode = projection ? projection.getCode() : 'EPSG:3857';
+      return ("{bbox-" + (projCode.toLowerCase().replace(/[^a-z0-9]/g, '-')) + "}");
+  }
+  /**
+   * @param {Object} glSource glStyle source.
+   * @param {string} styleUrl Style URL.
+   * @param {Options} options Options.
+   * @return {VectorSource} Configured vector source.
+   */
+  function setupGeoJSONSource(glSource, styleUrl, options) {
+      var geoJsonFormat = options.projection ? new format_GeoJSON({ dataProjection: options.projection }) : new format_GeoJSON();
+      var data = glSource.data;
+      var sourceOptions = {};
+      if (typeof data == 'string') {
+          var geoJsonUrl = normalizeSourceUrl(data, options.accessToken, options.accessTokenParam || 'access_token', styleUrl || location.href);
+          if (options.transformRequest) {
+              var transformed = options.transformRequest(geoJsonUrl, 'GeoJSON');
+              if (transformed instanceof Request) {
+                  geoJsonUrl = decodeURI(transformed.url);
+              }
+          }
+          if (/\{bbox-[0-9a-z-]+\}/.test(geoJsonUrl)) {
+              var extentUrl = function (extent, resolution, projection) {
+                  var bboxTemplate = getBboxTemplate(projection);
+                  return geoJsonUrl.replace(bboxTemplate, ("" + (extent.join(','))));
+              };
+              var source$1 = new VectorSource$1({
+                  attributions: glSource.attribution,
+                  format: geoJsonFormat,
+                  url: extentUrl,
+                  strategy: bbox$1
+              });
+              source$1.set('mapbox-source', glSource);
+              return source$1;
+          }
+          return new VectorSource$1({
+              attributions: glSource.attribution,
+              format: geoJsonFormat,
+              url: geoJsonUrl
+          });
+      }
+      sourceOptions.features = geoJsonFormat.readFeatures(data, { featureProjection: getUserProjection() || 'EPSG:3857' });
+      var source = new VectorSource$1(Object.assign({
+          attributions: glSource.attribution,
+          format: geoJsonFormat
+      }, sourceOptions));
+      source.set('mapbox-source', glSource);
+      return source;
+  }
+
+  /** @typedef {import("ol").Map} Map */
+  /** @typedef {import("ol/layer").Layer} Layer */
+  /** @typedef {import("ol/layer").Group} LayerGroup */
+  /** @typedef {import("ol/layer").Vector} VectorLayer */
+  /** @typedef {import("ol/layer").VectorTile} VectorTileLayer */
+  /** @typedef {import("ol/source").Source} Source */
+  /**
+   * @typedef {Object} FeatureIdentifier
+   * @property {string|number} id The feature id.
+   * @property {string} source The source id.
+   */
+  var functionCacheByStyleId = {};
+  var filterCacheByStyleId = {};
+  var styleId = 0;
+  function getStyleId(glStyle) {
+      if (!glStyle.id) {
+          glStyle.id = styleId++;
+      }
+      return glStyle.id;
+  }
+  function getStyleFunctionKey(glStyle, olLayer) {
+      return getStyleId(glStyle) + '.' + getUid(olLayer);
+  }
+  /**
+   * @param {Object} glStyle Mapboox style object.
+   * @return {Object} Function cache.
+   */
+  function getFunctionCache(glStyle) {
+      var functionCache = functionCacheByStyleId[glStyle.id];
+      if (!functionCache) {
+          functionCache = {};
+          functionCacheByStyleId[getStyleId(glStyle)] = functionCache;
+      }
+      return functionCache;
+  }
+  /**
+   * @param {Object} glStyle Mapboox style object.
+   * @return {Object} Filter cache.
+   */
+  function getFilterCache(glStyle) {
+      var filterCache = filterCacheByStyleId[glStyle.id];
+      if (!filterCache) {
+          filterCache = {};
+          filterCacheByStyleId[getStyleId(glStyle)] = filterCache;
+      }
+      return filterCache;
+  }
   function deg2rad(degrees) {
       return degrees * Math.PI / 180;
   }
-  var defaultResolutions = function () {
+  var defaultResolutions = (function () {
       var resolutions = [];
       for (var res = 78271.51696402048; resolutions.length <= 24; res /= 2) {
           resolutions.push(res);
       }
       return resolutions;
-  }();
+  }());
   /**
    * @param {number} width Width of the canvas.
    * @param {number} height Height of the canvas.
@@ -80607,6 +87305,9 @@ var ol = (function () {
                   var metadata = {};
                   promise = fetchResource('Source', normalizedSourceUrl, options, metadata).then(function (tileJson) {
                       tileJson.tiles = tileJson.tiles.map(function (tileUrl) {
+                          if (tileJson.scheme === 'tms') {
+                              tileUrl = tileUrl.replace('{y}', '{-y}');
+                          }
                           return getTransformedTilesUrl(normalizeSourceUrl(tileUrl, options.accessToken, options.accessTokenParam || 'access_token', metadata.request.url), options);
                       });
                       return Promise.resolve(tileJson);
@@ -80615,6 +87316,9 @@ var ol = (function () {
           } else {
               glSource = Object.assign({}, glSource, {
                   tiles: glSource.tiles.map(function (tileUrl) {
+                      if (glSource.scheme === 'tms') {
+                          tileUrl = tileUrl.replace('{y}', '{-y}');
+                      }
                       return getTransformedTilesUrl(normalizeSourceUrl(tileUrl, options.accessToken, options.accessTokenParam || 'access_token', styleUrl || location.href), options);
                   })
               });
@@ -80623,11 +87327,78 @@ var ol = (function () {
           tilejsonCache[cacheKey] = promise;
       }
       return promise;
-  }    /**
-   * @typedef {import("./apply.js").Options} Options
-   * @typedef {import('./apply.js').ResourceType} ResourceType
-   * @private
+  }
+  /**
+   * @param {HTMLImageElement|HTMLCanvasElement} spriteImage Sprite image id.
+   * @param {{x: number, y: number, width: number, height: number, pixelRatio: number}} spriteImageData Sprite image data.
+   * @param {number} haloWidth Halo width.
+   * @param {{r: number, g: number, b: number, a: number}} haloColor Halo color.
+   * @return {HTMLCanvasElement} Canvas element with the halo.
    */
+  function drawIconHalo(spriteImage, spriteImageData, haloWidth, haloColor) {
+      var imageCanvas = document.createElement('canvas');
+      var imgSize = [
+          2 * haloWidth * spriteImageData.pixelRatio + spriteImageData.width,
+          2 * haloWidth * spriteImageData.pixelRatio + spriteImageData.height
+      ];
+      imageCanvas.width = imgSize[0];
+      imageCanvas.height = imgSize[1];
+      var imageContext = imageCanvas.getContext('2d');
+      imageContext.drawImage(spriteImage, spriteImageData.x, spriteImageData.y, spriteImageData.width, spriteImageData.height, haloWidth * spriteImageData.pixelRatio, haloWidth * spriteImageData.pixelRatio, spriteImageData.width, spriteImageData.height);
+      var imageData = imageContext.getImageData(0, 0, imgSize[0], imgSize[1]);
+      imageContext.globalCompositeOperation = 'destination-over';
+      imageContext.fillStyle = "rgba(" + (haloColor.r * 255) + "," + (haloColor.g * 255) + "," + (haloColor.b * 255) + "," + (haloColor.a) + ")";
+      var data = imageData.data;
+      for (var i = 0, ii = imageData.width; i < ii; ++i) {
+          for (var j = 0, jj = imageData.height; j < jj; ++j) {
+              var index = (j * ii + i) * 4;
+              var alpha = data[index + 3];
+              if (alpha > 0) {
+                  imageContext.arc(i, j, haloWidth * spriteImageData.pixelRatio, 0, 2 * Math.PI);
+              }
+          }
+      }
+      imageContext.fill();
+      return imageCanvas;
+  }
+  function smoothstep(min, max, value) {
+      var x = Math.max(0, Math.min(1, (value - min) / (max - min)));
+      return x * x * (3 - 2 * x);
+  }
+  /**
+   * @param {HTMLImageElement} image SDF image
+   * @param {{x: number, y: number, width: number, height: number}} area Area to unSDF
+   * @param {{r: number, g: number, b: number, a: number}} color Color to use
+   * @return {HTMLCanvasElement} Regular image
+   */
+  function drawSDF(image, area, color) {
+      var imageCanvas = document.createElement('canvas');
+      imageCanvas.width = area.width;
+      imageCanvas.height = area.height;
+      var imageContext = imageCanvas.getContext('2d');
+      imageContext.drawImage(image, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
+      var imageData = imageContext.getImageData(0, 0, area.width, area.height);
+      var data = imageData.data;
+      for (var i = 0, ii = imageData.width; i < ii; ++i) {
+          for (var j = 0, jj = imageData.height; j < jj; ++j) {
+              var index = (j * ii + i) * 4;
+              var dist = data[index + 3] / 255;
+              var buffer = 0.75;
+              var gamma = 0.1;
+              var alpha = smoothstep(buffer - gamma, buffer + gamma, dist);
+              if (alpha > 0) {
+                  data[index + 0] = Math.round(255 * color.r * alpha);
+                  data[index + 1] = Math.round(255 * color.g * alpha);
+                  data[index + 2] = Math.round(255 * color.b * alpha);
+                  data[index + 3] = Math.round(255 * alpha);
+              } else {
+                  data[index + 3] = 0;
+              }
+          }
+      }
+      imageContext.putImageData(imageData, 0, 0);
+      return imageCanvas;
+  }
 
   var hairSpacePool = Array(256).join('\u200A');
   function applyLetterSpacing(text, letterSpacing) {
@@ -80760,33 +87531,36 @@ var ol = (function () {
   var processedFontFamilies = {};
   /**
    * @param {Array} fonts Fonts.
+   * @param {string} [templateUrl] Template URL.
    * @return {Array} Processed fonts.
    * @private
    */
-  function getFonts(fonts) {
+  function getFonts(fonts, templateUrl) {
+      if ( templateUrl === void 0 ) templateUrl = 'https://cdn.jsdelivr.net/npm/@fontsource/{font-family}/{fontweight}{-fontstyle}.css';
+
       var fontsKey = fonts.toString();
       if (fontsKey in processedFontFamilies) {
           return processedFontFamilies[fontsKey];
       }
-      var googleFontDescriptions = [];
+      var fontDescriptions = [];
       for (var i = 0, ii = fonts.length; i < ii; ++i) {
           fonts[i] = fonts[i].replace('Arial Unicode MS', 'Arial');
           var font = fonts[i];
-          var cssFont = mapboxToCssFont(font, 1);
+          var cssFont = mb2css(font, 1);
           registerFont(cssFont);
           var parts = cssFont.split(' ');
-          googleFontDescriptions.push([
+          fontDescriptions.push([
               parts.slice(3).join(' ').replace(/"/g, ''),
               parts[1],
               parts[0]
           ]);
       }
-      for (var i$1 = 0, ii$1 = googleFontDescriptions.length; i$1 < ii$1; ++i$1) {
-          var googleFontDescription = googleFontDescriptions[i$1];
-          var family = googleFontDescription[0];
+      for (var i$1 = 0, ii$1 = fontDescriptions.length; i$1 < ii$1; ++i$1) {
+          var fontDescription = fontDescriptions[i$1];
+          var family = fontDescription[0];
           if (!hasFontFamily(family)) {
-              if (checkedFonts.get(((googleFontDescription[2]) + "\n" + (googleFontDescription[1]) + " \n" + family)) !== 100) {
-                  var fontUrl = 'https://fonts.googleapis.com/css?family=' + family.replace(/ /g, '+') + ':' + googleFontDescription[1] + googleFontDescription[2];
+              if (checkedFonts.get(((fontDescription[2]) + "\n" + (fontDescription[1]) + " \n" + family)) !== 100) {
+                  var fontUrl = templateUrl.replace('{font-family}', family.replace(/ /g, '-').toLowerCase()).replace('{Font+Family}', family.replace(/ /g, '+')).replace('{fontweight}', fontDescription[1]).replace('{-fontstyle}', fontDescription[2].replace('normal', '').replace(/(.+)/, '-$1')).replace('{fontstyle}', fontDescription[2]);
                   if (!document.querySelector('link[href="' + fontUrl + '"]')) {
                       var markup = document.createElement('link');
                       markup.href = fontUrl;
@@ -80863,7 +87637,7 @@ var ol = (function () {
       }
       return compiledExpression.value;
   };
-  var emptyObj$1 = {};
+  var emptyObj = {};
   var zoomObj = { zoom: 0 };
   var renderFeatureCoordinates, renderFeature;
   /**
@@ -80888,7 +87662,7 @@ var ol = (function () {
       }
       var functions = functionCache[layerId];
       if (!functions[property]) {
-          var value = (layer[layoutOrPaint] || emptyObj$1)[property];
+          var value = (layer[layoutOrPaint] || emptyObj)[property];
           var propertySpec = spec[(layoutOrPaint + "_" + (layer.type))][property];
           if (value === undefined) {
               value = propertySpec.default;
@@ -80980,6 +87754,7 @@ var ol = (function () {
           return properties[match.slice(1, -1)] || '';
       });
   }
+  var styleFunctionArgs = {};
   /**
    * Creates a style function from the `glStyle` object for all layers that use
    * the specified `source`, which needs to be a `"type": "vector"` or
@@ -81035,8 +87810,9 @@ var ol = (function () {
    * @param {string} spriteImageUrl Sprite image url for the sprite
    * specified in the Mapbox Style object's `sprite` property. Only required if a
    * `sprite` property is specified in the Mapbox Style object.
-   * @param {function(Array<string>):Array<string>} getFonts Function that
-   * receives a font stack as arguments, and returns a (modified) font stack that
+   * @param {function(Array<string>, string=):Array<string>} getFonts Function that
+   * receives a font stack and the url template from the GL style's `metadata['ol:webfonts']`
+   * property (if set) as arguments, and returns a (modified) font stack that
    * is available. Font names are the names used in the Mapbox Style object. If
    * not provided, the font stack will be used as-is. This function can also be
    * used for loading web fonts.
@@ -81060,7 +87836,9 @@ var ol = (function () {
       if (glStyle.version != 8) {
           throw new Error('glStyle version 8 required.');
       }
+      styleFunctionArgs[getStyleFunctionKey(glStyle, olLayer)] = Array.from(arguments);
       var spriteImage, spriteImageSize;
+      var spriteImageUnSDFed;
       if (spriteImageUrl) {
           if (typeof Image !== 'undefined') {
               var img = new Image();
@@ -81099,8 +87877,8 @@ var ol = (function () {
       var mapboxLayers = [];
       var iconImageCache = {};
       var patternCache = {};
-      var functionCache = {};
-      var filterCache = {};
+      var functionCache = getFunctionCache(glStyle);
+      var filterCache = getFilterCache(glStyle);
       var mapboxSource;
       for (var i = 0, ii = allLayers.length; i < ii; ++i) {
           var layer = allLayers[i];
@@ -81135,11 +87913,17 @@ var ol = (function () {
       var textHalo = new Stroke$1();
       var textColor = new Fill$1();
       var styles = [];
-      var styleFunction = function (feature, resolution) {
+      /**
+     * @param {import("ol/Feature").default|import("ol/render/Feature").default} feature Feature.
+     * @param {number} resolution Resolution.
+     * @param {string} [onlyLayer] Calculate style for this layer only.
+     * @return {Array<import("ol/style/Style").default>} Style.
+     */
+      var styleFunction = function (feature, resolution, onlyLayer) {
           var properties = feature.getProperties();
           var layers = layersBySourceLayer[properties.layer];
           if (!layers) {
-              return;
+              return undefined;
           }
           var zoom = resolutions.indexOf(resolution);
           if (zoom == -1) {
@@ -81147,6 +87931,7 @@ var ol = (function () {
           }
           var type = types[feature.getGeometry().getType()];
           var f = {
+              id: feature.getId(),
               properties: properties,
               type: type
           };
@@ -81156,8 +87941,11 @@ var ol = (function () {
               var layerData = layers[i];
               var layer = layerData.layer;
               var layerId = layer.id;
-              var layout = layer.layout || emptyObj$1;
-              var paint = layer.paint || emptyObj$1;
+              if (onlyLayer !== undefined && onlyLayer !== layerId) {
+                  continue;
+              }
+              var layout = layer.layout || emptyObj;
+              var paint = layer.paint || emptyObj;
               if (layout.visibility === 'none' || 'minzoom' in layer && zoom < layer.minzoom || 'maxzoom' in layer && zoom >= layer.maxzoom) {
                   continue;
               }
@@ -81304,16 +88092,18 @@ var ol = (function () {
                                   var iconSize = getValue(layer, 'layout', 'icon-size', zoom, f, functionCache, featureState);
                                   var iconColor = paint['icon-color'] !== undefined ? getValue(layer, 'paint', 'icon-color', zoom, f, functionCache, featureState) : null;
                                   if (!iconColor || iconColor.a !== 0) {
-                                      var icon_cache_key$1 = icon$1 + '.' + iconSize;
+                                      var haloColor = getValue(layer, 'paint', 'icon-halo-color', zoom, f, functionCache, featureState);
+                                      var haloWidth = getValue(layer, 'paint', 'icon-halo-width', zoom, f, functionCache, featureState);
+                                      var iconCacheKey = icon$1 + "." + iconSize + "." + haloWidth + "." + haloColor;
                                       if (iconColor !== null) {
-                                          icon_cache_key$1 += '.' + iconColor;
+                                          iconCacheKey += "." + iconColor;
                                       }
-                                      iconImg = iconImageCache[icon_cache_key$1];
+                                      iconImg = iconImageCache[iconCacheKey];
                                       if (!iconImg) {
                                           var declutterMode = getIconDeclutterMode(layer, zoom, f, functionCache);
                                           var displacement = (void 0);
                                           if ('icon-offset' in layout) {
-                                              displacement = getValue(layer, 'layout', 'icon-offset', zoom, f, functionCache, featureState);
+                                              displacement = getValue(layer, 'layout', 'icon-offset', zoom, f, functionCache, featureState).slice(0);
                                               displacement[1] *= -1;
                                           }
                                           var color$1 = iconColor ? [
@@ -81323,49 +88113,85 @@ var ol = (function () {
                                               iconColor.a
                                           ] : undefined;
                                           if (imageElement) {
+                                              var iconOptions = {
+                                                  color: color$1,
+                                                  rotateWithView: iconRotationAlignment === 'map',
+                                                  displacement: displacement,
+                                                  declutterMode: declutterMode
+                                              };
                                               if (typeof imageElement === 'string') {
                                                   // it is a src URL
-                                                  iconImg = new Icon$1({
-                                                      color: color$1,
-                                                      src: imageElement,
-                                                      rotateWithView: iconRotationAlignment === 'map',
-                                                      displacement: displacement,
-                                                      declutterMode: declutterMode
-                                                  });
+                                                  iconOptions.src = imageElement;
                                               } else {
-                                                  iconImg = new Icon$1({
-                                                      color: color$1,
-                                                      img: imageElement,
-                                                      imgSize: [
-                                                          imageElement.width,
-                                                          imageElement.height
-                                                      ],
-                                                      rotateWithView: iconRotationAlignment === 'map',
-                                                      displacement: displacement,
-                                                      declutterMode: declutterMode
-                                                  });
+                                                  iconOptions.img = imageElement;
+                                                  iconOptions.imgSize = [
+                                                      imageElement.width,
+                                                      imageElement.height
+                                                  ];
                                               }
+                                              iconImg = new Icon$1(iconOptions);
                                           } else {
                                               var spriteImageData$1 = spriteData[icon$1];
-                                              iconImg = new Icon$1({
-                                                  color: color$1,
-                                                  img: spriteImage,
-                                                  imgSize: spriteImageSize,
-                                                  size: [
+                                              var img = (void 0), imgSize = (void 0), size$1 = (void 0), offset = (void 0);
+                                              if (haloWidth) {
+                                                  if (spriteImageData$1.sdf) {
+                                                      img = drawIconHalo(drawSDF(spriteImage, spriteImageData$1, iconColor), {
+                                                          x: 0,
+                                                          y: 0,
+                                                          width: spriteImageData$1.width,
+                                                          height: spriteImageData$1.height,
+                                                          pixelRatio: spriteImageData$1.pixelRatio
+                                                      }, haloWidth, haloColor);
+                                                      color$1 = undefined;    // do not tint haloed icons
+                                                  } else {
+                                                      img = drawIconHalo(spriteImage, spriteImageData$1, haloWidth, haloColor);
+                                                  }
+                                                  imgSize = [
+                                                      img.width,
+                                                      img.height
+                                                  ];
+                                              } else {
+                                                  if (spriteImageData$1.sdf) {
+                                                      if (!spriteImageUnSDFed) {
+                                                          spriteImageUnSDFed = drawSDF(spriteImage, {
+                                                              x: 0,
+                                                              y: 0,
+                                                              width: spriteImageSize[0],
+                                                              height: spriteImageSize[1]
+                                                          }, {
+                                                              r: 1,
+                                                              g: 1,
+                                                              b: 1,
+                                                              a: 1
+                                                          });
+                                                      }
+                                                      img = spriteImageUnSDFed;
+                                                  } else {
+                                                      img = spriteImage;
+                                                  }
+                                                  imgSize = spriteImageSize;
+                                                  size$1 = [
                                                       spriteImageData$1.width,
                                                       spriteImageData$1.height
-                                                  ],
-                                                  offset: [
+                                                  ];
+                                                  offset = [
                                                       spriteImageData$1.x,
                                                       spriteImageData$1.y
-                                                  ],
+                                                  ];
+                                              }
+                                              iconImg = new Icon$1({
+                                                  color: color$1,
+                                                  img: img,
+                                                  imgSize: imgSize,
+                                                  size: size$1,
+                                                  offset: offset,
                                                   rotateWithView: iconRotationAlignment === 'map',
                                                   scale: iconSize / spriteImageData$1.pixelRatio,
                                                   displacement: displacement,
                                                   declutterMode: declutterMode
                                               });
                                           }
-                                          iconImageCache[icon_cache_key$1] = iconImg;
+                                          iconImageCache[iconCacheKey] = iconImg;
                                       }
                                   }
                                   if (iconImg) {
@@ -81429,7 +88255,7 @@ var ol = (function () {
                       textSize = Math.round(getValue(layer, 'layout', 'text-size', zoom, f, functionCache, featureState));
                       var fontArray = getValue(layer, 'layout', 'text-font', zoom, f, functionCache, featureState);
                       textLineHeight = getValue(layer, 'layout', 'text-line-height', zoom, f, functionCache, featureState);
-                      font = mapboxToCssFont(getFonts ? getFonts(fontArray) : fontArray, textSize, textLineHeight);
+                      font = mb2css(getFonts ? getFonts(fontArray, glStyle.metadata ? glStyle.metadata['ol:webfonts'] : undefined) : fontArray, textSize, textLineHeight);
                       if (!font.includes('sans-serif')) {
                           font += ',sans-serif';
                       }
@@ -81442,7 +88268,7 @@ var ol = (function () {
                           } else {
                               label = textField.sections.reduce(function (acc, chunk, i) {
                                   var fonts = chunk.fontStack ? chunk.fontStack.split(',') : fontArray;
-                                  var chunkFont = mapboxToCssFont(getFonts ? getFonts(fonts) : fonts, textSize * (chunk.scale || 1), textLineHeight);
+                                  var chunkFont = mb2css(getFonts ? getFonts(fonts) : fonts, textSize * (chunk.scale || 1), textLineHeight);
                                   var text = chunk.text;
                                   if (text === '\n') {
                                       acc.push('\n', '');
@@ -81501,8 +88327,14 @@ var ol = (function () {
                       text.setRotation(deg2rad(getValue(layer, 'layout', 'text-rotate', zoom, f, functionCache, featureState)));
                       var textAnchor = getValue(layer, 'layout', 'text-anchor', zoom, f, functionCache, featureState);
                       var placement$1 = hasImage || type == 1 ? 'point' : getValue(layer, 'layout', 'symbol-placement', zoom, f, functionCache, featureState);
-                      text.setPlacement(placement$1);
-                      if (typeof text.setRepeat === 'function') {
+                      var textAlign = (void 0);
+                      if (placement$1 === 'line-center') {
+                          text.setPlacement('line');
+                          textAlign = 'center';
+                      } else {
+                          text.setPlacement(placement$1);
+                      }
+                      if (placement$1 === 'line' && typeof text.setRepeat === 'function') {
                           var symbolSpacing = getValue(layer, 'layout', 'symbol-spacing', zoom, f, functionCache, featureState);
                           text.setRepeat(symbolSpacing * 2);
                       }
@@ -81514,7 +88346,7 @@ var ol = (function () {
                       var vOffset = 0;
                       var hOffset = 0;
                       if (placement$1 == 'point') {
-                          var textAlign = 'center';
+                          textAlign = 'center';
                           if (textAnchor.indexOf('left') !== -1) {
                               textAlign = 'left';
                               hOffset = textHaloWidth;
@@ -81522,14 +88354,13 @@ var ol = (function () {
                               textAlign = 'right';
                               hOffset = -textHaloWidth;
                           }
-                          text.setTextAlign(textAlign);
                           var textRotationAlignment = getValue(layer, 'layout', 'text-rotation-alignment', zoom, f, functionCache, featureState);
                           text.setRotateWithView(textRotationAlignment == 'map');
                       } else {
                           text.setMaxAngle(deg2rad(getValue(layer, 'layout', 'text-max-angle', zoom, f, functionCache, featureState)) * label.length / wrappedLabel.length);
-                          text.setTextAlign();
                           text.setRotateWithView(false);
                       }
+                      text.setTextAlign(textAlign);
                       var textBaseline = 'middle';
                       if (textAnchor.indexOf('bottom') == 0) {
                           textBaseline = 'bottom';
@@ -81545,9 +88376,9 @@ var ol = (function () {
                       text.setOffsetY(textOffset[1] * textSize + vOffset + textTranslate[1]);
                       textColor.setColor(colorWithOpacity(getValue(layer, 'paint', 'text-color', zoom, f, functionCache, featureState), opacity));
                       text.setFill(textColor);
-                      var haloColor = colorWithOpacity(getValue(layer, 'paint', 'text-halo-color', zoom, f, functionCache, featureState), opacity);
-                      if (haloColor) {
-                          textHalo.setColor(haloColor);
+                      var haloColor$1 = colorWithOpacity(getValue(layer, 'paint', 'text-halo-color', zoom, f, functionCache, featureState), opacity);
+                      if (haloColor$1) {
+                          textHalo.setColor(haloColor$1);
                           // spec here : https://docs.mapbox.com/mapbox-gl-js/style-spec/#paint-symbol-text-halo-width
                           // Halo width must be doubled because it is applied around the center of the text outline
                           textHaloWidth *= 2;
@@ -81574,455 +88405,13 @@ var ol = (function () {
               styles.length = stylesLength + 1;
               return styles;
           }
+          return undefined;
       };
       olLayer.setStyle(styleFunction);
       olLayer.set('mapbox-source', mapboxSource);
       olLayer.set('mapbox-layers', mapboxLayers);
-      olLayer.set('mapbox-featurestate', {});
+      olLayer.set('mapbox-featurestate', olLayer.get('mapbox-featurestate') || {});
       return styleFunction;
-  }
-
-  /*
-  ol-mapbox-style - Use Mapbox Style objects with OpenLayers
-  Copyright 2016-present ol-mapbox-style contributors
-  License: https://raw.githubusercontent.com/openlayers/ol-mapbox-style/master/LICENSE
-  */
-  /**
-   * @typedef {Object} FeatureIdentifier
-   * @property {string|number} id The feature id.
-   * @property {string} source The source id.
-   */
-  /**
-   * @typedef {Object} Options
-   * @property {string} [accessToken] Access token for 'mapbox://' urls.
-   * @property {function(string, ResourceType): (Request|void)} [transformRequest]
-   * Function for controlling how `ol-mapbox-style` fetches resources. Can be used for modifying
-   * the url, adding headers or setting credentials options. Called with the url and the resource
-   * type as arguments, this function is supposed to return a `Request` object. Without a return value,
-   * the original request will not be modified. For `Tiles` and `GeoJSON` resources, only the `url` of
-   * the returned request will be respected.
-   * @property {Array<number>} [resolutions] Resolutions for mapping resolution to zoom level.
-   * Only needed when working with non-standard tile grids or projections.
-   * @property {string} [styleUrl] URL of the Mapbox GL style. Required for styles that were provided
-   * as object, when they contain a relative sprite url, or sources referencing data by relative url.
-   * @property {string} [accessTokenParam='access_token'] Access token param. For internal use.
-   * @property {function(VectorLayer|VectorTileLayer, string):HTMLImageElement|HTMLCanvasElement|string|undefined} [getImage=undefined]
-   * Function that returns an image for an icon name. If the result is an HTMLImageElement, it must already be
-   * loaded. The layer can be used to call layer.changed() when the loading and processing of the image has finished.
-   * This function be used for icons not in the sprite or to override sprite icons.
-   */
-  /**
-   * @typedef {Object} ApplyStyleOptions
-   * @property {string} [source=''] Source. Default is `''`, which causes the first source in the
-   * style to be used.
-   * @property {Array<string>} [layers] Layers. If no source is provided, the layers with the
-   * provided ids will be used from the style's `layers` array. All layers need to use the same source.
-   */
-  /** @typedef {'Style'|'Source'|'Sprite'|'SpriteImage'|'Tiles'|'GeoJSON'} ResourceType */
-  /**
-   * @param {string} styleUrl Style URL.
-   * @param {Options} options Options.
-   * @return {Options} Completed options with accessToken and accessTokenParam.
-   */
-  function completeOptions(styleUrl, options) {
-      if (!options.accessToken) {
-          options = Object.assign({}, options);
-          var searchParams = new URL(styleUrl).searchParams;
-          // The last search parameter is the access token
-          searchParams.forEach(function (value, key) {
-              options.accessToken = value;
-              options.accessTokenParam = key;
-          });
-      }
-      return options;
-  }
-  /**
-   * Applies a style function to an `ol/layer/VectorTile` or `ol/layer/Vector`
-   * with an `ol/source/VectorTile` or an `ol/source/Vector`. If the layer does not have a source
-   * yet, it will be created and populated from the information in the `glStyle`.
-   *
-   * **Example:**
-   * ```js
-   * import {applyStyle} from 'ol-mapbox-style';
-   * import {VectorTile} from 'ol/layer.js';
-   *
-   * const layer = new VectorTile({declutter: true});
-   * applyStyle(layer, 'https://api.maptiler.com/maps/basic/style.json?key=YOUR_OPENMAPTILES_TOKEN');
-   * ```
-   *
-   * The style function will render all layers from the `glStyle` object that use the source
-   * of the first layer, the specified `source`, or a subset of layers from the same source. The
-   * source needs to be a `"type": "vector"` or `"type": "geojson"` source.
-   *
-   * Two additional properties will be set on the provided layer:
-   *
-   *  * `mapbox-source`: The `id` of the Mapbox Style document's source that the
-   *    OpenLayers layer was created from. Usually `apply()` creates one
-   *    OpenLayers layer per Mapbox Style source, unless the layer stack has
-   *    layers from different sources in between.
-   *  * `mapbox-layers`: The `id`s of the Mapbox Style document's layers that are
-   *    included in the OpenLayers layer.
-   *
-   * @param {VectorTileLayer|VectorLayer} layer OpenLayers layer. When the layer has a source configured,
-   * it will be modified to use the configuration from the glStyle's `source`. Options specified on the
-   * layer's source will override those from the glStyle's `source`, except for `url`,
-   * `tileUrlFunction` and `tileGrid` (exception: when the source projection is not `EPSG:3857`).
-   * @param {string|Object} glStyle Mapbox Style object.
-   * @param {string|Array<string>|Options&ApplyStyleOptions} [sourceOrLayersOrOptions] Options or
-   * `source` key or an array of layer `id`s from the Mapbox Style object. When a `source` key is
-   * provided, all layers for the specified source will be included in the style function. When layer
-   * `id`s are provided, they must be from layers that use the same source. When not provided or a falsey
-   * value, all layers using the first source specified in the glStyle will be rendered.
-   * @param {Options|string} [optionsOrPath] **Deprecated**. Options. Alternatively the path of the style file
-   * (only required when a relative path is used for the `"sprite"` property of the style).
-   * @param {Array<number>} [resolutions] **Deprecated**. Resolutions for mapping resolution to zoom level.
-   * Only needed when working with non-standard tile grids or projections, can also be supplied with
-   * options.
-   * @return {Promise} Promise which will be resolved when the style can be used
-   * for rendering.
-   */
-  function applyStyle(layer, glStyle, sourceOrLayersOrOptions, optionsOrPath, resolutions) {
-      if ( sourceOrLayersOrOptions === void 0 ) sourceOrLayersOrOptions = '';
-      if ( optionsOrPath === void 0 ) optionsOrPath = {};
-      if ( resolutions === void 0 ) resolutions = undefined;
-
-      var styleUrl, sourceId;
-      /** @type {Options&ApplyStyleOptions} */
-      var options;
-      var sourceOrLayers;
-      if (typeof sourceOrLayersOrOptions !== 'string' && !Array.isArray(sourceOrLayersOrOptions)) {
-          options = sourceOrLayersOrOptions;
-          sourceOrLayers = options.source || options.layers;
-          optionsOrPath = options;
-      } else {
-          sourceOrLayers = sourceOrLayersOrOptions;
-      }
-      if (typeof optionsOrPath === 'string') {
-          styleUrl = optionsOrPath;
-          options = {};
-      } else {
-          styleUrl = optionsOrPath.styleUrl;
-          options = optionsOrPath;
-      }
-      if (!resolutions) {
-          resolutions = options.resolutions;
-      }
-      if (!styleUrl && typeof glStyle === 'string' && !glStyle.trim().startsWith('{')) {
-          styleUrl = glStyle;
-      }
-      if (styleUrl) {
-          styleUrl = styleUrl.startsWith('data:') ? location.href : normalizeStyleUrl(styleUrl, options.accessToken);
-          options = completeOptions(styleUrl, options);
-      }
-      return new Promise(function (resolve, reject) {
-          // TODO: figure out where best place to check source type is
-          // Note that the source arg is an array of gl layer ids and each must be
-          // dereferenced to get source type to validate
-          getGlStyle(glStyle, options).then(function (glStyle) {
-              if (glStyle.version != 8) {
-                  return reject(new Error('glStyle version 8 required.'));
-              }
-              if (!(layer instanceof VectorLayer$1 || layer instanceof VectorTileLayer$1)) {
-                  return reject(new Error('Can only apply to VectorLayer or VectorTileLayer'));
-              }
-              var type = layer instanceof VectorTileLayer$1 ? 'vector' : 'geojson';
-              if (!sourceOrLayers) {
-                  sourceId = Object.keys(glStyle.sources).find(function (key) {
-                      return glStyle.sources[key].type === type;
-                  });
-                  sourceOrLayers = sourceId;
-              } else if (Array.isArray(sourceOrLayers)) {
-                  sourceId = glStyle.layers.find(function (layer) {
-                      return layer.id === sourceOrLayers[0];
-                  }).source;
-              } else {
-                  sourceId = sourceOrLayers;
-              }
-              if (!sourceId) {
-                  return reject(new Error(("No " + type + " source found in the glStyle.")));
-              }
-              function assignSource() {
-                  if (layer instanceof VectorTileLayer$1) {
-                      return setupVectorSource(glStyle.sources[sourceId], styleUrl, options).then(function (source) {
-                          var targetSource = layer.getSource();
-                          if (!targetSource) {
-                              layer.setSource(source);
-                          } else if (source !== targetSource) {
-                              targetSource.setTileUrlFunction(source.getTileUrlFunction());
-                              //@ts-ignore
-                              if (!targetSource.format_) {
-                                  //@ts-ignore
-                                  targetSource.format_ = source.format_;
-                              }
-                              if (!targetSource.getAttributions()) {
-                                  targetSource.setAttributions(source.getAttributions());
-                              }
-                              if (targetSource.getTileLoadFunction() === defaultLoadFunction) {
-                                  targetSource.setTileLoadFunction(source.getTileLoadFunction());
-                              }
-                              if (equivalent(targetSource.getProjection(), source.getProjection())) {
-                                  targetSource.tileGrid = source.getTileGrid();
-                              }
-                          }
-                          if (!isFinite(layer.getMaxResolution()) && !isFinite(layer.getMinZoom())) {
-                              var tileGrid = layer.getSource().getTileGrid();
-                              layer.setMaxResolution(tileGrid.getResolution(tileGrid.getMinZoom()));
-                          }
-                      });
-                  }
-                  var glSource = glStyle.sources[sourceId];
-                  var source = layer.getSource();
-                  if (!source || source.get('mapbox-source') !== glSource) {
-                      source = setupGeoJSONSource(glSource, styleUrl, options);
-                  }
-                  var targetSource = layer.getSource();
-                  if (!targetSource) {
-                      layer.setSource(source);
-                  } else if (source !== targetSource) {
-                      if (!targetSource.getAttributions()) {
-                          targetSource.setAttributions(source.getAttributions());
-                      }
-                      //@ts-ignore
-                      if (!targetSource.format_) {
-                          //@ts-ignore
-                          targetSource.format_ = source.getFormat();
-                      }
-                      //@ts-ignore
-                      targetSource.url_ = source.getUrl();
-                  }
-                  return Promise.resolve();
-              }
-              var spriteScale, spriteData, spriteImageUrl, style;
-              function onChange() {
-                  if (!style && (!glStyle.sprite || spriteData)) {
-                      style = stylefunction(layer, glStyle, sourceOrLayers, resolutions, spriteData, spriteImageUrl, getFonts, options.getImage);
-                      if (!layer.getStyle()) {
-                          reject(new Error(("Nothing to show for source [" + sourceId + "]")));
-                      } else {
-                          assignSource().then(resolve).catch(reject);
-                      }
-                  } else if (style) {
-                      layer.setStyle(style);
-                      assignSource().then(resolve).catch(reject);
-                  } else {
-                      reject(new Error('Something went wrong trying to apply style.'));
-                  }
-              }
-              if (glStyle.sprite) {
-                  var sprite = new URL(normalizeSpriteUrl(glStyle.sprite, options.accessToken, styleUrl || location.href));
-                  spriteScale = window.devicePixelRatio >= 1.5 ? 0.5 : 1;
-                  var sizeFactor = spriteScale == 0.5 ? '@2x' : '';
-                  var spriteUrl = sprite.origin + sprite.pathname + sizeFactor + '.json' + sprite.search;
-                  new Promise(function (resolve, reject) {
-                      fetchResource('Sprite', spriteUrl, options).then(resolve).catch(function (error) {
-                          spriteUrl = sprite.origin + sprite.pathname + '.json' + sprite.search;
-                          fetchResource('Sprite', spriteUrl, options).then(resolve).catch(reject);
-                      });
-                  }).then(function (spritesJson) {
-                      if (spritesJson === undefined) {
-                          reject(new Error('No sprites found.'));
-                      }
-                      spriteData = spritesJson;
-                      spriteImageUrl = sprite.origin + sprite.pathname + sizeFactor + '.png' + sprite.search;
-                      if (options.transformRequest) {
-                          var transformed = options.transformRequest(spriteImageUrl, 'SpriteImage');
-                          if (transformed instanceof Request) {
-                              spriteImageUrl = encodeURI(transformed.url);
-                          }
-                      }
-                      onChange();
-                  }).catch(function (err) {
-                      reject(new Error(("Sprites cannot be loaded: " + spriteUrl + ": " + (err.message))));
-                  });
-              } else {
-                  onChange();
-              }
-          }).catch(reject);
-      });
-  }
-  var emptyObj = {};
-  function setFirstBackground(mapOrLayer, glStyle, options) {
-      glStyle.layers.some(function (layer) {
-          if (layer.type === 'background') {
-              if (mapOrLayer instanceof Layer$1) {
-                  mapOrLayer.setBackground(function (resolution) {
-                      return getBackgroundColor(layer, resolution, options, {});
-                  });
-                  return true;
-              } else if (mapOrLayer instanceof Map$2 || mapOrLayer instanceof LayerGroup$1) {
-                  mapOrLayer.getLayers().push(setupBackgroundLayer(layer, options, {}));
-                  return true;
-              }
-          }
-      });
-  }
-  /**
-   * Applies properties of the Mapbox Style's first `background` layer to the
-   * provided map or VectorTile layer.
-   *
-   * **Example:**
-   * ```js
-   * import {applyBackground} from 'ol-mapbox-style';
-   * import {Map} from 'ol';
-   *
-   * const map = new Map({target: 'map'});
-   * applyBackground(map, 'https://api.maptiler.com/maps/basic/style.json?key=YOUR_OPENMAPTILES_TOKEN');
-   * ```
-   * @param {Map|VectorTileLayer} mapOrLayer OpenLayers Map or VectorTile layer.
-   * @param {Object|string} glStyle Mapbox Style object or url.
-   * @param {Options} options Options.
-   * @return {Promise} Promise that resolves when the background is applied.
-   */
-  function applyBackground(mapOrLayer, glStyle, options) {
-      if ( options === void 0 ) options = {};
-
-      return getGlStyle(glStyle, options).then(function (glStyle) {
-          setFirstBackground(mapOrLayer, glStyle, options);
-      });
-  }
-  function extentFromTileJSON(tileJSON) {
-      var bounds = tileJSON.bounds;
-      if (bounds) {
-          var ll = fromLonLat([
-              bounds[0],
-              bounds[1]
-          ]);
-          var tr = fromLonLat([
-              bounds[2],
-              bounds[3]
-          ]);
-          return [
-              ll[0],
-              ll[1],
-              tr[0],
-              tr[1]
-          ];
-      }
-  }
-  function getBackgroundColor(glLayer, resolution, options, functionCache) {
-      var background = {
-          id: glLayer.id,
-          type: glLayer.type
-      };
-      var layout = glLayer.layout || {};
-      var paint = glLayer.paint || {};
-      background['paint'] = paint;
-      var zoom = getZoomForResolution(resolution, options.resolutions || defaultResolutions);
-      var bg, opacity;
-      if (paint['background-color'] !== undefined) {
-          bg = getValue(background, 'paint', 'background-color', zoom, emptyObj, functionCache);
-      }
-      if (paint['background-opacity'] !== undefined) {
-          opacity = getValue(background, 'paint', 'background-opacity', zoom, emptyObj, functionCache);
-      }
-      return layout.visibility == 'none' ? undefined : colorWithOpacity(bg, opacity);
-  }
-  /**
-   * @param {Object} glLayer Mapbox Style layer object.
-   * @param {Options} options Options.
-   * @param {Object} functionCache Cache for functions.
-   * @return {Layer} OpenLayers layer.
-   */
-  function setupBackgroundLayer(glLayer, options, functionCache) {
-      var div = document.createElement('div');
-      div.className = 'ol-mapbox-style-background';
-      div.style.position = 'absolute';
-      div.style.width = '100%';
-      div.style.height = '100%';
-      return new Layer$1({
-          source: new Source$1({}),
-          render: function render(frameState) {
-              var color = getBackgroundColor(glLayer, frameState.viewState.resolution, options, functionCache);
-              div.style.backgroundColor = color;
-              return div;
-          }
-      });
-  }
-  /**
-   * Creates an OpenLayers VectorTile source for a gl source entry.
-   * @param {Object} glSource "source" entry from a Mapbox Style object.
-   * @param {string|undefined} styleUrl URL to use for the source. This is expected to be the complete http(s) url,
-   * with access key applied.
-   * @param {Options} options Options.
-   * @return {Promise<import("ol/source/VectorTile").default>} Promise resolving to a VectorTile source.
-   * @private
-   */
-  function setupVectorSource(glSource, styleUrl, options) {
-      return new Promise(function (resolve, reject) {
-          getTileJson(glSource, styleUrl, options).then(function (tileJSON) {
-              var tileJSONSource = new TileJSON$1({ tileJSON: tileJSON });
-              var tileJSONDoc = tileJSONSource.getTileJSON();
-              var tileGrid = tileJSONSource.getTileGrid();
-              var extent = extentFromTileJSON(tileJSONDoc);
-              var minZoom = tileJSONDoc.minzoom || 0;
-              var maxZoom = tileJSONDoc.maxzoom || 22;
-              var sourceOptions = {
-                  attributions: tileJSONSource.getAttributions(),
-                  format: new MVT$1(),
-                  tileGrid: new TileGrid$1({
-                      origin: tileGrid.getOrigin(0),
-                      extent: extent || tileGrid.getExtent(),
-                      minZoom: minZoom,
-                      resolutions: defaultResolutions.slice(0, maxZoom + 1),
-                      tileSize: 512
-                  })
-              };
-              if (Array.isArray(tileJSONDoc.tiles)) {
-                  sourceOptions.urls = tileJSONDoc.tiles;
-              } else {
-                  sourceOptions.url = tileJSONDoc.tiles;
-              }
-              if (tileJSON.olSourceOptions) {
-                  Object.assign(sourceOptions, tileJSON.olSourceOptions);
-              }
-              resolve(new VectorTileSource(sourceOptions));
-          }).catch(reject);
-      });
-  }
-  var geoJsonFormat = new format_GeoJSON();
-  /**
-   * @param {Object} glSource glStyle source.
-   * @param {string} styleUrl Style URL.
-   * @param {Options} options Options.
-   * @return {VectorSource} Configured vector source.
-   */
-  function setupGeoJSONSource(glSource, styleUrl, options) {
-      var data = glSource.data;
-      var sourceOptions = {};
-      if (typeof data == 'string') {
-          var geoJsonUrl = normalizeSourceUrl(data, options.accessToken, options.accessTokenParam || 'access_token', styleUrl || location.href);
-          if (options.transformRequest) {
-              var transformed = options.transformRequest(geoJsonUrl, 'GeoJSON');
-              if (transformed instanceof Request) {
-                  geoJsonUrl = decodeURI(transformed.url);
-              }
-          }
-          if (geoJsonUrl.indexOf('{bbox-epsg-3857}') != -1) {
-              var extentUrl = function (extent) {
-                  return geoJsonUrl.replace('{bbox-epsg-3857}', ((extent.join(',')) + ",EPSG:3857"));
-              };
-              var source$1 = new VectorSource$1({
-                  attributions: glSource.attribution,
-                  format: geoJsonFormat,
-                  url: extentUrl,
-                  strategy: bbox$1
-              });
-              source$1.set('mapbox-source', glSource);
-              return source$1;
-          }
-          return new VectorSource$1({
-              attributions: glSource.attribution,
-              format: geoJsonFormat,
-              url: geoJsonUrl
-          });
-      }
-      sourceOptions.features = geoJsonFormat.readFeatures(data, { featureProjection: getUserProjection() || 'EPSG:3857' });
-      var source = new VectorSource$1(Object.assign({
-          attributions: glSource.attribution,
-          format: geoJsonFormat
-      }, sourceOptions));
-      source.set('mapbox-source', glSource);
-      return source;
   }
 
   /**
@@ -82168,7 +88557,7 @@ var ol = (function () {
       const declutter = 'declutter' in options ? options.declutter : true;
       const source = new VectorTileSource({
         state: 'loading',
-        format: new MVT$1(),
+        format: new format_MVT(),
       });
 
       super({
@@ -82198,7 +88587,8 @@ var ol = (function () {
         this.accessToken = options.accessToken;
       }
       const url = options.styleUrl;
-      applyStyle(this, url, options.layers || options.source, {
+      //FIXME Remove type cast as soon as we know why it is needed
+      applyStyle(/** @type {*} */ (this), url, options.layers || options.source, {
         accessToken: this.accessToken,
       })
         .then(() => {
@@ -82210,7 +88600,8 @@ var ol = (function () {
           source.setState('error');
         });
       if (this.getBackground() === undefined) {
-        applyBackground(this, options.styleUrl, {
+        //FIXME Remove type cast as soon as we know why it is needed
+        applyBackground(/** @type {*} */ (this), options.styleUrl, {
           accessToken: this.accessToken,
         });
       }
@@ -82319,7 +88710,6 @@ var ol = (function () {
         vectorRenderer.useContainer(null, null);
         const context = vectorRenderer.context;
         const layerState = frameState.layerStatesArray[frameState.layerIndex];
-        context.globalAlpha = layerState.opacity;
         const imageLayerState = Object.assign({}, layerState, {opacity: 1});
         const imageFrameState = /** @type {import("../../Map.js").FrameState} */ (
           Object.assign({}, frameState, {
@@ -82651,7 +89041,8 @@ var ol = (function () {
     if (canvas.height !== height) {
       canvas.height = height;
     }
-    sharedContext.drawImage(image, width, height);
+    sharedContext.clearRect(0, 0, width, height);
+    sharedContext.drawImage(image, 0, 0);
     return sharedContext.getImageData(0, 0, width, height).data;
   }
 
@@ -83254,6 +89645,109 @@ var ol = (function () {
   var ReprojDataTile$1 = ReprojDataTile;
 
   /**
+   * @module ol/webgl/BaseTileRepresentation
+   */
+
+  /**
+   * @typedef {import("../Tile.js").default} BaseTileType
+   */
+
+  /**
+   * @template {BaseTileType} TileType
+   * @typedef {Object} TileRepresentationOptions
+   * @property {TileType} tile The tile.
+   * @property {import("../tilegrid/TileGrid.js").default} grid Tile grid.
+   * @property {import("../webgl/Helper.js").default} helper WebGL helper.
+   * @property {number} [gutter=0] The size in pixels of the gutter around image tiles to ignore.
+   */
+
+  /**
+   * @classdesc
+   * Base class for representing a tile in a webgl context
+   * @template {import("../Tile.js").default} TileType
+   * @abstract
+   */
+  class BaseTileRepresentation extends EventTarget {
+    /**
+     * @param {TileRepresentationOptions<TileType>} options The tile representation options.
+     */
+    constructor(options) {
+      super();
+
+      /**
+       * @type {TileType}
+       */
+      this.tile;
+      this.handleTileChange_ = this.handleTileChange_.bind(this);
+
+      /**
+       * @type {number}
+       * @protected
+       */
+      this.gutter_ = options.gutter || 0;
+
+      /**
+       * @type {import("../webgl/Helper.js").default}
+       * @protected
+       */
+      this.helper_ = options.helper;
+
+      this.loaded = false;
+      this.ready = false;
+    }
+
+    /**
+     * @param {TileType} tile Tile.
+     */
+    setTile(tile) {
+      if (tile !== this.tile) {
+        if (this.tile) {
+          this.tile.removeEventListener(EventType.CHANGE, this.handleTileChange_);
+        }
+        this.tile = tile;
+        this.loaded = tile.getState() === TileState.LOADED;
+        if (this.loaded) {
+          this.uploadTile();
+        } else {
+          if (tile instanceof ImageTile$1) {
+            const image = tile.getImage();
+            if (image instanceof Image && !image.crossOrigin) {
+              image.crossOrigin = 'anonymous';
+            }
+          }
+          tile.addEventListener(EventType.CHANGE, this.handleTileChange_);
+        }
+      }
+    }
+
+    /**
+     * @abstract
+     * @protected
+     */
+    uploadTile() {
+      abstract();
+    }
+
+    setReady() {
+      this.ready = true;
+      this.dispatchEvent(EventType.CHANGE);
+    }
+
+    handleTileChange_() {
+      if (this.tile.getState() === TileState.LOADED) {
+        this.loaded = true;
+        this.uploadTile();
+      }
+    }
+
+    disposeInternal() {
+      this.tile.removeEventListener(EventType.CHANGE, this.handleTileChange_);
+    }
+  }
+
+  var BaseTileRepresentation$1 = BaseTileRepresentation;
+
+  /**
    * @module ol/webgl/TileTexture
    */
 
@@ -83378,30 +89872,19 @@ var ol = (function () {
    */
 
   /**
-   * @typedef {Object} Options
-   * @property {TileType} tile The tile.
-   * @property {import("../tilegrid/TileGrid.js").default} grid Tile grid.
-   * @property {import("../webgl/Helper.js").default} helper WebGL helper.
-   * @property {number} [gutter=0] The size in pixels of the gutter around image tiles to ignore.
+   * @extends {BaseTileRepresentation<TileType>}
    */
-
-  class TileTexture extends EventTarget {
+  class TileTexture extends BaseTileRepresentation$1 {
     /**
-     * @param {Options} options The tile texture options.
+     * @param {import("./BaseTileRepresentation.js").TileRepresentationOptions<TileType>} options The tile texture options.
      */
     constructor(options) {
-      super();
-
-      /**
-       * @type {TileType}
-       */
-      this.tile;
+      super(options);
 
       /**
        * @type {Array<WebGLTexture>}
        */
       this.textures = [];
-      this.handleTileChange_ = this.handleTileChange_.bind(this);
 
       /**
        * @type {import("../size.js").Size}
@@ -83413,20 +89896,8 @@ var ol = (function () {
 
       /**
        * @type {number}
-       * @private
-       */
-      this.gutter_ = options.gutter || 0;
-
-      /**
-       * @type {number}
        */
       this.bandCount = NaN;
-
-      /**
-       * @type {import("../webgl/Helper.js").default}
-       * @private
-       */
-      this.helper_ = options.helper;
 
       const coords = new WebGLArrayBuffer$1(ARRAY_BUFFER, STATIC_DRAW);
       coords.fromArray([
@@ -83449,35 +89920,12 @@ var ol = (function () {
       this.setTile(options.tile);
     }
 
-    /**
-     * @param {TileType} tile Tile.
-     */
-    setTile(tile) {
-      if (tile !== this.tile) {
-        if (this.tile) {
-          this.tile.removeEventListener(EventType.CHANGE, this.handleTileChange_);
-        }
-        this.tile = tile;
-        this.textures.length = 0;
-        this.loaded = tile.getState() === TileState.LOADED;
-        if (this.loaded) {
-          this.uploadTile_();
-        } else {
-          if (tile instanceof ImageTile$1) {
-            const image = tile.getImage();
-            if (image instanceof Image && !image.crossOrigin) {
-              image.crossOrigin = 'anonymous';
-            }
-          }
-          tile.addEventListener(EventType.CHANGE, this.handleTileChange_);
-        }
-      }
-    }
-
-    uploadTile_() {
+    uploadTile() {
       const helper = this.helper_;
       const gl = helper.getGL();
       const tile = this.tile;
+
+      this.textures.length = 0;
 
       /**
        * @type {import("../DataTile.js").Data}
@@ -83496,6 +89944,7 @@ var ol = (function () {
         this.textures.push(texture);
         this.bandCount = 4;
         uploadImageTexture(gl, texture, image, tile.interpolate);
+        this.setReady();
         return;
       }
 
@@ -83526,6 +89975,7 @@ var ol = (function () {
           this.bandCount,
           tile.interpolate
         );
+        this.setReady();
         return;
       }
 
@@ -83572,14 +90022,8 @@ var ol = (function () {
           tile.interpolate
         );
       }
-    }
 
-    handleTileChange_() {
-      if (this.tile.getState() === TileState.LOADED) {
-        this.loaded = true;
-        this.uploadTile_();
-        this.dispatchEvent(EventType.CHANGE);
-      }
+      this.setReady();
     }
 
     disposeInternal() {
@@ -83701,38 +90145,20 @@ var ol = (function () {
   var TileTexture$1 = TileTexture;
 
   /**
-   * @module ol/renderer/webgl/TileLayer
+   * @module ol/renderer/webgl/TileLayerBase
    */
 
-  const Uniforms = {
-    TILE_TEXTURE_ARRAY: 'u_tileTextures',
+  const Uniforms$1 = {
     TILE_TRANSFORM: 'u_tileTransform',
     TRANSITION_ALPHA: 'u_transitionAlpha',
     DEPTH: 'u_depth',
-    TEXTURE_PIXEL_WIDTH: 'u_texturePixelWidth',
-    TEXTURE_PIXEL_HEIGHT: 'u_texturePixelHeight',
-    TEXTURE_RESOLUTION: 'u_textureResolution', // map units per texture pixel
-    TEXTURE_ORIGIN_X: 'u_textureOriginX', // map x coordinate of left edge of texture
-    TEXTURE_ORIGIN_Y: 'u_textureOriginY', // map y coordinate of top edge of texture
     RENDER_EXTENT: 'u_renderExtent', // intersection of layer, source, and view extent
     RESOLUTION: 'u_resolution',
     ZOOM: 'u_zoom',
+    GLOBAL_ALPHA: 'u_globalAlpha',
+    PROJECTION_MATRIX: 'u_projectionMatrix',
+    SCREEN_TO_WORLD_MATRIX: 'u_screenToWorldMatrix',
   };
-
-  const Attributes = {
-    TEXTURE_COORD: 'a_textureCoord',
-  };
-
-  /**
-   * @type {Array<import('../../webgl/Helper.js').AttributeDescription>}
-   */
-  const attributeDescriptions = [
-    {
-      name: Attributes.TEXTURE_COORD,
-      size: 2,
-      type: AttributeType.FLOAT,
-    },
-  ];
 
   /**
    * @type {Object<string, boolean>}
@@ -83745,21 +90171,52 @@ var ol = (function () {
    * @return {number} A depth value.
    */
   function depthForZ(z) {
-    return 2 * (1 - 1 / (z + 1)) - 1;
+    return 1 / (z + 2);
   }
 
   /**
-   * Add a tile texture to the lookup.
-   * @param {Object<number, Array<import("../../webgl/TileTexture.js").default>>} tileTexturesByZ Lookup of
-   * tile textures by zoom level.
-   * @param {import("../../webgl/TileTexture.js").default} tileTexture A tile texture.
+   * @typedef {import("../../webgl/BaseTileRepresentation.js").default<import("../../Tile.js").default>} AbstractTileRepresentation
+   */
+  /**
+   * @typedef {Object} TileRepresentationLookup
+   * @property {Set<string>} tileIds The set of tile ids in the lookup.
+   * @property {Object<number, Set<AbstractTileRepresentation>>} representationsByZ Tile representations by zoom level.
+   */
+
+  /**
+   * @return {TileRepresentationLookup} A new tile representation lookup.
+   */
+  function newTileRepresentationLookup() {
+    return {tileIds: new Set(), representationsByZ: {}};
+  }
+
+  /**
+   * Check if a tile is already in the tile representation lookup.
+   * @param {TileRepresentationLookup} tileRepresentationLookup Lookup of tile representations by zoom level.
+   * @param {import("../../Tile.js").default} tile A tile.
+   * @return {boolean} The tile is already in the lookup.
+   */
+  function lookupHasTile(tileRepresentationLookup, tile) {
+    return tileRepresentationLookup.tileIds.has(getUid(tile));
+  }
+
+  /**
+   * Add a tile representation to the lookup.
+   * @param {TileRepresentationLookup} tileRepresentationLookup Lookup of tile representations by zoom level.
+   * @param {AbstractTileRepresentation} tileRepresentation A tile representation.
    * @param {number} z The zoom level.
    */
-  function addTileTextureToLookup(tileTexturesByZ, tileTexture, z) {
-    if (!(z in tileTexturesByZ)) {
-      tileTexturesByZ[z] = [];
+  function addTileRepresentationToLookup(
+    tileRepresentationLookup,
+    tileRepresentation,
+    z
+  ) {
+    const representationsByZ = tileRepresentationLookup.representationsByZ;
+    if (!(z in representationsByZ)) {
+      representationsByZ[z] = new Set();
     }
-    tileTexturesByZ[z].push(tileTexture);
+    representationsByZ[z].add(tileRepresentation);
+    tileRepresentationLookup.tileIds.add(getUid(tileRepresentation.tile));
   }
 
   /**
@@ -83795,25 +90252,25 @@ var ol = (function () {
 
   /**
    * @typedef {Object} Options
-   * @property {string} vertexShader Vertex shader source.
-   * @property {string} fragmentShader Fragment shader source.
    * @property {Object<string, import("../../webgl/Helper").UniformValue>} [uniforms] Additional uniforms
    * made available to shaders.
-   * @property {Array<import("../../webgl/PaletteTexture.js").default>} [paletteTextures] Palette textures.
-   * @property {number} [cacheSize=512] The texture cache size.
+   * @property {number} [cacheSize=512] The tile representation cache size.
+   * @property {Array<import('./Layer.js').PostProcessesOptions>} [postProcesses] Post-processes definitions.
    */
 
   /**
-   * @typedef {import("../../layer/WebGLTile.js").default} LayerType
+   * @typedef {import("../../layer/BaseTile.js").default} BaseLayerType
    */
 
   /**
    * @classdesc
-   * WebGL renderer for tile layers.
+   * Base WebGL renderer for tile layers.
+   * @template {BaseLayerType} LayerType
+   * @template {import("../../Tile.js").default} TileType
+   * @template {import("../../webgl/BaseTileRepresentation.js").default<TileType>} TileRepresentation
    * @extends {WebGLLayerRenderer<LayerType>}
-   * @api
    */
-  class WebGLTileLayerRenderer extends WebGLLayerRenderer$1 {
+  class WebGLBaseTileLayerRenderer extends WebGLLayerRenderer$1 {
     /**
      * @param {LayerType} tileLayer Tile layer.
      * @param {Options} options Options.
@@ -83821,6 +90278,7 @@ var ol = (function () {
     constructor(tileLayer, options) {
       super(tileLayer, {
         uniforms: options.uniforms,
+        postProcesses: options.postProcesses,
       });
 
       /**
@@ -83830,7 +90288,7 @@ var ol = (function () {
       this.renderComplete = false;
 
       /**
-       * This transform converts texture coordinates to screen coordinates.
+       * This transform converts representation coordinates to screen coordinates.
        * @type {import("../../transform.js").Transform}
        * @private
        */
@@ -83838,9 +90296,9 @@ var ol = (function () {
 
       /**
        * @type {Array<number>}
-       * @private
+       * @protected
        */
-      this.tempMat4_ = create$2();
+      this.tempMat4 = create$2();
 
       /**
        * @type {import("../../TileRange.js").default}
@@ -83860,61 +90318,18 @@ var ol = (function () {
        */
       this.tempSize_ = [0, 0];
 
-      /**
-       * @type {WebGLProgram}
-       * @private
-       */
-      this.program_;
-
-      /**
-       * @private
-       */
-      this.vertexShader_ = options.vertexShader;
-
-      /**
-       * @private
-       */
-      this.fragmentShader_ = options.fragmentShader;
-
-      /**
-       * Tiles are rendered as a quad with the following structure:
-       *
-       *  [P3]---------[P2]
-       *   |`           |
-       *   |  `     B   |
-       *   |    `       |
-       *   |      `     |
-       *   |   A    `   |
-       *   |          ` |
-       *  [P0]---------[P1]
-       *
-       * Triangle A: P0, P1, P3
-       * Triangle B: P1, P2, P3
-       *
-       * @private
-       */
-      this.indices_ = new WebGLArrayBuffer$1(ELEMENT_ARRAY_BUFFER, STATIC_DRAW);
-      this.indices_.fromArray([0, 1, 3, 1, 2, 3]);
-
       const cacheSize = options.cacheSize !== undefined ? options.cacheSize : 512;
-
       /**
-       * @type {import("../../structs/LRUCache.js").default<import("../../webgl/TileTexture.js").default>}
-       * @private
+       * @type {import("../../structs/LRUCache.js").default<TileRepresentation>}
+       * @protected
        */
-      this.tileTextureCache_ = new LRUCache$1(cacheSize);
+      this.tileRepresentationCache = new LRUCache$1(cacheSize);
 
       /**
-       * @type {Array<import("../../webgl/PaletteTexture.js").default>}
-       * @private
-       */
-      this.paletteTextures_ = options.paletteTextures || [];
-
-      /**
-       * @private
+       * @protected
        * @type {import("../../Map.js").FrameState|null}
        */
-      this.frameState_ = null;
+      this.frameState = null;
 
       /**
        * @private
@@ -83930,29 +90345,10 @@ var ol = (function () {
       super.reset({
         uniforms: options.uniforms,
       });
-      this.vertexShader_ = options.vertexShader;
-      this.fragmentShader_ = options.fragmentShader;
-      this.paletteTextures_ = options.paletteTextures || [];
-
-      if (this.helper) {
-        this.program_ = this.helper.getProgram(
-          this.fragmentShader_,
-          this.vertexShader_
-        );
-      }
-    }
-
-    afterHelperCreated() {
-      this.program_ = this.helper.getProgram(
-        this.fragmentShader_,
-        this.vertexShader_
-      );
-
-      this.helper.flushBufferData(this.indices_);
     }
 
     /**
-     * @param {import("../../webgl/TileTexture").TileType} tile Tile.
+     * @param {TileType} tile Tile.
      * @return {boolean} Tile is drawable.
      * @private
      */
@@ -83993,13 +90389,29 @@ var ol = (function () {
     }
 
     /**
+     * @abstract
+     * @param {import("../../webgl/BaseTileRepresentation.js").TileRepresentationOptions<TileType>} options tile representation options
+     * @return {TileRepresentation} A new tile representation
+     * @protected
+     */
+    createTileRepresentation(options) {
+      return abstract();
+    }
+
+    /**
      * @param {import("../../Map.js").FrameState} frameState Frame state.
      * @param {import("../../extent.js").Extent} extent The extent to be rendered.
      * @param {number} initialZ The zoom level.
-     * @param {Object<number, Array<TileTexture>>} tileTexturesByZ The zoom level.
+     * @param {TileRepresentationLookup} tileRepresentationLookup The zoom level.
      * @param {number} preload Number of additional levels to load.
      */
-    enqueueTiles(frameState, extent, initialZ, tileTexturesByZ, preload) {
+    enqueueTiles(
+      frameState,
+      extent,
+      initialZ,
+      tileRepresentationLookup,
+      preload
+    ) {
       const viewState = frameState.viewState;
       const tileLayer = this.getLayer();
       const tileSource = tileLayer.getRenderSource();
@@ -84012,7 +90424,7 @@ var ol = (function () {
       }
 
       const wantedTiles = frameState.wantedTiles[tileSourceKey];
-      const tileTextureCache = this.tileTextureCache_;
+      const tileRepresentationCache = this.tileRepresentationCache;
 
       const map = tileLayer.getMapInternal();
       const minZ = Math.max(
@@ -84044,17 +90456,20 @@ var ol = (function () {
             const tileCoord = createOrUpdate$1(z, x, y, this.tempTileCoord_);
             const cacheKey = getCacheKey(tileSource, tileCoord);
 
-            /** @type {TileTexture} */
-            let tileTexture;
+            /** @type {TileRepresentation} */
+            let tileRepresentation;
 
-            /** @type {import("../../webgl/TileTexture").TileType} */
+            /** @type {TileType} */
             let tile;
 
-            if (tileTextureCache.containsKey(cacheKey)) {
-              tileTexture = tileTextureCache.get(cacheKey);
-              tile = tileTexture.tile;
+            if (tileRepresentationCache.containsKey(cacheKey)) {
+              tileRepresentation = tileRepresentationCache.get(cacheKey);
+              tile = tileRepresentation.tile;
             }
-            if (!tileTexture || tileTexture.tile.key !== tileSource.getKey()) {
+            if (
+              !tileRepresentation ||
+              tileRepresentation.tile.key !== tileSource.getKey()
+            ) {
               tile = tileSource.getTile(
                 z,
                 x,
@@ -84062,28 +90477,36 @@ var ol = (function () {
                 frameState.pixelRatio,
                 viewState.projection
               );
-              if (!tileTexture) {
-                tileTexture = new TileTexture$1({
-                  tile: tile,
-                  grid: tileGrid,
-                  helper: this.helper,
-                  gutter: gutter,
-                });
-                tileTextureCache.set(cacheKey, tileTexture);
+            }
+
+            if (lookupHasTile(tileRepresentationLookup, tile)) {
+              continue;
+            }
+
+            if (!tileRepresentation) {
+              tileRepresentation = this.createTileRepresentation({
+                tile: tile,
+                grid: tileGrid,
+                helper: this.helper,
+                gutter: gutter,
+              });
+              tileRepresentationCache.set(cacheKey, tileRepresentation);
+            } else {
+              if (this.isDrawableTile_(tile)) {
+                tileRepresentation.setTile(tile);
               } else {
-                if (this.isDrawableTile_(tile)) {
-                  tileTexture.setTile(tile);
-                } else {
-                  const interimTile =
-                    /** @type {import("../../webgl/TileTexture").TileType} */ (
-                      tile.getInterimTile()
-                    );
-                  tileTexture.setTile(interimTile);
-                }
+                const interimTile = /** @type {TileType} */ (
+                  tile.getInterimTile()
+                );
+                tileRepresentation.setTile(interimTile);
               }
             }
 
-            addTileTextureToLookup(tileTexturesByZ, tileTexture, z);
+            addTileRepresentationToLookup(
+              tileRepresentationLookup,
+              tileRepresentation,
+              z
+            );
 
             const tileQueueKey = tile.getKey();
             wantedTiles[tileQueueKey] = true;
@@ -84104,12 +90527,122 @@ var ol = (function () {
     }
 
     /**
+     * @param {import("../../Map.js").FrameState} frameState Frame state.
+     * @param {boolean} tilesWithAlpha True if at least one of the rendered tiles has alpha
+     * @protected
+     */
+    beforeTilesRender(frameState, tilesWithAlpha) {
+      this.helper.prepareDraw(this.frameState, !tilesWithAlpha, true);
+    }
+
+    /**
+     * @param {TileRepresentation} tileRepresentation Tile representation
+     * @param {import("../../transform.js").Transform} tileTransform Tile transform
+     * @param {import("../../Map.js").FrameState} frameState Frame state
+     * @param {import("../../extent.js").Extent} renderExtent Render extent
+     * @param {number} tileResolution Tile resolution
+     * @param {import("../../size.js").Size} tileSize Tile size
+     * @param {import("../../coordinate.js").Coordinate} tileOrigin Tile origin
+     * @param {import("../../extent.js").Extent} tileExtent tile Extent
+     * @param {number} depth Depth
+     * @param {number} gutter Gutter
+     * @param {number} alpha Alpha
+     * @protected
+     */
+    renderTile(
+      tileRepresentation,
+      tileTransform,
+      frameState,
+      renderExtent,
+      tileResolution,
+      tileSize,
+      tileOrigin,
+      tileExtent,
+      depth,
+      gutter,
+      alpha
+    ) {}
+
+    drawTile_(
+      frameState,
+      tileRepresentation,
+      tileZ,
+      gutter,
+      extent,
+      alphaLookup,
+      tileGrid
+    ) {
+      if (!tileRepresentation.loaded) {
+        return;
+      }
+      const tile = tileRepresentation.tile;
+      const tileCoord = tile.tileCoord;
+      const tileCoordKey = getKey(tileCoord);
+      const alpha = tileCoordKey in alphaLookup ? alphaLookup[tileCoordKey] : 1;
+
+      const tileResolution = tileGrid.getResolution(tileZ);
+      const tileSize = toSize(tileGrid.getTileSize(tileZ), this.tempSize_);
+      const tileOrigin = tileGrid.getOrigin(tileZ);
+      const tileExtent = tileGrid.getTileCoordExtent(tileCoord);
+      // tiles with alpha are rendered last to allow blending
+      const depth = alpha < 1 ? -1 : depthForZ(tileZ);
+      if (alpha < 1) {
+        frameState.animate = true;
+      }
+
+      const viewState = frameState.viewState;
+      const centerX = viewState.center[0];
+      const centerY = viewState.center[1];
+
+      const tileWidthWithGutter = tileSize[0] + 2 * gutter;
+      const tileHeightWithGutter = tileSize[1] + 2 * gutter;
+
+      const aspectRatio = tileWidthWithGutter / tileHeightWithGutter;
+
+      const centerI = (centerX - tileOrigin[0]) / (tileSize[0] * tileResolution);
+      const centerJ = (tileOrigin[1] - centerY) / (tileSize[1] * tileResolution);
+
+      const tileScale = viewState.resolution / tileResolution;
+
+      const tileCenterI = tileCoord[1];
+      const tileCenterJ = tileCoord[2];
+
+      reset(this.tileTransform_);
+      scale$3(
+        this.tileTransform_,
+        2 / ((frameState.size[0] * tileScale) / tileWidthWithGutter),
+        -2 / ((frameState.size[1] * tileScale) / tileWidthWithGutter)
+      );
+      rotate$2(this.tileTransform_, viewState.rotation);
+      scale$3(this.tileTransform_, 1, 1 / aspectRatio);
+      translate$1(
+        this.tileTransform_,
+        (tileSize[0] * (tileCenterI - centerI) - gutter) / tileWidthWithGutter,
+        (tileSize[1] * (tileCenterJ - centerJ) - gutter) / tileHeightWithGutter
+      );
+
+      this.renderTile(
+        /** @type {TileRepresentation} */ (tileRepresentation),
+        this.tileTransform_,
+        frameState,
+        extent,
+        tileResolution,
+        tileSize,
+        tileOrigin,
+        tileExtent,
+        depth,
+        gutter,
+        alpha
+      );
+    }
+
+    /**
      * Render the layer.
      * @param {import("../../Map.js").FrameState} frameState Frame state.
      * @return {HTMLElement} The rendered element.
      */
     renderFrame(frameState) {
-      this.frameState_ = frameState;
+      this.frameState = frameState;
       this.renderComplete = true;
       const gl = this.helper.getGL();
       this.preRender(gl, frameState);
@@ -84126,9 +90659,9 @@ var ol = (function () {
       );
 
       /**
-       * @type {Object<number, Array<import("../../webgl/TileTexture.js").default>>}
+       * @type {TileRepresentationLookup}
        */
-      const tileTexturesByZ = {};
+      const tileRepresentationLookup = newTileRepresentationLookup();
 
       const preload = tileLayer.getPreload();
       if (frameState.nextExtent) {
@@ -84141,19 +90674,19 @@ var ol = (function () {
           frameState,
           nextExtent,
           targetZ,
-          tileTexturesByZ,
+          tileRepresentationLookup,
           preload
         );
       }
 
-      this.enqueueTiles(frameState, extent, z, tileTexturesByZ, 0);
+      this.enqueueTiles(frameState, extent, z, tileRepresentationLookup, 0);
       if (preload > 0) {
         setTimeout(() => {
           this.enqueueTiles(
             frameState,
             extent,
             z - 1,
-            tileTexturesByZ,
+            tileRepresentationLookup,
             preload - 1
           );
         }, 0);
@@ -84172,10 +90705,9 @@ var ol = (function () {
       let blend = false;
 
       // look for cached tiles to use if a target tile is not ready
-      const tileTextures = tileTexturesByZ[z];
-      for (let i = 0, ii = tileTextures.length; i < ii; ++i) {
-        const tileTexture = tileTextures[i];
-        const tile = tileTexture.tile;
+      for (const tileRepresentation of tileRepresentationLookup
+        .representationsByZ[z]) {
+        const tile = tileRepresentation.tile;
         if (
           (tile instanceof ReprojTile$1 || tile instanceof ReprojDataTile$1) &&
           tile.getState() === TileState.EMPTY
@@ -84184,7 +90716,7 @@ var ol = (function () {
         }
         const tileCoord = tile.tileCoord;
 
-        if (tileTexture.loaded) {
+        if (tileRepresentation.loaded) {
           const alpha = tile.getAlpha(uid, time);
           if (alpha === 1) {
             // no need to look for alt tiles
@@ -84202,7 +90734,7 @@ var ol = (function () {
           tileGrid,
           tileCoord,
           z + 1,
-          tileTexturesByZ
+          tileRepresentationLookup
         );
 
         if (coveredByChildren) {
@@ -84216,7 +90748,7 @@ var ol = (function () {
             tileGrid,
             tileCoord,
             parentZ,
-            tileTexturesByZ
+            tileRepresentationLookup
           );
 
           if (coveredByParent) {
@@ -84225,145 +90757,44 @@ var ol = (function () {
         }
       }
 
-      this.helper.useProgram(this.program_, frameState);
-      this.helper.prepareDraw(frameState, !blend);
+      this.beforeTilesRender(frameState, blend);
 
-      const zs = Object.keys(tileTexturesByZ).map(Number).sort(ascending);
-
-      const centerX = viewState.center[0];
-      const centerY = viewState.center[1];
-
+      const representationsByZ = tileRepresentationLookup.representationsByZ;
+      const zs = Object.keys(representationsByZ).map(Number).sort(descending);
       for (let j = 0, jj = zs.length; j < jj; ++j) {
         const tileZ = zs[j];
-        const tileResolution = tileGrid.getResolution(tileZ);
-        const tileSize = toSize(tileGrid.getTileSize(tileZ), this.tempSize_);
-        const tileOrigin = tileGrid.getOrigin(tileZ);
-
-        const tileWidthWithGutter = tileSize[0] + 2 * gutter;
-        const tileHeightWithGutter = tileSize[1] + 2 * gutter;
-        const aspectRatio = tileWidthWithGutter / tileHeightWithGutter;
-
-        const centerI =
-          (centerX - tileOrigin[0]) / (tileSize[0] * tileResolution);
-        const centerJ =
-          (tileOrigin[1] - centerY) / (tileSize[1] * tileResolution);
-
-        const tileScale = viewState.resolution / tileResolution;
-
-        const depth = depthForZ(tileZ);
-        const tileTextures = tileTexturesByZ[tileZ];
-        for (let i = 0, ii = tileTextures.length; i < ii; ++i) {
-          const tileTexture = tileTextures[i];
-          if (!tileTexture.loaded) {
+        for (const tileRepresentation of representationsByZ[tileZ]) {
+          const tileCoord = tileRepresentation.tile.tileCoord;
+          const tileCoordKey = getKey(tileCoord);
+          if (tileCoordKey in alphaLookup) {
             continue;
           }
-          const tile = tileTexture.tile;
-          const tileCoord = tile.tileCoord;
-          const tileCoordKey = getKey(tileCoord);
 
-          const tileCenterI = tileCoord[1];
-          const tileCenterJ = tileCoord[2];
-
-          reset(this.tileTransform_);
-          scale$3(
-            this.tileTransform_,
-            2 / ((frameState.size[0] * tileScale) / tileWidthWithGutter),
-            -2 / ((frameState.size[1] * tileScale) / tileWidthWithGutter)
+          this.drawTile_(
+            frameState,
+            tileRepresentation,
+            tileZ,
+            gutter,
+            extent,
+            alphaLookup,
+            tileGrid
           );
-          rotate$2(this.tileTransform_, viewState.rotation);
-          scale$3(this.tileTransform_, 1, 1 / aspectRatio);
-          translate$1(
-            this.tileTransform_,
-            (tileSize[0] * (tileCenterI - centerI) - gutter) /
-              tileWidthWithGutter,
-            (tileSize[1] * (tileCenterJ - centerJ) - gutter) /
-              tileHeightWithGutter
-          );
+        }
+      }
 
-          this.helper.setUniformMatrixValue(
-            Uniforms.TILE_TRANSFORM,
-            fromTransform(this.tempMat4_, this.tileTransform_)
+      for (const tileRepresentation of representationsByZ[z]) {
+        const tileCoord = tileRepresentation.tile.tileCoord;
+        const tileCoordKey = getKey(tileCoord);
+        if (tileCoordKey in alphaLookup) {
+          this.drawTile_(
+            frameState,
+            tileRepresentation,
+            z,
+            gutter,
+            extent,
+            alphaLookup,
+            tileGrid
           );
-
-          this.helper.bindBuffer(tileTexture.coords);
-          this.helper.bindBuffer(this.indices_);
-          this.helper.enableAttributes(attributeDescriptions);
-
-          let textureSlot = 0;
-          while (textureSlot < tileTexture.textures.length) {
-            const textureProperty = 'TEXTURE' + textureSlot;
-            const uniformName = `${Uniforms.TILE_TEXTURE_ARRAY}[${textureSlot}]`;
-            gl.activeTexture(gl[textureProperty]);
-            gl.bindTexture(gl.TEXTURE_2D, tileTexture.textures[textureSlot]);
-            gl.uniform1i(
-              this.helper.getUniformLocation(uniformName),
-              textureSlot
-            );
-            ++textureSlot;
-          }
-
-          for (
-            let paletteIndex = 0;
-            paletteIndex < this.paletteTextures_.length;
-            ++paletteIndex
-          ) {
-            const paletteTexture = this.paletteTextures_[paletteIndex];
-            gl.activeTexture(gl['TEXTURE' + textureSlot]);
-            const texture = paletteTexture.getTexture(gl);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.uniform1i(
-              this.helper.getUniformLocation(paletteTexture.name),
-              textureSlot
-            );
-            ++textureSlot;
-          }
-
-          const alpha =
-            tileCoordKey in alphaLookup ? alphaLookup[tileCoordKey] : 1;
-
-          if (alpha < 1) {
-            frameState.animate = true;
-          }
-
-          this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);
-          this.helper.setUniformFloatValue(Uniforms.DEPTH, depth);
-          this.helper.setUniformFloatValue(
-            Uniforms.TEXTURE_PIXEL_WIDTH,
-            tileWidthWithGutter
-          );
-          this.helper.setUniformFloatValue(
-            Uniforms.TEXTURE_PIXEL_HEIGHT,
-            tileHeightWithGutter
-          );
-          this.helper.setUniformFloatValue(
-            Uniforms.TEXTURE_RESOLUTION,
-            tileResolution
-          );
-          this.helper.setUniformFloatValue(
-            Uniforms.TEXTURE_ORIGIN_X,
-            tileOrigin[0] +
-              tileCenterI * tileSize[0] * tileResolution -
-              gutter * tileResolution
-          );
-          this.helper.setUniformFloatValue(
-            Uniforms.TEXTURE_ORIGIN_Y,
-            tileOrigin[1] -
-              tileCenterJ * tileSize[1] * tileResolution +
-              gutter * tileResolution
-          );
-          let gutterExtent = extent;
-          if (gutter > 0) {
-            gutterExtent = tileGrid.getTileCoordExtent(tileCoord);
-            getIntersection(gutterExtent, extent, gutterExtent);
-          }
-          this.helper.setUniformFloatVec4(Uniforms.RENDER_EXTENT, gutterExtent);
-          this.helper.setUniformFloatValue(
-            Uniforms.RESOLUTION,
-            viewState.resolution
-          );
-          this.helper.setUniformFloatValue(Uniforms.ZOOM, viewState.zoom);
-
-          this.helper.drawElements(0, this.indices_.getSize());
         }
       }
 
@@ -84375,10 +90806,10 @@ var ol = (function () {
 
       const canvas = this.helper.getCanvas();
 
-      const tileTextureCache = this.tileTextureCache_;
-      while (tileTextureCache.canExpireCache()) {
-        const tileTexture = tileTextureCache.pop();
-        tileTexture.dispose();
+      const tileRepresentationCache = this.tileRepresentationCache;
+      while (tileRepresentationCache.canExpireCache()) {
+        const tileRepresentation = tileRepresentationCache.pop();
+        tileRepresentation.dispose();
       }
 
       // TODO: let the renderers manage their own cache instead of managing the source cache
@@ -84400,6 +90831,321 @@ var ol = (function () {
     }
 
     /**
+     * Look for tiles covering the provided tile coordinate at an alternate
+     * zoom level.  Loaded tiles will be added to the provided tile representation lookup.
+     * @param {import("../../tilegrid/TileGrid.js").default} tileGrid The tile grid.
+     * @param {import("../../tilecoord.js").TileCoord} tileCoord The target tile coordinate.
+     * @param {number} altZ The alternate zoom level.
+     * @param {TileRepresentationLookup} tileRepresentationLookup Lookup of
+     * tile representations by zoom level.
+     * @return {boolean} The tile coordinate is covered by loaded tiles at the alternate zoom level.
+     * @private
+     */
+    findAltTiles_(tileGrid, tileCoord, altZ, tileRepresentationLookup) {
+      const tileRange = tileGrid.getTileRangeForTileCoordAndZ(
+        tileCoord,
+        altZ,
+        this.tempTileRange_
+      );
+
+      if (!tileRange) {
+        return false;
+      }
+
+      let covered = true;
+      const tileRepresentationCache = this.tileRepresentationCache;
+      const source = this.getLayer().getRenderSource();
+      for (let x = tileRange.minX; x <= tileRange.maxX; ++x) {
+        for (let y = tileRange.minY; y <= tileRange.maxY; ++y) {
+          const cacheKey = getCacheKey(source, [altZ, x, y]);
+          let loaded = false;
+          if (tileRepresentationCache.containsKey(cacheKey)) {
+            const tileRepresentation = tileRepresentationCache.get(cacheKey);
+            if (
+              tileRepresentation.loaded &&
+              !lookupHasTile(tileRepresentationLookup, tileRepresentation.tile)
+            ) {
+              addTileRepresentationToLookup(
+                tileRepresentationLookup,
+                tileRepresentation,
+                altZ
+              );
+              loaded = true;
+            }
+          }
+          if (!loaded) {
+            covered = false;
+          }
+        }
+      }
+      return covered;
+    }
+
+    clearCache() {
+      const tileRepresentationCache = this.tileRepresentationCache;
+      tileRepresentationCache.forEach((tileRepresentation) =>
+        tileRepresentation.dispose()
+      );
+      tileRepresentationCache.clear();
+    }
+
+    removeHelper() {
+      if (this.helper) {
+        this.clearCache();
+      }
+
+      super.removeHelper();
+    }
+
+    /**
+     * Clean up.
+     */
+    disposeInternal() {
+      super.disposeInternal();
+      delete this.frameState;
+    }
+  }
+
+  var WebGLBaseTileLayerRenderer$1 = WebGLBaseTileLayerRenderer;
+
+  /**
+   * @module ol/renderer/webgl/TileLayer
+   */
+
+  const Uniforms = {
+    ...Uniforms$1,
+    TILE_TEXTURE_ARRAY: 'u_tileTextures',
+    TEXTURE_PIXEL_WIDTH: 'u_texturePixelWidth',
+    TEXTURE_PIXEL_HEIGHT: 'u_texturePixelHeight',
+    TEXTURE_RESOLUTION: 'u_textureResolution', // map units per texture pixel
+    TEXTURE_ORIGIN_X: 'u_textureOriginX', // map x coordinate of left edge of texture
+    TEXTURE_ORIGIN_Y: 'u_textureOriginY', // map y coordinate of top edge of texture
+  };
+
+  const Attributes = {
+    TEXTURE_COORD: 'a_textureCoord',
+  };
+
+  /**
+   * @type {Array<import('../../webgl/Helper.js').AttributeDescription>}
+   */
+  const attributeDescriptions = [
+    {
+      name: Attributes.TEXTURE_COORD,
+      size: 2,
+      type: AttributeType.FLOAT,
+    },
+  ];
+
+  /**
+   * @typedef {Object} Options
+   * @property {string} vertexShader Vertex shader source.
+   * @property {string} fragmentShader Fragment shader source.
+   * @property {Object<string, import("../../webgl/Helper").UniformValue>} [uniforms] Additional uniforms
+   * made available to shaders.
+   * @property {Array<import("../../webgl/PaletteTexture.js").default>} [paletteTextures] Palette textures.
+   * @property {number} [cacheSize=512] The texture cache size.
+   */
+
+  /**
+   * @typedef {import("../../layer/WebGLTile.js").default} LayerType
+   */
+  /**
+   * @typedef {import("../../webgl/TileTexture.js").TileType} TileTextureType
+   */
+  /**
+   * @typedef {import("../../webgl/TileTexture.js").default} TileTextureRepresentation
+   */
+
+  /**
+   * @classdesc
+   * WebGL renderer for tile layers.
+   * @extends {WebGLBaseTileLayerRenderer<LayerType, TileTextureType, TileTextureRepresentation>}
+   * @api
+   */
+  class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer$1 {
+    /**
+     * @param {LayerType} tileLayer Tile layer.
+     * @param {Options} options Options.
+     */
+    constructor(tileLayer, options) {
+      super(tileLayer, options);
+
+      /**
+       * @type {WebGLProgram}
+       * @private
+       */
+      this.program_;
+
+      /**
+       * @private
+       */
+      this.vertexShader_ = options.vertexShader;
+
+      /**
+       * @private
+       */
+      this.fragmentShader_ = options.fragmentShader;
+
+      /**
+       * Tiles are rendered as a quad with the following structure:
+       *
+       *  [P3]---------[P2]
+       *   |`           |
+       *   |  `     B   |
+       *   |    `       |
+       *   |      `     |
+       *   |   A    `   |
+       *   |          ` |
+       *  [P0]---------[P1]
+       *
+       * Triangle A: P0, P1, P3
+       * Triangle B: P1, P2, P3
+       *
+       * @private
+       */
+      this.indices_ = new WebGLArrayBuffer$1(ELEMENT_ARRAY_BUFFER, STATIC_DRAW);
+      this.indices_.fromArray([0, 1, 3, 1, 2, 3]);
+
+      /**
+       * @type {Array<import("../../webgl/PaletteTexture.js").default>}
+       * @private
+       */
+      this.paletteTextures_ = options.paletteTextures || [];
+    }
+
+    /**
+     * @param {Options} options Options.
+     */
+    reset(options) {
+      super.reset(options);
+
+      this.vertexShader_ = options.vertexShader;
+      this.fragmentShader_ = options.fragmentShader;
+
+      if (this.helper) {
+        this.program_ = this.helper.getProgram(
+          this.fragmentShader_,
+          this.vertexShader_
+        );
+      }
+    }
+
+    afterHelperCreated() {
+      this.program_ = this.helper.getProgram(
+        this.fragmentShader_,
+        this.vertexShader_
+      );
+      this.helper.flushBufferData(this.indices_);
+    }
+
+    createTileRepresentation(options) {
+      return new TileTexture$1(options);
+    }
+
+    beforeTilesRender(frameState, tilesWithAlpha) {
+      super.beforeTilesRender(frameState, tilesWithAlpha);
+      this.helper.useProgram(this.program_, frameState);
+    }
+
+    renderTile(
+      tileTexture,
+      tileTransform,
+      frameState,
+      renderExtent,
+      tileResolution,
+      tileSize,
+      tileOrigin,
+      tileExtent,
+      depth,
+      gutter,
+      alpha
+    ) {
+      const gl = this.helper.getGL();
+      this.helper.bindBuffer(tileTexture.coords);
+      this.helper.bindBuffer(this.indices_);
+      this.helper.enableAttributes(attributeDescriptions);
+
+      let textureSlot = 0;
+      while (textureSlot < tileTexture.textures.length) {
+        const uniformName = `${Uniforms.TILE_TEXTURE_ARRAY}[${textureSlot}]`;
+        this.helper.bindTexture(
+          tileTexture.textures[textureSlot],
+          textureSlot,
+          uniformName
+        );
+        ++textureSlot;
+      }
+
+      for (
+        let paletteIndex = 0;
+        paletteIndex < this.paletteTextures_.length;
+        ++paletteIndex
+      ) {
+        const paletteTexture = this.paletteTextures_[paletteIndex];
+        const texture = paletteTexture.getTexture(gl);
+        this.helper.bindTexture(texture, textureSlot, paletteTexture.name);
+        ++textureSlot;
+      }
+
+      const viewState = frameState.viewState;
+
+      const tileWidthWithGutter = tileSize[0] + 2 * gutter;
+      const tileHeightWithGutter = tileSize[1] + 2 * gutter;
+
+      const tile = tileTexture.tile;
+      const tileCoord = tile.tileCoord;
+
+      const tileCenterI = tileCoord[1];
+      const tileCenterJ = tileCoord[2];
+
+      this.helper.setUniformMatrixValue(
+        Uniforms.TILE_TRANSFORM,
+        fromTransform(this.tempMat4, tileTransform)
+      );
+
+      this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);
+      this.helper.setUniformFloatValue(Uniforms.DEPTH, depth);
+
+      let gutterExtent = renderExtent;
+      if (gutter > 0) {
+        gutterExtent = tileExtent;
+        getIntersection(gutterExtent, renderExtent, gutterExtent);
+      }
+      this.helper.setUniformFloatVec4(Uniforms.RENDER_EXTENT, gutterExtent);
+
+      this.helper.setUniformFloatValue(Uniforms.RESOLUTION, viewState.resolution);
+      this.helper.setUniformFloatValue(Uniforms.ZOOM, viewState.zoom);
+
+      this.helper.setUniformFloatValue(
+        Uniforms.TEXTURE_PIXEL_WIDTH,
+        tileWidthWithGutter
+      );
+      this.helper.setUniformFloatValue(
+        Uniforms.TEXTURE_PIXEL_HEIGHT,
+        tileHeightWithGutter
+      );
+      this.helper.setUniformFloatValue(
+        Uniforms.TEXTURE_RESOLUTION,
+        tileResolution
+      );
+      this.helper.setUniformFloatValue(
+        Uniforms.TEXTURE_ORIGIN_X,
+        tileOrigin[0] +
+          tileCenterI * tileSize[0] * tileResolution -
+          gutter * tileResolution
+      );
+      this.helper.setUniformFloatValue(
+        Uniforms.TEXTURE_ORIGIN_Y,
+        tileOrigin[1] -
+          tileCenterJ * tileSize[1] * tileResolution +
+          gutter * tileResolution
+      );
+
+      this.helper.drawElements(0, this.indices_.getSize());
+    }
+
+    /**
      * @param {import("../../pixel.js").Pixel} pixel Pixel.
      * @return {Uint8ClampedArray|Uint8Array|Float32Array|DataView} Data at the pixel location.
      */
@@ -84409,7 +91155,7 @@ var ol = (function () {
         return null;
       }
 
-      const frameState = this.frameState_;
+      const frameState = this.frameState;
       if (!frameState) {
         return null;
       }
@@ -84456,7 +91202,7 @@ var ol = (function () {
         return null;
       }
 
-      const tileTextureCache = this.tileTextureCache_;
+      const tileTextureCache = this.tileRepresentationCache;
       for (
         let z = tileGrid.getZForResolution(viewState.resolution);
         z >= tileGrid.getMinZoom();
@@ -84496,64 +91242,6 @@ var ol = (function () {
     }
 
     /**
-     * Look for tiles covering the provided tile coordinate at an alternate
-     * zoom level.  Loaded tiles will be added to the provided tile texture lookup.
-     * @param {import("../../tilegrid/TileGrid.js").default} tileGrid The tile grid.
-     * @param {import("../../tilecoord.js").TileCoord} tileCoord The target tile coordinate.
-     * @param {number} altZ The alternate zoom level.
-     * @param {Object<number, Array<import("../../webgl/TileTexture.js").default>>} tileTexturesByZ Lookup of
-     * tile textures by zoom level.
-     * @return {boolean} The tile coordinate is covered by loaded tiles at the alternate zoom level.
-     * @private
-     */
-    findAltTiles_(tileGrid, tileCoord, altZ, tileTexturesByZ) {
-      const tileRange = tileGrid.getTileRangeForTileCoordAndZ(
-        tileCoord,
-        altZ,
-        this.tempTileRange_
-      );
-
-      if (!tileRange) {
-        return false;
-      }
-
-      let covered = true;
-      const tileTextureCache = this.tileTextureCache_;
-      const source = this.getLayer().getRenderSource();
-      for (let x = tileRange.minX; x <= tileRange.maxX; ++x) {
-        for (let y = tileRange.minY; y <= tileRange.maxY; ++y) {
-          const cacheKey = getCacheKey(source, [altZ, x, y]);
-          let loaded = false;
-          if (tileTextureCache.containsKey(cacheKey)) {
-            const tileTexture = tileTextureCache.get(cacheKey);
-            if (tileTexture.loaded) {
-              addTileTextureToLookup(tileTexturesByZ, tileTexture, altZ);
-              loaded = true;
-            }
-          }
-          if (!loaded) {
-            covered = false;
-          }
-        }
-      }
-      return covered;
-    }
-
-    clearCache() {
-      const tileTextureCache = this.tileTextureCache_;
-      tileTextureCache.forEach((tileTexture) => tileTexture.dispose());
-      tileTextureCache.clear();
-    }
-
-    removeHelper() {
-      if (this.helper) {
-        this.clearCache();
-      }
-
-      super.removeHelper();
-    }
-
-    /**
      * Clean up.
      */
     disposeInternal() {
@@ -84562,15 +91250,10 @@ var ol = (function () {
         const gl = helper.getGL();
         gl.deleteProgram(this.program_);
         delete this.program_;
-
         helper.deleteBuffer(this.indices_);
       }
-
       super.disposeInternal();
-
       delete this.indices_;
-      delete this.tileTextureCache_;
-      delete this.frameState_;
     }
   }
 
@@ -84595,17 +91278,22 @@ var ol = (function () {
    *     of bands, depending on the underlying data source and
    *     {@link import("../source/GeoTIFF.js").Options configuration}. `xOffset` and `yOffset` are optional
    *     and allow specifying pixel offsets for x and y. This is used for sampling data from neighboring pixels.
-   *   * `['get', 'attributeName']` fetches a feature attribute (it will be prefixed by `a_` in the shader)
-   *     Note: those will be taken from the attributes provided to the renderer
+   *   * `['get', 'attributeName', typeHint]` fetches a feature property value, similar to `feature.get('attributeName')`
+   *     A type hint can optionally be specified, in case the resulting expression contains a type ambiguity which
+   *     will make it invalid. Type hints can be one of: 'string', 'color', 'number', 'boolean', 'number[]'
+   *   * `['geometry-type']` returns a feature's geometry type as string, either: 'LineString', 'Point' or 'Polygon'
+   *     `Multi*` values are returned as their singular equivalent
+   *     `Circle` geometries are returned as 'Polygon'
+   *     `GeometryCollection` geometries are returned as the type of the first geometry found in the collection
    *   * `['resolution']` returns the current resolution
    *   * `['time']` returns the time in seconds since the creation of the layer
-   *   * `['var', 'varName']` fetches a value from the style variables, or 0 if undefined
+   *   * `['var', 'varName']` fetches a value from the style variables; will throw an error if that variable is undefined
    *   * `['zoom']` returns the current zoom level
    *
    * * Math operators:
-   *   * `['*', value1, value2]` multiplies `value1` by `value2`
+   *   * `['*', value1, value2, ...]` multiplies the values (either numbers or colors)
    *   * `['/', value1, value2]` divides `value1` by `value2`
-   *   * `['+', value1, value2]` adds `value1` and `value2`
+   *   * `['+', value1, value2, ...]` adds the values
    *   * `['-', value1, value2]` subtracts `value2` from `value1`
    *   * `['clamp', value, low, high]` clamps `value` between `low` and `high`
    *   * `['%', value1, value2]` returns the result of `value1 % value2` (modulo)
@@ -84617,6 +91305,7 @@ var ol = (function () {
    *   * `['sin', value1]` returns the sine of `value1`
    *   * `['cos', value1]` returns the cosine of `value1`
    *   * `['atan', value1, value2]` returns `atan2(value1, value2)`. If `value2` is not provided, returns `atan(value1)`
+   *   * `['sqrt', value1]` returns the square root of `value1`
    *
    * * Transform operators:
    *   * `['case', condition1, output1, ...conditionN, outputN, fallback]` selects the first output whose corresponding
@@ -84647,6 +91336,13 @@ var ol = (function () {
    *   * `['any', value1, value2, ...]` returns `true` if any of the inputs are `true`, `false` otherwise.
    *   * `['between', value1, value2, value3]` returns `true` if `value1` is contained between `value2` and `value3`
    *     (inclusively), or `false` otherwise.
+   *   * `['in', needle, haystack]` returns `true` if `needle` is found in `haystack`, and
+   *     `false` otherwise.
+   *     This operator has the following limitations:
+   *     * `haystack` has to be an array of numbers or strings (searching for a substring in a string is not supported yet)
+   *     * Only literal arrays are supported as `haystack` for now; this means that `haystack` cannot be the result of an
+   *     expression. If `haystack` is an array of strings, use the `literal` operator to disambiguate from an expression:
+   *     `['literal', ['abc', 'def', 'ghi']]`
    *
    * * Conversion operators:
    *   * `['array', value1, ...valueN]` creates a numerical array from `number` values; please note that the amount of
@@ -84664,6 +91360,7 @@ var ol = (function () {
    * Literal values can be of the following types:
    * * `boolean`
    * * `number`
+   * * `number[]` (number arrays can only have a length of 2, 3 or 4)
    * * `string`
    * * {@link module:ol/color~Color}
    *
@@ -84687,13 +91384,35 @@ var ol = (function () {
   };
 
   /**
+   * @param {string} typeHint Type hint
+   * @return {ValueTypes} Resulting value type (will be a single type)
+   */
+  function getTypeFromHint(typeHint) {
+    switch (typeHint) {
+      case 'string':
+        return ValueTypes.STRING;
+      case 'color':
+        return ValueTypes.COLOR;
+      case 'number':
+        return ValueTypes.NUMBER;
+      case 'boolean':
+        return ValueTypes.BOOLEAN;
+      case 'number[]':
+        return ValueTypes.NUMBER_ARRAY;
+      default:
+        throw new Error(`Unrecognized type hint: ${typeHint}`);
+    }
+  }
+
+  /**
    * An operator declaration must contain two methods: `getReturnType` which returns a type based on
    * the operator arguments, and `toGlsl` which returns a GLSL-compatible string.
    * Note: both methods can process arguments recursively.
    * @typedef {Object} Operator
    * @property {function(Array<ExpressionValue>): ValueTypes|number} getReturnType Returns one or several types
-   * @property {function(ParsingContext, Array<ExpressionValue>, ValueTypes=): string} toGlsl Returns a GLSL-compatible string
-   * Note: takes in an optional type hint as 3rd parameter
+   * @property {function(ParsingContext, Array<ExpressionValue>, ValueTypes): string} toGlsl Returns a GLSL-compatible string
+   * given a parsing context, an array of arguments and an expected type.
+   * Note: the expected type can be a combination such as ValueTypes.NUMBER | ValueTypes.STRING or ValueTypes.ANY for instance
    */
 
   /**
@@ -84760,16 +91479,59 @@ var ol = (function () {
   }
 
   /**
+   * Print types as a readable string
+   * @param {ValueTypes|number} valueType Number containing value type binary flags
+   * @return {string} Types
+   */
+  function printTypes(valueType) {
+    const result = [];
+    if ((valueType & ValueTypes.NUMBER) > 0) {
+      result.push('number');
+    }
+    if ((valueType & ValueTypes.COLOR) > 0) {
+      result.push('color');
+    }
+    if ((valueType & ValueTypes.BOOLEAN) > 0) {
+      result.push('boolean');
+    }
+    if ((valueType & ValueTypes.NUMBER_ARRAY) > 0) {
+      result.push('number[]');
+    }
+    if ((valueType & ValueTypes.STRING) > 0) {
+      result.push('string');
+    }
+    return result.length > 0 ? result.join(', ') : '(no type)';
+  }
+
+  /**
+   * @typedef {Object} ParsingContextExternal
+   * @property {string} name Name, unprefixed
+   * @property {ValueTypes} type One of the value types constants
+   * @property {function(import("../Feature.js").FeatureLike): *} [callback] Function used for computing the attribute value;
+   *   if undefined, `feature.get(attribute.name)` will be used
+   */
+
+  /**
    * Context available during the parsing of an expression.
    * @typedef {Object} ParsingContext
    * @property {boolean} [inFragmentShader] If false, means the expression output should be made for a vertex shader
-   * @property {Array<string>} variables List of variables used in the expression; contains **unprefixed names**
-   * @property {Array<string>} attributes List of attributes used in the expression; contains **unprefixed names**
+   * @property {Array<ParsingContextExternal>} variables External variables used in the expression
+   * @property {Array<ParsingContextExternal>} attributes External attributes used in the expression
    * @property {Object<string, number>} stringLiteralsMap This object maps all encountered string values to a number
    * @property {Object<string, string>} functions Lookup of functions used by the style.
    * @property {number} [bandCount] Number of bands per pixel.
    * @property {Array<PaletteTexture>} [paletteTextures] List of palettes used by the style.
+   * @property {import("../style/literal").LiteralStyle} style The style being parsed
    */
+
+  /**
+   * @param {string} operator Operator
+   * @param {ParsingContext} context Parsing context
+   * @return {string} A function name based on the operator, unique in the given context
+   */
+  function computeOperatorFunctionName(operator, context) {
+    return `operator_${operator}_${Object.keys(context.functions).length}`;
+  }
 
   /**
    * Will return the number as a float with a dot separator, which is required by GLSL.
@@ -84803,15 +91565,15 @@ var ol = (function () {
    * @return {string} The color expressed in the `vec4(1.0, 1.0, 1.0, 1.0)` form.
    */
   function colorToGlsl(color) {
-    const array = asArray(color).slice();
-    if (array.length < 4) {
-      array.push(1);
-    }
-    return arrayToGlsl(
-      array.map(function (c, i) {
-        return i < 3 ? c / 255 : c;
-      })
-    );
+    const array = asArray(color);
+    const alpha = array.length > 3 ? array[3] : 1;
+    // all components are premultiplied with alpha value
+    return arrayToGlsl([
+      (array[0] / 255) * alpha,
+      (array[1] / 255) * alpha,
+      (array[2] / 255) * alpha,
+      alpha,
+    ]);
   }
 
   /**
@@ -84845,10 +91607,13 @@ var ol = (function () {
    * will be read and modified during the parsing operation.
    * @param {ParsingContext} context Parsing context
    * @param {ExpressionValue} value Value
-   * @param {ValueTypes|number} [typeHint] Hint for the expected final type (can be several types combined)
+   * @param {ValueTypes|number} [expectedType] Expected final type (can be several types combined)
+   * If omitted, defaults to ValueTypes.NUMBER
    * @return {string} GLSL-compatible output
    */
-  function expressionToGlsl(context, value, typeHint) {
+  function expressionToGlsl(context, value, expectedType) {
+    const returnType =
+      expectedType !== undefined ? expectedType : ValueTypes.NUMBER;
     // operator
     if (Array.isArray(value) && typeof value[0] === 'string') {
       const operator = Operators[value[0]];
@@ -84857,41 +91622,39 @@ var ol = (function () {
           `Unrecognized expression operator: ${JSON.stringify(value)}`
         );
       }
-      return operator.toGlsl(context, value.slice(1), typeHint);
+      return operator.toGlsl(context, value.slice(1), returnType);
     }
 
-    const valueType = getValueType(value);
-    if ((valueType & ValueTypes.NUMBER) > 0) {
+    const possibleType = getValueType(value) & returnType;
+    assertNotEmptyType(value, possibleType, '');
+
+    if ((possibleType & ValueTypes.NUMBER) > 0) {
       return numberToGlsl(/** @type {number} */ (value));
     }
 
-    if ((valueType & ValueTypes.BOOLEAN) > 0) {
+    if ((possibleType & ValueTypes.BOOLEAN) > 0) {
       return value.toString();
     }
 
-    if (
-      (valueType & ValueTypes.STRING) > 0 &&
-      (typeHint === undefined || typeHint == ValueTypes.STRING)
-    ) {
+    if ((possibleType & ValueTypes.STRING) > 0) {
       return stringToGlsl(context, value.toString());
     }
 
-    if (
-      (valueType & ValueTypes.COLOR) > 0 &&
-      (typeHint === undefined || typeHint == ValueTypes.COLOR)
-    ) {
+    if ((possibleType & ValueTypes.COLOR) > 0) {
       return colorToGlsl(/** @type {Array<number> | string} */ (value));
     }
 
-    if ((valueType & ValueTypes.NUMBER_ARRAY) > 0) {
+    if ((possibleType & ValueTypes.NUMBER_ARRAY) > 0) {
       return arrayToGlsl(/** @type {Array<number>} */ (value));
     }
 
-    throw new Error(`Unexpected expression ${value} (expected type ${typeHint})`);
+    throw new Error(
+      `Unexpected expression ${value} (expected type ${printTypes(returnType)})`
+    );
   }
 
   function assertNumber(value) {
-    if (!(getValueType(value) & ValueTypes.NUMBER)) {
+    if ((getValueType(value) & ValueTypes.NUMBER) === 0) {
       throw new Error(
         `A numeric value was expected, got ${JSON.stringify(value)} instead`
       );
@@ -84903,14 +91666,14 @@ var ol = (function () {
     }
   }
   function assertString(value) {
-    if (!(getValueType(value) & ValueTypes.STRING)) {
+    if ((getValueType(value) & ValueTypes.STRING) === 0) {
       throw new Error(
         `A string value was expected, got ${JSON.stringify(value)} instead`
       );
     }
   }
   function assertBoolean(value) {
-    if (!(getValueType(value) & ValueTypes.BOOLEAN)) {
+    if ((getValueType(value) & ValueTypes.BOOLEAN) === 0) {
       throw new Error(
         `A boolean value was expected, got ${JSON.stringify(value)} instead`
       );
@@ -84940,40 +91703,81 @@ var ol = (function () {
   function assertArgsEven(args) {
     if (args.length % 2 !== 0) {
       throw new Error(
-        `An even amount of arguments was expected, got ${args} instead`
+        `An even amount of arguments was expected, got ${JSON.stringify(
+        args
+      )} instead`
       );
     }
   }
   function assertArgsOdd(args) {
     if (args.length % 2 === 0) {
       throw new Error(
-        `An odd amount of arguments was expected, got ${args} instead`
+        `An odd amount of arguments was expected, got ${JSON.stringify(
+        args
+      )} instead`
       );
     }
   }
-  function assertUniqueInferredType(args, types) {
-    if (!isTypeUnique(types)) {
+  function assertNotEmptyType(args, types, descriptor) {
+    if (types === ValueTypes.NONE) {
       throw new Error(
-        `Could not infer only one type from the following expression: ${JSON.stringify(
+        `No matching type was found for the following expression ${descriptor}: ${JSON.stringify(
         args
       )}`
+      );
+    }
+  }
+  function assertSingleType(args, types, descriptor) {
+    assertNotEmptyType(args, types, descriptor);
+    if (!isTypeUnique(types)) {
+      throw new Error(
+        `Expected to have a unique type for the following expression ${descriptor}: ${JSON.stringify(
+        args
+      )}
+Got the following types instead: ${printTypes(types)}`
+      );
+    }
+  }
+  function assertOfType(args, types, expectedTypes, descriptor) {
+    if ((types & expectedTypes) === ValueTypes.NONE) {
+      throw new Error(
+        `Expected the ${descriptor} type of the following expression: ${JSON.stringify(
+        args
+      )} to be of the following types: ${printTypes(expectedTypes)}
+Got these types instead: ${printTypes(types)}`
       );
     }
   }
 
   Operators['get'] = {
     getReturnType: function (args) {
+      if (args.length === 2) {
+        const hint = args[1];
+        return getTypeFromHint(/** @type {string} */ (hint));
+      }
       return ValueTypes.ANY;
     },
-    toGlsl: function (context, args) {
-      assertArgsCount(args, 1);
+    toGlsl: function (context, args, expectedType) {
+      assertArgsMinCount(args, 1);
+      assertArgsMaxCount(args, 2);
       assertString(args[0]);
-      const value = args[0].toString();
-      if (!context.attributes.includes(value)) {
-        context.attributes.push(value);
+      const outputType = expectedType & Operators['get'].getReturnType(args);
+      assertSingleType(['get', ...args], outputType, '');
+      const name = args[0].toString();
+      const existing = context.attributes.find((a) => a.name === name);
+      if (!existing) {
+        context.attributes.push({
+          name: name,
+          type: outputType,
+        });
+      } else if (outputType !== existing.type) {
+        throw new Error(
+          `The following attribute was used in different places with incompatible types: ${name}
+Types were: ${printTypes(existing.type)} and ${printTypes(outputType)}`
+        );
       }
       const prefix = context.inFragmentShader ? 'v_' : 'a_';
-      return prefix + value;
+      return prefix + name;
     },
   };
 
@@ -84987,17 +91791,37 @@ var ol = (function () {
   }
 
   Operators['var'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.ANY;
     },
-    toGlsl: function (context, args) {
+    toGlsl: function (context, args, expectedType) {
       assertArgsCount(args, 1);
       assertString(args[0]);
-      const value = args[0].toString();
-      if (!context.variables.includes(value)) {
-        context.variables.push(value);
+      const name = args[0].toString();
+      if (
+        !context.style.variables ||
+        context.style.variables[name] === undefined
+      ) {
+        throw new Error(
+          `The following variable is missing from the style: ${name}`
+        );
       }
-      return uniformNameForVariable(value);
+      const initialValue = context.style.variables[name];
+      const outputType = expectedType & getValueType(initialValue);
+      assertSingleType(['var', ...args], outputType, '');
+      const existing = context.variables.find((a) => a.name === name);
+      if (!existing) {
+        context.variables.push({
+          name: name,
+          type: outputType,
+        });
+      } else if (outputType !== existing.type) {
+        throw new Error(
+          `The following variable was used in different places with incompatible types: ${name}
+Types were: ${printTypes(existing.type)} and ${printTypes(outputType)}`
+        );
+      }
+      return uniformNameForVariable(name);
     },
   };
 
@@ -85005,7 +91829,7 @@ var ol = (function () {
 
   // ['palette', index, colors]
   Operators['palette'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.COLOR;
     },
     toGlsl: function (context, args) {
@@ -85063,7 +91887,7 @@ var ol = (function () {
   const GET_BAND_VALUE_FUNC = 'getBandValue';
 
   Operators['band'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85106,7 +91930,7 @@ var ol = (function () {
   };
 
   Operators['time'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85116,7 +91940,7 @@ var ol = (function () {
   };
 
   Operators['zoom'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85126,7 +91950,7 @@ var ol = (function () {
   };
 
   Operators['resolution'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85135,19 +91959,73 @@ var ol = (function () {
     },
   };
 
-  Operators['*'] = {
-    getReturnType: function (args) {
-      return ValueTypes.NUMBER;
+  Operators['geometry-type'] = {
+    getReturnType: function () {
+      return ValueTypes.STRING;
     },
     toGlsl: function (context, args) {
+      assertArgsCount(args, 0);
+      const name = 'geometryType';
+      const computeType = (geometry) => {
+        const type = geometry.getType();
+        switch (type) {
+          case 'Point':
+          case 'LineString':
+          case 'Polygon':
+            return type;
+          case 'MultiPoint':
+          case 'MultiLineString':
+          case 'MultiPolygon':
+            return type.substring(5);
+          case 'Circle':
+            return 'Polygon';
+          case 'GeometryCollection':
+            return computeType(geometry.getGeometries()[0]);
+        }
+      };
+      const existing = context.attributes.find((a) => a.name === name);
+      if (!existing) {
+        context.attributes.push({
+          name: name,
+          type: ValueTypes.STRING,
+          callback: (feature) => {
+            return computeType(feature.getGeometry());
+          },
+        });
+      }
+      const prefix = context.inFragmentShader ? 'v_' : 'a_';
+      return prefix + name;
+    },
+  };
+
+  Operators['*'] = {
+    getReturnType: function (args) {
+      let outputType = ValueTypes.NUMBER | ValueTypes.COLOR;
+      for (let i = 0; i < args.length; i++) {
+        outputType = outputType & getValueType(args[i]);
+      }
+      return outputType;
+    },
+    toGlsl: function (context, args, expectedType) {
       assertArgsMinCount(args, 2);
-      assertNumbers(args);
-      return `(${args.map((arg) => expressionToGlsl(context, arg)).join(' * ')})`;
+      let outputType = expectedType;
+      for (let i = 0; i < args.length; i++) {
+        outputType = outputType & getValueType(args[i]);
+      }
+      assertOfType(
+        args,
+        outputType,
+        ValueTypes.NUMBER | ValueTypes.COLOR,
+        'output'
+      );
+      return `(${args
+      .map((arg) => expressionToGlsl(context, arg, outputType))
+      .join(' * ')})`;
     },
   };
 
   Operators['/'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85161,19 +92039,18 @@ var ol = (function () {
   };
 
   Operators['+'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
       assertArgsMinCount(args, 2);
       assertNumbers(args);
-
       return `(${args.map((arg) => expressionToGlsl(context, arg)).join(' + ')})`;
     },
   };
 
   Operators['-'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85187,7 +92064,7 @@ var ol = (function () {
   };
 
   Operators['clamp'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85200,7 +92077,7 @@ var ol = (function () {
   };
 
   Operators['%'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85214,7 +92091,7 @@ var ol = (function () {
   };
 
   Operators['^'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85228,7 +92105,7 @@ var ol = (function () {
   };
 
   Operators['abs'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85239,7 +92116,7 @@ var ol = (function () {
   };
 
   Operators['floor'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85250,7 +92127,7 @@ var ol = (function () {
   };
 
   Operators['round'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85261,7 +92138,7 @@ var ol = (function () {
   };
 
   Operators['ceil'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85272,7 +92149,7 @@ var ol = (function () {
   };
 
   Operators['sin'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85283,7 +92160,7 @@ var ol = (function () {
   };
 
   Operators['cos'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85294,7 +92171,7 @@ var ol = (function () {
   };
 
   Operators['atan'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER;
     },
     toGlsl: function (context, args) {
@@ -85310,8 +92187,19 @@ var ol = (function () {
     },
   };
 
+  Operators['sqrt'] = {
+    getReturnType: function () {
+      return ValueTypes.NUMBER;
+    },
+    toGlsl: function (context, args) {
+      assertArgsCount(args, 1);
+      assertNumbers(args);
+      return `sqrt(${expressionToGlsl(context, args[0])})`;
+    },
+  };
+
   Operators['>'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
@@ -85325,7 +92213,7 @@ var ol = (function () {
   };
 
   Operators['>='] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
@@ -85339,7 +92227,7 @@ var ol = (function () {
   };
 
   Operators['<'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
@@ -85353,7 +92241,7 @@ var ol = (function () {
   };
 
   Operators['<='] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
@@ -85368,7 +92256,7 @@ var ol = (function () {
 
   function getEqualOperator(operator) {
     return {
-      getReturnType: function (args) {
+      getReturnType: function () {
         return ValueTypes.BOOLEAN;
       },
       toGlsl: function (context, args) {
@@ -85405,19 +92293,19 @@ var ol = (function () {
   Operators['!='] = getEqualOperator('!=');
 
   Operators['!'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
       assertArgsCount(args, 1);
       assertBoolean(args[0]);
-      return `(!${expressionToGlsl(context, args[0])})`;
+      return `(!${expressionToGlsl(context, args[0], ValueTypes.BOOLEAN)})`;
     },
   };
 
   function getDecisionOperator(operator) {
     return {
-      getReturnType: function (args) {
+      getReturnType: function () {
         return ValueTypes.BOOLEAN;
       },
       toGlsl: function (context, args) {
@@ -85425,9 +92313,8 @@ var ol = (function () {
         for (let i = 0; i < args.length; i++) {
           assertBoolean(args[i]);
         }
-        let result = '';
-        result = args
-          .map((arg) => expressionToGlsl(context, arg))
+        let result = args
+          .map((arg) => expressionToGlsl(context, arg, ValueTypes.BOOLEAN))
           .join(` ${operator} `);
         result = `(${result})`;
         return result;
@@ -85440,7 +92327,7 @@ var ol = (function () {
   Operators['any'] = getDecisionOperator('||');
 
   Operators['between'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.BOOLEAN;
     },
     toGlsl: function (context, args) {
@@ -85454,7 +92341,7 @@ var ol = (function () {
   };
 
   Operators['array'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.NUMBER_ARRAY;
     },
     toGlsl: function (context, args) {
@@ -85462,31 +92349,28 @@ var ol = (function () {
       assertArgsMaxCount(args, 4);
       assertNumbers(args);
       const parsedArgs = args.map(function (val) {
-        return expressionToGlsl(context, val, ValueTypes.NUMBER);
+        return expressionToGlsl(context, val);
       });
       return `vec${args.length}(${parsedArgs.join(', ')})`;
     },
   };
 
   Operators['color'] = {
-    getReturnType: function (args) {
+    getReturnType: function () {
       return ValueTypes.COLOR;
     },
     toGlsl: function (context, args) {
       assertArgsMinCount(args, 3);
       assertArgsMaxCount(args, 4);
       assertNumbers(args);
-      const array = /** @type {Array<number>} */ (args);
+      const parsedArgs = args
+        .slice(0, 3)
+        .map((val) => `${expressionToGlsl(context, val)} / 255.0`);
       if (args.length === 3) {
-        array.push(1);
+        return `vec4(${parsedArgs.join(', ')}, 1.0)`;
       }
-      const parsedArgs = args.map(function (val, i) {
-        return (
-          expressionToGlsl(context, val, ValueTypes.NUMBER) +
-          (i < 3 ? ' / 255.0' : '')
-        );
-      });
-      return `vec${args.length}(${parsedArgs.join(', ')})`;
+      const alpha = expressionToGlsl(context, args[3]);
+      return `(${alpha} * vec4(${parsedArgs.join(', ')}, 1.0))`;
     },
   };
 
@@ -85498,7 +92382,7 @@ var ol = (function () {
       }
       return type;
     },
-    toGlsl: function (context, args, typeHint) {
+    toGlsl: function (context, args, expectedType) {
       assertArgsEven(args);
       assertArgsMinCount(args, 6);
 
@@ -85524,21 +92408,28 @@ var ol = (function () {
       }
 
       // compute input/output types
-      typeHint = typeHint !== undefined ? typeHint : ValueTypes.ANY;
-      const outputType = Operators['interpolate'].getReturnType(args) & typeHint;
-      assertUniqueInferredType(args, outputType);
+      const inputType = ValueTypes.NUMBER;
+      const outputType =
+        Operators['interpolate'].getReturnType(args) & expectedType;
+      assertSingleType(['interpolate', ...args], outputType, 'output');
 
-      const input = expressionToGlsl(context, args[1]);
+      const input = expressionToGlsl(context, args[1], inputType);
       const exponent = numberToGlsl(interpolation);
 
       let result = '';
       for (let i = 2; i < args.length - 2; i += 2) {
-        const stop1 = expressionToGlsl(context, args[i]);
+        const stop1 = expressionToGlsl(context, args[i], inputType);
         const output1 =
           result || expressionToGlsl(context, args[i + 1], outputType);
-        const stop2 = expressionToGlsl(context, args[i + 2]);
+        const stop2 = expressionToGlsl(context, args[i + 2], inputType);
         const output2 = expressionToGlsl(context, args[i + 3], outputType);
-        result = `mix(${output1}, ${output2}, pow(clamp((${input} - ${stop1}) / (${stop2} - ${stop1}), 0.0, 1.0), ${exponent}))`;
+        let ratio;
+        if (interpolation === 1) {
+          ratio = `(${input} - ${stop1}) / (${stop2} - ${stop1})`;
+        } else {
+          ratio = `(pow(${exponent}, (${input} - ${stop1})) - 1.0) / (pow(${exponent}, (${stop2} - ${stop1})) - 1.0)`;
+        }
+        result = `mix(${output1}, ${output2}, clamp(${ratio}, 0.0, 1.0))`;
       }
       return result;
     },
@@ -85553,15 +92444,27 @@ var ol = (function () {
       type = type & getValueType(args[args.length - 1]);
       return type;
     },
-    toGlsl: function (context, args, typeHint) {
+    toGlsl: function (context, args, expectedType) {
       assertArgsEven(args);
       assertArgsMinCount(args, 4);
 
-      typeHint = typeHint !== undefined ? typeHint : ValueTypes.ANY;
-      const outputType = Operators['match'].getReturnType(args) & typeHint;
-      assertUniqueInferredType(args, outputType);
+      let inputType = getValueType(args[0]);
+      for (let i = 1; i < args.length - 1; i += 2) {
+        inputType = inputType & getValueType(args[i]);
+      }
+      assertOfType(
+        ['match', ...args],
+        inputType,
+        ValueTypes.STRING | ValueTypes.NUMBER | ValueTypes.BOOLEAN,
+        'input'
+      );
+      inputType =
+        (ValueTypes.STRING | ValueTypes.NUMBER | ValueTypes.BOOLEAN) & inputType;
 
-      const input = expressionToGlsl(context, args[0]);
+      const outputType = Operators['match'].getReturnType(args) & expectedType;
+      assertSingleType(['match', ...args], outputType, 'output');
+
+      const input = expressionToGlsl(context, args[0], inputType);
       const fallback = expressionToGlsl(
         context,
         args[args.length - 1],
@@ -85569,7 +92472,7 @@ var ol = (function () {
       );
       let result = null;
       for (let i = args.length - 3; i >= 1; i -= 2) {
-        const match = expressionToGlsl(context, args[i]);
+        const match = expressionToGlsl(context, args[i], inputType);
         const output = expressionToGlsl(context, args[i + 1], outputType);
         result = `(${input} == ${match} ? ${output} : ${result || fallback})`;
       }
@@ -85586,13 +92489,12 @@ var ol = (function () {
       type = type & getValueType(args[args.length - 1]);
       return type;
     },
-    toGlsl: function (context, args, typeHint) {
+    toGlsl: function (context, args, expectedType) {
       assertArgsOdd(args);
       assertArgsMinCount(args, 3);
 
-      typeHint = typeHint !== undefined ? typeHint : ValueTypes.ANY;
-      const outputType = Operators['case'].getReturnType(args) & typeHint;
-      assertUniqueInferredType(args, outputType);
+      const outputType = Operators['case'].getReturnType(args) & expectedType;
+      assertSingleType(['case', ...args], outputType, 'output');
       for (let i = 0; i < args.length - 1; i += 2) {
         assertBoolean(args[i]);
       }
@@ -85604,11 +92506,70 @@ var ol = (function () {
       );
       let result = null;
       for (let i = args.length - 3; i >= 0; i -= 2) {
-        const condition = expressionToGlsl(context, args[i]);
+        const condition = expressionToGlsl(context, args[i], ValueTypes.BOOLEAN);
         const output = expressionToGlsl(context, args[i + 1], outputType);
         result = `(${condition} ? ${output} : ${result || fallback})`;
       }
       return result;
+    },
+  };
+
+  Operators['in'] = {
+    getReturnType: function (args) {
+      return ValueTypes.BOOLEAN;
+    },
+    toGlsl: function (context, args) {
+      assertArgsCount(args, 2);
+      const needle = args[0];
+      let haystack = args[1];
+      if (!Array.isArray(haystack)) {
+        throw new Error(
+          `The "in" operator expects an array literal as its second argument.`
+        );
+      }
+      if (typeof haystack[0] === 'string') {
+        if (haystack[0] !== 'literal') {
+          throw new Error(
+            `For the "in" operator, a string array should be wrapped in a "literal" operator to disambiguate from expressions.`
+          );
+        }
+        if (!Array.isArray(haystack[1])) {
+          throw new Error(
+            `The "in" operator was provided a literal value which was not an array as second argument.`
+          );
+        }
+        haystack = haystack[1];
+      }
+
+      let inputType = getValueType(needle);
+      for (let i = 0; i < haystack.length - 1; i += 1) {
+        inputType = inputType & getValueType(haystack[i]);
+      }
+      assertOfType(
+        ['match', ...args],
+        inputType,
+        ValueTypes.STRING | ValueTypes.NUMBER | ValueTypes.BOOLEAN,
+        'input'
+      );
+      inputType =
+        (ValueTypes.STRING | ValueTypes.NUMBER | ValueTypes.BOOLEAN) & inputType;
+
+      const funcName = computeOperatorFunctionName('in', context);
+      const tests = [];
+      for (let i = 0; i < haystack.length; i += 1) {
+        tests.push(
+          `  if (inputValue == ${expressionToGlsl(
+          context,
+          haystack[i],
+          inputType
+        )}) { return true; }`
+        );
+      }
+      context.functions[funcName] = `bool ${funcName}(float inputValue) {
+${tests.join('\n')}
+  return false;
+}`;
+      return `${funcName}(${expressionToGlsl(context, needle, inputType)})`;
     },
   };
 
@@ -85629,9 +92590,23 @@ var ol = (function () {
   };
 
   /**
-   * Classes and utilities for generating shaders from literal style objects
+   * Class for generating shaders from literal style objects
    * @module ol/webgl/ShaderBuilder
    */
+
+  const BASE_UNIFORMS = `uniform mat4 u_projectionMatrix;
+uniform mat4 u_screenToWorldMatrix;
+uniform vec2 u_viewportSizePx;
+uniform float u_pixelRatio;
+uniform float u_globalAlpha;
+uniform float u_time;
+uniform float u_zoom;
+uniform float u_resolution;
+uniform vec4 u_renderExtent;
+uniform mediump int u_hitDetection;
+`;
+
+  const DEFAULT_STYLE = createDefaultStyle();
 
   /**
    * @typedef {Object} VaryingDescription
@@ -85651,7 +92626,7 @@ var ol = (function () {
    *   .addVarying('v_width', 'float', 'a_width')
    *   .addUniform('u_time')
    *   .setColorExpression('...')
-   *   .setSizeExpression('...')
+   *   .setSymbolSizeExpression('...')
    *   .outputSymbolFragmentShader();
    * ```
    */
@@ -85662,63 +92637,119 @@ var ol = (function () {
        * @type {Array<string>}
        * @private
        */
-      this.uniforms = [];
+      this.uniforms_ = [];
 
       /**
        * Attributes; these will be declared in the header (should include the type).
        * @type {Array<string>}
        * @private
        */
-      this.attributes = [];
+      this.attributes_ = [];
 
       /**
        * Varyings with a name, a type and an expression.
        * @type {Array<VaryingDescription>}
        * @private
        */
-      this.varyings = [];
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.sizeExpression = 'vec2(1.0)';
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.rotationExpression = '0.0';
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.offsetExpression = 'vec2(0.0)';
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.colorExpression = 'vec4(1.0)';
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.texCoordExpression = 'vec4(0.0, 0.0, 1.0, 1.0)';
-
-      /**
-       * @type {string}
-       * @private
-       */
-      this.discardExpression = 'false';
+      this.varyings_ = [];
 
       /**
        * @type {boolean}
        * @private
        */
-      this.rotateWithView = false;
+      this.hasSymbol_ = false;
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.symbolSizeExpression_ = `vec2(${numberToGlsl(
+      DEFAULT_STYLE['circle-radius']
+    )})`;
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.symbolRotationExpression_ = '0.0';
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.symbolOffsetExpression_ = 'vec2(0.0)';
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.symbolColorExpression_ = colorToGlsl(
+        /** @type {string} */ (DEFAULT_STYLE['circle-fill-color'])
+      );
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.texCoordExpression_ = 'vec4(0.0, 0.0, 1.0, 1.0)';
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.discardExpression_ = 'false';
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.symbolRotateWithView_ = false;
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.hasStroke_ = false;
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.strokeWidthExpression_ = numberToGlsl(DEFAULT_STYLE['stroke-width']);
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.strokeColorExpression_ = colorToGlsl(
+        /** @type {string} */ (DEFAULT_STYLE['stroke-color'])
+      );
+
+      /**
+       * @type {boolean}
+       * @private
+       */
+      this.hasFill_ = false;
+
+      /**
+       * @type {string}
+       * @private
+       */
+      this.fillColorExpression_ = colorToGlsl(
+        /** @type {string} */ (DEFAULT_STYLE['fill-color'])
+      );
+
+      /**
+       * @type {Array<string>}
+       * @private
+       */
+      this.vertexShaderFunctions_ = [];
+
+      /**
+       * @type {Array<string>}
+       * @private
+       */
+      this.fragmentShaderFunctions_ = [];
     }
 
     /**
@@ -85728,7 +92759,7 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     addUniform(name) {
-      this.uniforms.push(name);
+      this.uniforms_.push(name);
       return this;
     }
 
@@ -85739,7 +92770,7 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     addAttribute(name) {
-      this.attributes.push(name);
+      this.attributes_.push(name);
       return this;
     }
 
@@ -85752,7 +92783,7 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     addVarying(name, type, expression) {
-      this.varyings.push({
+      this.varyings_.push({
         name: name,
         type: type,
         expression: expression,
@@ -85767,9 +92798,17 @@ var ol = (function () {
      * @param {string} expression Size expression
      * @return {ShaderBuilder} the builder object
      */
-    setSizeExpression(expression) {
-      this.sizeExpression = expression;
+    setSymbolSizeExpression(expression) {
+      this.hasSymbol_ = true;
+      this.symbolSizeExpression_ = expression;
       return this;
+    }
+
+    /**
+     * @return {string} The current symbol size expression
+     */
+    getSymbolSizeExpression() {
+      return this.symbolSizeExpression_;
     }
 
     /**
@@ -85779,8 +92818,8 @@ var ol = (function () {
      * @param {string} expression Size expression
      * @return {ShaderBuilder} the builder object
      */
-    setRotationExpression(expression) {
-      this.rotationExpression = expression;
+    setSymbolRotationExpression(expression) {
+      this.symbolRotationExpression_ = expression;
       return this;
     }
 
@@ -85788,12 +92827,11 @@ var ol = (function () {
      * Sets an expression to compute the offset of the symbol from the point center.
      * This expression can use all the uniforms and attributes available
      * in the vertex shader, and should evaluate to a `vec2` value.
-     * Note: will only be used for point geometry shaders.
      * @param {string} expression Offset expression
      * @return {ShaderBuilder} the builder object
      */
     setSymbolOffsetExpression(expression) {
-      this.offsetExpression = expression;
+      this.symbolOffsetExpression_ = expression;
       return this;
     }
 
@@ -85804,9 +92842,17 @@ var ol = (function () {
      * @param {string} expression Color expression
      * @return {ShaderBuilder} the builder object
      */
-    setColorExpression(expression) {
-      this.colorExpression = expression;
+    setSymbolColorExpression(expression) {
+      this.hasSymbol_ = true;
+      this.symbolColorExpression_ = expression;
       return this;
+    }
+
+    /**
+     * @return {string} The current symbol color expression
+     */
+    getSymbolColorExpression() {
+      return this.symbolColorExpression_;
     }
 
     /**
@@ -85817,7 +92863,7 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     setTextureCoordinateExpression(expression) {
-      this.texCoordExpression = expression;
+      this.texCoordExpression_ = expression;
       return this;
     }
 
@@ -85831,7 +92877,7 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     setFragmentDiscardExpression(expression) {
-      this.discardExpression = expression;
+      this.discardExpression_ = expression;
       return this;
     }
 
@@ -85842,78 +92888,75 @@ var ol = (function () {
      * @return {ShaderBuilder} the builder object
      */
     setSymbolRotateWithView(rotateWithView) {
-      this.rotateWithView = rotateWithView;
+      this.symbolRotateWithView_ = rotateWithView;
       return this;
     }
 
     /**
-     * @return {string} Previously set size expression
+     * @param {string} expression Stroke width expression, returning value in pixels
+     * @return {ShaderBuilder} the builder object
      */
-    getSizeExpression() {
-      return this.sizeExpression;
+    setStrokeWidthExpression(expression) {
+      this.hasStroke_ = true;
+      this.strokeWidthExpression_ = expression;
+      return this;
     }
 
     /**
-     * @return {string} Previously set symbol offset expression
+     * @param {string} expression Stroke color expression, evaluate to `vec4`
+     * @return {ShaderBuilder} the builder object
      */
-    getOffsetExpression() {
-      return this.offsetExpression;
+    setStrokeColorExpression(expression) {
+      this.hasStroke_ = true;
+      this.strokeColorExpression_ = expression;
+      return this;
     }
 
     /**
-     * @return {string} Previously set color expression
+     * @param {string} expression Fill color expression, evaluate to `vec4`
+     * @return {ShaderBuilder} the builder object
      */
-    getColorExpression() {
-      return this.colorExpression;
+    setFillColorExpression(expression) {
+      this.hasFill_ = true;
+      this.fillColorExpression_ = expression;
+      return this;
+    }
+
+    addVertexShaderFunction(code) {
+      if (this.vertexShaderFunctions_.includes(code)) {
+        return;
+      }
+      this.vertexShaderFunctions_.push(code);
+    }
+    addFragmentShaderFunction(code) {
+      if (this.fragmentShaderFunctions_.includes(code)) {
+        return;
+      }
+      this.fragmentShaderFunctions_.push(code);
     }
 
     /**
-     * @return {string} Previously set texture coordinate expression
-     */
-    getTextureCoordinateExpression() {
-      return this.texCoordExpression;
-    }
-
-    /**
-     * @return {string} Previously set fragment discard expression
-     */
-    getFragmentDiscardExpression() {
-      return this.discardExpression;
-    }
-
-    /**
-     * Generates a symbol vertex shader from the builder parameters,
-     * intended to be used on point geometries.
+     * Generates a symbol vertex shader from the builder parameters
      *
-     * Four uniforms are hardcoded in all shaders: `u_projectionMatrix`, `u_offsetScaleMatrix`,
-     * `u_offsetRotateMatrix`, `u_time`.
+     * The following uniforms are hardcoded in all shaders: `u_projectionMatrix`, `u_offsetScaleMatrix`,
+     * `u_offsetRotateMatrix`, `u_time`, `u_zoom`, `u_resolution`, `u_hitDetection`.
      *
      * The following attributes are hardcoded and expected to be present in the vertex buffers:
-     * `vec2 a_position`, `float a_index` (being the index of the vertex in the quad, 0 to 3).
+     * `vec2 a_position`, `float a_index` (being the index of the vertex in the quad, 0 to 3), `vec4 a_hitColor`.
      *
      * The following varyings are hardcoded and gives the coordinate of the pixel both in the quad and on the texture:
-     * `vec2 v_quadCoord`, `vec2 v_texCoord`
+     * `vec2 v_quadCoord`, `vec2 v_texCoord`, `vec4 v_hitColor`.
      *
-     * @param {boolean} [forHitDetection] If true, the shader will be modified to include hit detection variables
-     * (namely, hit color with encoded feature id).
-     * @return {string} The full shader as a string.
+     * @return {string|null} The full shader as a string; null if no size or color specified
      */
-    getSymbolVertexShader(forHitDetection) {
-      const offsetMatrix = this.rotateWithView
+    getSymbolVertexShader() {
+      if (!this.hasSymbol_) {
+        return null;
+      }
+
+      const offsetMatrix = this.symbolRotateWithView_
         ? 'u_offsetScaleMatrix * u_offsetRotateMatrix'
         : 'u_offsetScaleMatrix';
-
-      let attributes = this.attributes;
-      let varyings = this.varyings;
-
-      if (forHitDetection) {
-        attributes = attributes.concat('vec4 a_hitColor');
-        varyings = varyings.concat({
-          name: 'v_hitColor',
-          type: 'vec4',
-          expression: 'a_hitColor',
-        });
-      }
 
       return `precision mediump float;
 uniform mat4 u_projectionMatrix;
@@ -85922,30 +92965,35 @@ uniform mat4 u_offsetRotateMatrix;
 uniform float u_time;
 uniform float u_zoom;
 uniform float u_resolution;
-${this.uniforms
+uniform mediump int u_hitDetection;
+
+${this.uniforms_
   .map(function (uniform) {
     return 'uniform ' + uniform + ';';
   })
   .join('\n')}
 attribute vec2 a_position;
 attribute float a_index;
-${attributes
+attribute vec4 a_hitColor;
+${this.attributes_
   .map(function (attribute) {
     return 'attribute ' + attribute + ';';
   })
   .join('\n')}
 varying vec2 v_texCoord;
 varying vec2 v_quadCoord;
-${varyings
+varying vec4 v_hitColor;
+${this.varyings_
   .map(function (varying) {
     return 'varying ' + varying.type + ' ' + varying.name + ';';
   })
   .join('\n')}
+${this.vertexShaderFunctions_.join('\n')}
 void main(void) {
   mat4 offsetMatrix = ${offsetMatrix};
-  vec2 halfSize = ${this.sizeExpression} * 0.5;
-  vec2 offset = ${this.offsetExpression};
-  float angle = ${this.rotationExpression};
+  vec2 halfSize = ${this.symbolSizeExpression_} * 0.5;
+  vec2 offset = ${this.symbolOffsetExpression_};
+  float angle = ${this.symbolRotationExpression_};
   float offsetX;
   float offsetY;
   if (a_index == 0.0) {
@@ -85963,14 +93011,15 @@ void main(void) {
   }
   vec4 offsets = offsetMatrix * vec4(offsetX, offsetY, 0.0, 0.0);
   gl_Position = u_projectionMatrix * vec4(a_position, 0.0, 1.0) + offsets;
-  vec4 texCoord = ${this.texCoordExpression};
+  vec4 texCoord = ${this.texCoordExpression_};
   float u = a_index == 0.0 || a_index == 3.0 ? texCoord.s : texCoord.p;
   float v = a_index == 2.0 || a_index == 3.0 ? texCoord.t : texCoord.q;
   v_texCoord = vec2(u, v);
   u = a_index == 0.0 || a_index == 3.0 ? 0.0 : 1.0;
   v = a_index == 2.0 || a_index == 3.0 ? 0.0 : 1.0;
   v_quadCoord = vec2(u, v);
-${varyings
+  v_hitColor = a_hitColor;
+${this.varyings_
   .map(function (varying) {
     return '  ' + varying.name + ' = ' + varying.expression + ';';
   })
@@ -85979,61 +93028,536 @@ ${varyings
     }
 
     /**
-     * Generates a symbol fragment shader from the builder parameters,
-     * intended to be used on point geometries.
+     * Generates a symbol fragment shader from the builder parameters
      *
      * Expects the following varyings to be transmitted by the vertex shader:
-     * `vec2 v_quadCoord`, `vec2 v_texCoord`
+     * `vec2 v_quadCoord`, `vec2 v_texCoord`, `vec4 v_hitColor`.
      *
-     * @param {boolean} [forHitDetection] If true, the shader will be modified to include hit detection variables
-     * (namely, hit color with encoded feature id).
-     * @return {string} The full shader as a string.
+     * @return {string|null} The full shader as a string; null if no size or color specified
      */
-    getSymbolFragmentShader(forHitDetection) {
-      const hitDetectionBypass = forHitDetection
-        ? '  if (gl_FragColor.a < 0.1) { discard; } gl_FragColor = v_hitColor;'
-        : '';
-
-      let varyings = this.varyings;
-
-      if (forHitDetection) {
-        varyings = varyings.concat({
-          name: 'v_hitColor',
-          type: 'vec4',
-          expression: 'a_hitColor',
-        });
+    getSymbolFragmentShader() {
+      if (!this.hasSymbol_) {
+        return null;
       }
 
       return `precision mediump float;
 uniform float u_time;
 uniform float u_zoom;
 uniform float u_resolution;
-${this.uniforms
+uniform mediump int u_hitDetection;
+${this.uniforms_
   .map(function (uniform) {
     return 'uniform ' + uniform + ';';
   })
   .join('\n')}
 varying vec2 v_texCoord;
 varying vec2 v_quadCoord;
-${varyings
+varying vec4 v_hitColor;
+${this.varyings_
   .map(function (varying) {
     return 'varying ' + varying.type + ' ' + varying.name + ';';
   })
   .join('\n')}
+${this.fragmentShaderFunctions_.join('\n')}
 void main(void) {
-  if (${this.discardExpression}) { discard; }
-  gl_FragColor = ${this.colorExpression};
+  if (${this.discardExpression_}) { discard; }
+  gl_FragColor = ${this.symbolColorExpression_};
   gl_FragColor.rgb *= gl_FragColor.a;
-${hitDetectionBypass}
+  if (u_hitDetection > 0) {
+    if (gl_FragColor.a < 0.1) { discard; };
+    gl_FragColor = v_hitColor;
+  }
 }`;
+    }
+
+    /**
+     * Generates a stroke vertex shader from the builder parameters
+     * @return {string|null} The full shader as a string; null if no size or color specified
+     */
+    getStrokeVertexShader() {
+      if (!this.hasStroke_) {
+        return null;
+      }
+
+      return `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+${BASE_UNIFORMS}
+${this.uniforms_
+  .map(function (uniform) {
+    return 'uniform ' + uniform + ';';
+  })
+  .join('\n')}
+attribute vec2 a_position;
+attribute float a_index;
+attribute vec2 a_segmentStart;
+attribute vec2 a_segmentEnd;
+attribute float a_parameters;
+attribute vec4 a_hitColor;
+${this.attributes_
+  .map(function (attribute) {
+    return 'attribute ' + attribute + ';';
+  })
+  .join('\n')}
+varying vec2 v_segmentStart;
+varying vec2 v_segmentEnd;
+varying float v_angleStart;
+varying float v_angleEnd;
+varying float v_width;
+varying vec4 v_hitColor;
+${this.varyings_
+  .map(function (varying) {
+    return 'varying ' + varying.type + ' ' + varying.name + ';';
+  })
+  .join('\n')}
+${this.vertexShaderFunctions_.join('\n')}
+vec2 worldToPx(vec2 worldPos) {
+  vec4 screenPos = u_projectionMatrix * vec4(worldPos, 0.0, 1.0);
+  return (0.5 * screenPos.xy + 0.5) * u_viewportSizePx;
+}
+
+vec4 pxToScreen(vec2 pxPos) {
+  vec2 screenPos = pxPos * 4.0 / u_viewportSizePx;
+  return vec4(screenPos.xy, 0.0, 0.0);
+}
+
+vec2 getOffsetDirection(vec2 normalPx, vec2 tangentPx, float joinAngle) {
+  if (cos(joinAngle) > 0.93) return normalPx - tangentPx;
+  float halfAngle = joinAngle / 2.0;
+  vec2 angleBisectorNormal = vec2(
+    sin(halfAngle) * normalPx.x + cos(halfAngle) * normalPx.y,
+    -cos(halfAngle) * normalPx.x + sin(halfAngle) * normalPx.y
+  );
+  float length = 1.0 / sin(halfAngle);
+  return angleBisectorNormal * length;
+}
+
+void main(void) {
+  float lineWidth = ${this.strokeWidthExpression_};
+  float anglePrecision = 1500.0;
+  float paramShift = 10000.0;
+  v_angleStart = fract(a_parameters / paramShift) * paramShift / anglePrecision;
+  v_angleEnd = fract(floor(a_parameters / paramShift + 0.5) / paramShift) * paramShift / anglePrecision;
+  float vertexNumber = floor(a_parameters / paramShift / paramShift + 0.0001);
+  vec2 tangentPx = worldToPx(a_segmentEnd) - worldToPx(a_segmentStart);
+  tangentPx = normalize(tangentPx);
+  vec2 normalPx = vec2(-tangentPx.y, tangentPx.x);
+  float normalDir = vertexNumber < 0.5 || (vertexNumber > 1.5 && vertexNumber < 2.5) ? 1.0 : -1.0;
+  float tangentDir = vertexNumber < 1.5 ? 1.0 : -1.0;
+  float angle = vertexNumber < 1.5 ? v_angleStart : v_angleEnd;
+  vec2 offsetPx = getOffsetDirection(normalPx * normalDir, tangentDir * tangentPx, angle) * lineWidth * 0.5;
+  vec2 position =  vertexNumber < 1.5 ? a_segmentStart : a_segmentEnd;
+  gl_Position = u_projectionMatrix * vec4(position, 0.0, 1.0) + pxToScreen(offsetPx);
+  v_segmentStart = worldToPx(a_segmentStart);
+  v_segmentEnd = worldToPx(a_segmentEnd);
+  v_width = lineWidth;
+  v_hitColor = a_hitColor;
+${this.varyings_
+  .map(function (varying) {
+    return '  ' + varying.name + ' = ' + varying.expression + ';';
+  })
+  .join('\n')}
+}`;
+    }
+
+    /**
+     * Generates a stroke fragment shader from the builder parameters
+     *
+     * @return {string|null} The full shader as a string; null if no size or color specified
+     */
+    getStrokeFragmentShader() {
+      if (!this.hasStroke_) {
+        return null;
+      }
+
+      return `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+${BASE_UNIFORMS}
+${this.uniforms_
+  .map(function (uniform) {
+    return 'uniform ' + uniform + ';';
+  })
+  .join('\n')}
+varying vec2 v_segmentStart;
+varying vec2 v_segmentEnd;
+varying float v_angleStart;
+varying float v_angleEnd;
+varying float v_width;
+varying vec4 v_hitColor;
+${this.varyings_
+  .map(function (varying) {
+    return 'varying ' + varying.type + ' ' + varying.name + ';';
+  })
+  .join('\n')}
+${this.fragmentShaderFunctions_.join('\n')}
+vec2 pxToWorld(vec2 pxPos) {
+  vec2 screenPos = 2.0 * pxPos / u_viewportSizePx - 1.0;
+  return (u_screenToWorldMatrix * vec4(screenPos, 0.0, 1.0)).xy;
+}
+
+float segmentDistanceField(vec2 point, vec2 start, vec2 end, float radius) {
+  vec2 startToPoint = point - start;
+  vec2 startToEnd = end - start;
+  float ratio = clamp(dot(startToPoint, startToEnd) / dot(startToEnd, startToEnd), 0.0, 1.0);
+  float dist = length(startToPoint - ratio * startToEnd);
+  return 1.0 - smoothstep(radius - 1.0, radius, dist);
+}
+
+void main(void) {
+  vec2 v_currentPoint = gl_FragCoord.xy / u_pixelRatio;
+  #ifdef GL_FRAGMENT_PRECISION_HIGH
+  vec2 v_worldPos = pxToWorld(v_currentPoint);
+  if (
+    abs(u_renderExtent[0] - u_renderExtent[2]) > 0.0 && (
+      v_worldPos[0] < u_renderExtent[0] ||
+      v_worldPos[1] < u_renderExtent[1] ||
+      v_worldPos[0] > u_renderExtent[2] ||
+      v_worldPos[1] > u_renderExtent[3]
+    )
+  ) {
+    discard;
+  }
+  #endif
+  if (${this.discardExpression_}) { discard; }
+  gl_FragColor = ${this.strokeColorExpression_} * u_globalAlpha;
+  gl_FragColor *= segmentDistanceField(v_currentPoint, v_segmentStart, v_segmentEnd, v_width);
+  if (u_hitDetection > 0) {
+    if (gl_FragColor.a < 0.1) { discard; };
+    gl_FragColor = v_hitColor;
+  }
+}`;
+    }
+
+    /**
+     * Generates a fill vertex shader from the builder parameters
+     *
+     * @return {string|null} The full shader as a string; null if no color specified
+     */
+    getFillVertexShader() {
+      if (!this.hasFill_) {
+        return null;
+      }
+
+      return `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+${BASE_UNIFORMS}
+${this.uniforms_
+  .map(function (uniform) {
+    return 'uniform ' + uniform + ';';
+  })
+  .join('\n')}
+attribute vec2 a_position;
+attribute vec4 a_hitColor;
+${this.attributes_
+  .map(function (attribute) {
+    return 'attribute ' + attribute + ';';
+  })
+  .join('\n')}
+varying vec4 v_hitColor;
+${this.varyings_
+  .map(function (varying) {
+    return 'varying ' + varying.type + ' ' + varying.name + ';';
+  })
+  .join('\n')}
+${this.vertexShaderFunctions_.join('\n')}
+void main(void) {
+  gl_Position = u_projectionMatrix * vec4(a_position, 0.0, 1.0);
+${this.varyings_
+  .map(function (varying) {
+    return '  ' + varying.name + ' = ' + varying.expression + ';';
+  })
+  .join('\n')}
+}`;
+    }
+
+    /**
+     * Generates a fill fragment shader from the builder parameters
+     * @return {string|null} The full shader as a string; null if no color specified
+     */
+    getFillFragmentShader() {
+      if (!this.hasFill_) {
+        return null;
+      }
+
+      return `#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+${BASE_UNIFORMS}
+${this.uniforms_
+  .map(function (uniform) {
+    return 'uniform ' + uniform + ';';
+  })
+  .join('\n')}
+varying vec4 v_hitColor;
+${this.varyings_
+  .map(function (varying) {
+    return 'varying ' + varying.type + ' ' + varying.name + ';';
+  })
+  .join('\n')}
+${this.fragmentShaderFunctions_.join('\n')}
+vec2 pxToWorld(vec2 pxPos) {
+  vec2 screenPos = 2.0 * pxPos / u_viewportSizePx - 1.0;
+  return (u_screenToWorldMatrix * vec4(screenPos, 0.0, 1.0)).xy;
+}
+
+void main(void) {
+  #ifdef GL_FRAGMENT_PRECISION_HIGH
+  vec2 v_worldPos = pxToWorld(gl_FragCoord.xy / u_pixelRatio);
+  if (
+    abs(u_renderExtent[0] - u_renderExtent[2]) > 0.0 && (
+      v_worldPos[0] < u_renderExtent[0] ||
+      v_worldPos[1] < u_renderExtent[1] ||
+      v_worldPos[0] > u_renderExtent[2] ||
+      v_worldPos[1] > u_renderExtent[3]
+    )
+  ) {
+    discard;
+  }
+  #endif
+  if (${this.discardExpression_}) { discard; }
+  gl_FragColor = ${this.fillColorExpression_} * u_globalAlpha;
+  if (u_hitDetection > 0) {
+    if (gl_FragColor.a < 0.1) { discard; };
+    gl_FragColor = v_hitColor;
+  }
+}`;
+    }
+  }
+
+  /**
+   * Utilities for parsing literal style objects
+   * @module ol/webgl/styleparser
+   */
+
+  /**
+   * @param {import('../style/literal.js').SymbolType} type Symbol type
+   * @param {string} sizeExpressionGlsl Size expression
+   * @return {string} The GLSL opacity function
+   */
+  function getSymbolOpacityGlslFunction(type, sizeExpressionGlsl) {
+    switch (type) {
+      case 'square':
+      case 'image':
+        return '1.0';
+      // taken from https://thebookofshaders.com/07/
+      case 'circle':
+        return `(1.0-smoothstep(1.-4./${sizeExpressionGlsl},1.,dot(v_quadCoord-.5,v_quadCoord-.5)*4.))`;
+      case 'triangle':
+        const st = '(v_quadCoord*2.-1.)';
+        const a = `(atan(${st}.x,${st}.y))`;
+        return `(1.0-smoothstep(.5-3./${sizeExpressionGlsl},.5,cos(floor(.5+${a}/2.094395102)*2.094395102-${a})*length(${st})))`;
+      default:
+        throw new Error(`Unexpected symbol type: ${type}`);
+    }
+  }
+
+  /**
+   * Packs all components of a color into a two-floats array
+   * @param {import("../color.js").Color|string} color Color as array of numbers or string
+   * @return {Array<number>} Vec2 array containing the color in compressed form
+   */
+  function packColor(color) {
+    const array = asArray(color);
+    const r = array[0] * 256;
+    const g = array[1];
+    const b = array[2] * 256;
+    const a = Math.round(array[3] * 255);
+    return [r + g, b + a];
+  }
+
+  const UNPACK_COLOR_FN = `vec4 unpackColor(vec2 packedColor) {
+  return fract(packedColor[1] / 256.0) * vec4(
+    fract(floor(packedColor[0] / 256.0) / 256.0),
+    fract(packedColor[0] / 256.0),
+    fract(floor(packedColor[1] / 256.0) / 256.0),
+    1.0
+  );
+}`;
+
+  /**
+   * @param {ValueTypes} type Value type
+   * @return {1|2|3|4} The amount of components for this value
+   */
+  function getGlslSizeFromType(type) {
+    if (type === ValueTypes.COLOR) {
+      return 2;
+    }
+    if (type === ValueTypes.NUMBER_ARRAY) {
+      return 4;
+    }
+    return 1;
+  }
+
+  /**
+   * @param {ValueTypes} type Value type
+   * @return {'float'|'vec2'|'vec3'|'vec4'} The corresponding GLSL type for this value
+   */
+  function getGlslTypeFromType(type) {
+    const size = getGlslSizeFromType(type);
+    if (size > 1) {
+      return /** @type {'vec2'|'vec3'|'vec4'} */ (`vec${size}`);
+    }
+    return 'float';
+  }
+
+  /**
+   * @param {import("../style/literal").LiteralStyle} style Style
+   * @param {ShaderBuilder} builder Shader builder
+   * @param {Object<string,import("../webgl/Helper").UniformValue>} uniforms Uniforms
+   * @param {import("../style/expressions.js").ParsingContext} vertContext Vertex shader parsing context
+   * @param {import("../style/expressions.js").ParsingContext} fragContext Fragment shader parsing context
+   */
+  function parseSymbolProperties(
+    style,
+    builder,
+    uniforms,
+    vertContext,
+    fragContext
+  ) {
+    if (!('symbol' in style)) {
+      return;
+    }
+
+    const symbolStyle = style.symbol;
+    if ('color' in symbolStyle) {
+      const color = symbolStyle.color;
+      const opacity = symbolStyle.opacity !== undefined ? symbolStyle.opacity : 1;
+      const parsedColor = expressionToGlsl(fragContext, color, ValueTypes.COLOR);
+      const parsedOpacity = expressionToGlsl(
+        fragContext,
+        opacity,
+        ValueTypes.NUMBER
+      );
+      builder.setSymbolColorExpression(
+        `vec4(${parsedColor}.rgb, ${parsedColor}.a * ${parsedOpacity})`
+      );
+    }
+    if (symbolStyle.symbolType === 'image' && symbolStyle.src) {
+      const texture = new Image();
+      texture.crossOrigin =
+        symbolStyle.crossOrigin === undefined
+          ? 'anonymous'
+          : symbolStyle.crossOrigin;
+      texture.src = symbolStyle.src;
+      builder
+        .addUniform('sampler2D u_texture')
+        .setSymbolColorExpression(
+          `${builder.getSymbolColorExpression()} * texture2D(u_texture, v_texCoord)`
+        );
+      uniforms['u_texture'] = texture;
+    } else if ('symbolType' in symbolStyle) {
+      let visibleSize = builder.getSymbolSizeExpression();
+      if ('size' in symbolStyle) {
+        visibleSize = expressionToGlsl(
+          fragContext,
+          symbolStyle.size,
+          ValueTypes.NUMBER_ARRAY | ValueTypes.NUMBER
+        );
+      }
+      const symbolOpacity = getSymbolOpacityGlslFunction(
+        symbolStyle.symbolType,
+        `vec2(${visibleSize}).x`
+      );
+      builder.setSymbolColorExpression(
+        `${builder.getSymbolColorExpression()} * vec4(1.0, 1.0, 1.0, ${symbolOpacity})`
+      );
+    }
+    if ('size' in symbolStyle) {
+      const size = symbolStyle.size;
+      const parsedSize = expressionToGlsl(
+        vertContext,
+        size,
+        ValueTypes.NUMBER_ARRAY | ValueTypes.NUMBER
+      );
+      builder.setSymbolSizeExpression(`vec2(${parsedSize})`);
+    }
+    if ('textureCoord' in symbolStyle) {
+      builder.setTextureCoordinateExpression(
+        expressionToGlsl(
+          vertContext,
+          symbolStyle.textureCoord,
+          ValueTypes.NUMBER_ARRAY
+        )
+      );
+    }
+    if ('offset' in symbolStyle) {
+      builder.setSymbolOffsetExpression(
+        expressionToGlsl(vertContext, symbolStyle.offset, ValueTypes.NUMBER_ARRAY)
+      );
+    }
+    if ('rotation' in symbolStyle) {
+      builder.setSymbolRotationExpression(
+        expressionToGlsl(vertContext, symbolStyle.rotation, ValueTypes.NUMBER)
+      );
+    }
+    if ('rotateWithView' in symbolStyle) {
+      builder.setSymbolRotateWithView(!!symbolStyle.rotateWithView);
+    }
+  }
+
+  /**
+   * @param {import("../style/literal").LiteralStyle} style Style
+   * @param {ShaderBuilder} builder Shader Builder
+   * @param {Object<string,import("../webgl/Helper").UniformValue>} uniforms Uniforms
+   * @param {import("../style/expressions.js").ParsingContext} vertContext Vertex shader parsing context
+   * @param {import("../style/expressions.js").ParsingContext} fragContext Fragment shader parsing context
+   */
+  function parseStrokeProperties(
+    style,
+    builder,
+    uniforms,
+    vertContext,
+    fragContext
+  ) {
+    if ('stroke-color' in style) {
+      builder.setStrokeColorExpression(
+        expressionToGlsl(fragContext, style['stroke-color'], ValueTypes.COLOR)
+      );
+    }
+
+    if ('stroke-width' in style) {
+      builder.setStrokeWidthExpression(
+        expressionToGlsl(vertContext, style['stroke-width'], ValueTypes.NUMBER)
+      );
+    }
+  }
+
+  /**
+   * @param {import("../style/literal").LiteralStyle} style Style
+   * @param {ShaderBuilder} builder Shader Builder
+   * @param {Object<string,import("../webgl/Helper").UniformValue>} uniforms Uniforms
+   * @param {import("../style/expressions.js").ParsingContext} vertContext Vertex shader parsing context
+   * @param {import("../style/expressions.js").ParsingContext} fragContext Fragment shader parsing context
+   */
+  function parseFillProperties(
+    style,
+    builder,
+    uniforms,
+    vertContext,
+    fragContext
+  ) {
+    if ('fill-color' in style) {
+      builder.setFillColorExpression(
+        expressionToGlsl(fragContext, style['fill-color'], ValueTypes.COLOR)
+      );
     }
   }
 
   /**
    * @typedef {Object} StyleParseResult
    * @property {ShaderBuilder} builder Shader builder pre-configured according to a given style
-   * @property {Object<string,import("./Helper").UniformValue>} uniforms Uniform definitions.
-   * @property {Array<import("../renderer/webgl/PointsLayer").CustomAttribute>} attributes Attribute descriptions.
+   * @property {import("../render/webgl/VectorStyleRenderer.js").UniformDefinitions} uniforms Uniform definitions
+   * @property {import("../render/webgl/VectorStyleRenderer.js").AttributeDefinitions} attributes Attribute definitions
    */
 
   /**
@@ -86048,14 +93572,6 @@ ${hitDetectionBypass}
    * @return {StyleParseResult} Result containing shader params, attributes and uniforms.
    */
   function parseLiteralStyle(style) {
-    const symbStyle = style.symbol;
-    const size = symbStyle.size !== undefined ? symbStyle.size : 1;
-    const color = symbStyle.color || 'white';
-    const texCoord = symbStyle.textureCoord || [0, 0, 1, 1];
-    const offset = symbStyle.offset || [0, 0];
-    const opacity = symbStyle.opacity !== undefined ? symbStyle.opacity : 1;
-    const rotation = symbStyle.rotation !== undefined ? symbStyle.rotation : 0;
-
     /**
      * @type {import("../style/expressions.js").ParsingContext}
      */
@@ -86065,27 +93581,8 @@ ${hitDetectionBypass}
       attributes: [],
       stringLiteralsMap: {},
       functions: {},
+      style: style,
     };
-    const parsedSize = expressionToGlsl(
-      vertContext,
-      size,
-      ValueTypes.NUMBER_ARRAY | ValueTypes.NUMBER
-    );
-    const parsedOffset = expressionToGlsl(
-      vertContext,
-      offset,
-      ValueTypes.NUMBER_ARRAY
-    );
-    const parsedTexCoord = expressionToGlsl(
-      vertContext,
-      texCoord,
-      ValueTypes.NUMBER_ARRAY
-    );
-    const parsedRotation = expressionToGlsl(
-      vertContext,
-      rotation,
-      ValueTypes.NUMBER
-    );
 
     /**
      * @type {import("../style/expressions.js").ParsingContext}
@@ -86096,48 +93593,17 @@ ${hitDetectionBypass}
       attributes: [],
       stringLiteralsMap: vertContext.stringLiteralsMap,
       functions: {},
+      style: style,
     };
-    const parsedColor = expressionToGlsl(fragContext, color, ValueTypes.COLOR);
-    const parsedOpacity = expressionToGlsl(
-      fragContext,
-      opacity,
-      ValueTypes.NUMBER
-    );
 
-    let opacityFilter = '1.0';
-    const visibleSize = `vec2(${expressionToGlsl(
-    fragContext,
-    size,
-    ValueTypes.NUMBER_ARRAY | ValueTypes.NUMBER
-  )}).x`;
-    switch (symbStyle.symbolType) {
-      case 'square':
-        break;
-      case 'image':
-        break;
-      // taken from https://thebookofshaders.com/07/
-      case 'circle':
-        opacityFilter = `(1.0-smoothstep(1.-4./${visibleSize},1.,dot(v_quadCoord-.5,v_quadCoord-.5)*4.))`;
-        break;
-      case 'triangle':
-        const st = '(v_quadCoord*2.-1.)';
-        const a = `(atan(${st}.x,${st}.y))`;
-        opacityFilter = `(1.0-smoothstep(.5-3./${visibleSize},.5,cos(floor(.5+${a}/2.094395102)*2.094395102-${a})*length(${st})))`;
-        break;
+    const builder = new ShaderBuilder();
 
-      default:
-        throw new Error('Unexpected symbol type: ' + symbStyle.symbolType);
-    }
+    /** @type {Object<string,import("../webgl/Helper").UniformValue>} */
+    const uniforms = {};
 
-    const builder = new ShaderBuilder()
-      .setSizeExpression(`vec2(${parsedSize})`)
-      .setRotationExpression(parsedRotation)
-      .setSymbolOffsetExpression(parsedOffset)
-      .setTextureCoordinateExpression(parsedTexCoord)
-      .setSymbolRotateWithView(!!symbStyle.rotateWithView)
-      .setColorExpression(
-        `vec4(${parsedColor}.rgb, ${parsedColor}.a * ${parsedOpacity} * ${opacityFilter})`
-      );
+    parseSymbolProperties(style, builder, uniforms, vertContext, fragContext);
+    parseStrokeProperties(style, builder, uniforms, vertContext, fragContext);
+    parseFillProperties(style, builder, uniforms, vertContext, fragContext);
 
     if (style.filter) {
       const parsedFilter = expressionToGlsl(
@@ -86148,68 +93614,99 @@ ${hitDetectionBypass}
       builder.setFragmentDiscardExpression(`!${parsedFilter}`);
     }
 
-    /** @type {Object<string,import("../webgl/Helper").UniformValue>} */
-    const uniforms = {};
-
     // define one uniform per variable
-    fragContext.variables.forEach(function (varName) {
-      const uniformName = uniformNameForVariable(varName);
-      builder.addUniform(`float ${uniformName}`);
-      uniforms[uniformName] = function () {
-        if (!style.variables || style.variables[varName] === undefined) {
-          throw new Error(
-            `The following variable is missing from the style: ${varName}`
-          );
-        }
-        let value = style.variables[varName];
-        if (typeof value === 'string') {
-          value = getStringNumberEquivalent(vertContext, value);
-        }
-        return value !== undefined ? value : -9999999; // to avoid matching with the first string literal
-      };
-    });
+    fragContext.variables.forEach(function (variable) {
+      const uniformName = uniformNameForVariable(variable.name);
+      builder.addUniform(`${getGlslTypeFromType(variable.type)} ${uniformName}`);
 
-    if (symbStyle.symbolType === 'image' && symbStyle.src) {
-      const texture = new Image();
-      texture.crossOrigin =
-        symbStyle.crossOrigin === undefined ? 'anonymous' : symbStyle.crossOrigin;
-      texture.src = symbStyle.src;
-      builder
-        .addUniform('sampler2D u_texture')
-        .setColorExpression(
-          builder.getColorExpression() + ' * texture2D(u_texture, v_texCoord)'
-        );
-      uniforms['u_texture'] = texture;
-    }
+      let callback;
+      if (variable.type === ValueTypes.STRING) {
+        callback = () =>
+          getStringNumberEquivalent(
+            vertContext,
+            /** @type {string} */ (style.variables[variable.name])
+          );
+      } else if (variable.type === ValueTypes.COLOR) {
+        callback = () =>
+          packColor([
+            ...asArray(
+              /** @type {string|Array<number>} */ (
+                style.variables[variable.name]
+              ) || '#eee'
+            ),
+          ]);
+      } else if (variable.type === ValueTypes.BOOLEAN) {
+        callback = () =>
+          /** @type {boolean} */ (style.variables[variable.name]) ? 1.0 : 0.0;
+      } else {
+        callback = () => /** @type {number} */ (style.variables[variable.name]);
+      }
+      uniforms[uniformName] = callback;
+    });
 
     // for each feature attribute used in the fragment shader, define a varying that will be used to pass data
     // from the vertex to the fragment shader, as well as an attribute in the vertex shader (if not already present)
-    fragContext.attributes.forEach(function (attrName) {
-      if (!vertContext.attributes.includes(attrName)) {
-        vertContext.attributes.push(attrName);
+    fragContext.attributes.forEach(function (attribute) {
+      if (!vertContext.attributes.find((a) => a.name === attribute.name)) {
+        vertContext.attributes.push(attribute);
       }
-      builder.addVarying(`v_${attrName}`, 'float', `a_${attrName}`);
+      let type = getGlslTypeFromType(attribute.type);
+      let expression = `a_${attribute.name}`;
+      if (attribute.type === ValueTypes.COLOR) {
+        type = 'vec4';
+        expression = `unpackColor(${expression})`;
+        builder.addVertexShaderFunction(UNPACK_COLOR_FN);
+      }
+      builder.addVarying(`v_${attribute.name}`, type, expression);
     });
 
     // for each feature attribute used in the vertex shader, define an attribute in the vertex shader.
-    vertContext.attributes.forEach(function (attrName) {
-      builder.addAttribute(`float a_${attrName}`);
+    vertContext.attributes.forEach(function (attribute) {
+      builder.addAttribute(
+        `${getGlslTypeFromType(attribute.type)} a_${attribute.name}`
+      );
     });
+
+    const attributes = vertContext.attributes.map(function (attribute) {
+      let callback;
+      if (attribute.callback) {
+        callback = attribute.callback;
+      } else if (attribute.type === ValueTypes.STRING) {
+        callback = (feature) =>
+          getStringNumberEquivalent(vertContext, feature.get(attribute.name));
+      } else if (attribute.type === ValueTypes.COLOR) {
+        callback = (feature) =>
+          packColor([...asArray(feature.get(attribute.name) || '#eee')]);
+      } else if (attribute.type === ValueTypes.BOOLEAN) {
+        callback = (feature) => (feature.get(attribute.name) ? 1.0 : 0.0);
+      } else {
+        callback = (feature) => feature.get(attribute.name);
+      }
+
+      return {
+        name: attribute.name,
+        size: getGlslSizeFromType(attribute.type),
+        callback,
+      };
+    });
+
+    // add functions that were collected in the parsing contexts
+    for (const functionName in vertContext.functions) {
+      builder.addVertexShaderFunction(vertContext.functions[functionName]);
+    }
+    for (const functionName in fragContext.functions) {
+      builder.addFragmentShaderFunction(fragContext.functions[functionName]);
+    }
 
     return {
       builder: builder,
-      attributes: vertContext.attributes.map(function (attributeName) {
-        return {
-          name: attributeName,
-          callback: function (feature, props) {
-            let value = props[attributeName];
-            if (typeof value === 'string') {
-              value = getStringNumberEquivalent(vertContext, value);
-            }
-            return value !== undefined ? value : -9999999; // to avoid matching with the first string literal
-          },
-        };
-      }),
+      attributes: attributes.reduce(
+        (prev, curr) => ({
+          ...prev,
+          [curr.name]: {callback: curr.callback, size: curr.size},
+        }),
+        {}
+      ),
       uniforms: uniforms,
     };
   }
@@ -86295,12 +93792,12 @@ ${hitDetectionBypass}
 
       /**
        * @private
-       * @type {import('../webgl/ShaderBuilder.js').StyleParseResult}
+       * @type {import('../webgl/styleparser.js').StyleParseResult}
        */
       this.parseResult_ = parseLiteralStyle(options.style);
 
       /**
-       * @type {Object<string, (string|number)>}
+       * @type {Object<string, (string|number|Array<number>|boolean)>}
        * @private
        */
       this.styleVariables_ = options.style.variables || {};
@@ -86313,17 +93810,21 @@ ${hitDetectionBypass}
     }
 
     createRenderer() {
+      const attributes = Object.keys(this.parseResult_.attributes).map(
+        (name) => ({
+          name,
+          ...this.parseResult_.attributes[name],
+        })
+      );
       return new WebGLPointsLayerRenderer$1(this, {
         vertexShader: this.parseResult_.builder.getSymbolVertexShader(),
         fragmentShader: this.parseResult_.builder.getSymbolFragmentShader(),
-        hitVertexShader:
-          !this.hitDetectionDisabled_ &&
-          this.parseResult_.builder.getSymbolVertexShader(true),
-        hitFragmentShader:
-          !this.hitDetectionDisabled_ &&
-          this.parseResult_.builder.getSymbolFragmentShader(true),
+        hitDetectionEnabled: !this.hitDetectionDisabled_,
         uniforms: this.parseResult_.uniforms,
-        attributes: this.parseResult_.attributes,
+        attributes:
+          /** @type {Array<import('../renderer/webgl/PointsLayer.js').CustomAttribute>} */ (
+            attributes
+          ),
       });
     }
 
@@ -86452,6 +93953,7 @@ ${hitDetectionBypass}
       stringLiteralsMap: {},
       functions: {},
       bandCount: bandCount,
+      style: style,
     };
 
     const pipeline = [];
@@ -86530,13 +94032,13 @@ ${hitDetectionBypass}
     }
 
     for (let i = 0; i < numVariables; ++i) {
-      const variableName = context.variables[i];
-      if (!(variableName in style.variables)) {
-        throw new Error(`Missing '${variableName}' in style variables`);
+      const variable = context.variables[i];
+      if (!(variable.name in style.variables)) {
+        throw new Error(`Missing '${variable.name}' in style variables`);
       }
-      const uniformName = uniformNameForVariable(variableName);
+      const uniformName = uniformNameForVariable(variable.name);
       uniforms[uniformName] = function () {
-        let value = style.variables[variableName];
+        let value = style.variables[variable.name];
         if (typeof value === 'string') {
           value = getStringNumberEquivalent(context, value);
         }
@@ -86600,10 +94102,6 @@ ${hitDetectionBypass}
       }[0],  v_textureCoord);
 
       ${pipeline.join('\n')}
-
-      if (color.a == 0.0) {
-        discard;
-      }
 
       gl_FragColor = color;
       gl_FragColor.rgb *= gl_FragColor.a;
@@ -86830,7 +94328,6 @@ ${hitDetectionBypass}
         vertexShader: parsedStyle.vertexShader,
         fragmentShader: parsedStyle.fragmentShader,
         uniforms: parsedStyle.uniforms,
-        paletteTextures: parsedStyle.paletteTextures,
       });
       this.changed();
     }
@@ -86892,7 +94389,7 @@ ${hitDetectionBypass}
   }
 
   /**
-   * Unsets the shared proj4 previsouly set with register.
+   * Unsets the shared proj4 previously set with register.
    */
   function unregister() {
     registered = null;
@@ -87025,6 +94522,72 @@ ${hitDetectionBypass}
     return get$2(epsgCode);
   }
 
+  /**
+   * Generate an EPSG lookup function which uses the MapTiler Coordinates API to find projection
+   * definitions which do not require proj4 to be configured to handle `+nadgrids` parameters.
+   * Call {@link module:ol/proj/proj4.setEPSGLookup} use the function for lookups
+   * `setEPSGLookup(epsgLookupMapTiler('{YOUR_MAPTILER_API_KEY_HERE}'))`.
+   *
+   * @param {string} key MapTiler API key.  Get your own API key at https://www.maptiler.com/cloud/.
+   * @return {function(number):Promise<string>} The EPSG lookup function.
+   * @api
+   */
+  function epsgLookupMapTiler(key) {
+    return async function (code) {
+      const response = await fetch(
+        `https://api.maptiler.com/coordinates/search/code:${code}.json?transformations=true&exports=true&key=${key}`
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Unexpected response from maptiler.com: ${response.status}`
+        );
+      }
+      return response.json().then((json) => {
+        const results = json['results'];
+        if (results?.length > 0) {
+          const result = results.filter(
+            (r) => r['id']?.['authority'] === 'EPSG' && r['id']?.['code'] === code
+          )[0];
+          if (result) {
+            const transforms = result['transformations'];
+            if (transforms?.length > 0) {
+              // use default transform if it does not require grids
+              const defaultTransform = result['default_transformation'];
+              if (
+                transforms.filter(
+                  (t) =>
+                    t['id']?.['authority'] === defaultTransform?.['authority'] &&
+                    t['id']?.['code'] === defaultTransform?.['code'] &&
+                    t['grids']?.length === 0
+                ).length > 0
+              ) {
+                return result['exports']?.['proj4'];
+              }
+              // otherwise use most accurate alternative without grids
+              const transform = transforms
+                .filter(
+                  (t) =>
+                    t['grids']?.length === 0 &&
+                    t['target_crs']?.['authority'] === 'EPSG' &&
+                    t['target_crs']?.['code'] === 4326 &&
+                    t['deprecated'] === false &&
+                    t['usable'] === true
+                )
+                .sort((t1, t2) => t1['accuracy'] - t2['accuracy'])[0]?.[
+                'exports'
+              ]?.['proj4'];
+              if (transform) {
+                return transform;
+              }
+            }
+            // fallback to default
+            return result['exports']?.['proj4'];
+          }
+        }
+      });
+    };
+  }
+
   var proj_proj4 = {
     __proto__: null,
     isRegistered: isRegistered,
@@ -87032,7 +94595,8 @@ ${hitDetectionBypass}
     register: register,
     setEPSGLookup: setEPSGLookup,
     getEPSGLookup: getEPSGLookup,
-    fromEPSGCode: fromEPSGCode
+    fromEPSGCode: fromEPSGCode,
+    epsgLookupMapTiler: epsgLookupMapTiler
   };
 
   /**
@@ -87098,6 +94662,8 @@ ${hitDetectionBypass}
    * @property {number|import("../array.js").NearestDirectionFunction} [zDirection=0]
    * Choose whether to use tiles with a higher or lower zoom level when between integer
    * zoom levels. See {@link module:ol/tilegrid/TileGrid~TileGrid#getZForResolution}.
+   * @property {boolean} placeholderTiles Whether to show BingMaps placeholder tiles when zoomed past the maximum level provided in an area. When `false`, requests beyond
+   * the maximum zoom level will return no tile. When `true`, the placeholder tile will be returned.
    */
 
   /**
@@ -87194,6 +94760,12 @@ ${hitDetectionBypass}
        */
       this.imagerySet_ = options.imagerySet;
 
+      /**
+       * @private
+       * @type {boolean}
+       */
+      this.placeholderTiles_ = options.placeholderTiles;
+
       const url =
         'https://dev.virtualearth.net/REST/v1/Imagery/Metadata/' +
         this.imagerySet_ +
@@ -87263,6 +94835,7 @@ ${hitDetectionBypass}
 
       const culture = this.culture_;
       const hidpi = this.hidpi_;
+      const placeholderTiles = this.placeholderTiles_;
       this.tileUrlFunction = createFromTileUrlFunctions(
         resource.imageUrlSubdomains.map(function (subdomain) {
           /** @type {import('../tilecoord.js').TileCoord} */
@@ -87287,11 +94860,20 @@ ${hitDetectionBypass}
                 tileCoord[2],
                 quadKeyTileCoord
               );
-              let url = imageUrl;
+              const url = new URL(
+                imageUrl.replace('{quadkey}', quadKey(quadKeyTileCoord))
+              );
+              const params = url.searchParams;
               if (hidpi) {
-                url += '&dpi=d1&device=mobile';
+                params.set('dpi', 'd1');
+                params.set('device', 'mobile');
               }
-              return url.replace('{quadkey}', quadKey(quadKeyTileCoord));
+              if (placeholderTiles === true) {
+                params.delete('n');
+              } else if (placeholderTiles === false) {
+                params.set('n', 'z');
+              }
+              return url.toString();
             }
           );
         })
@@ -87779,7 +95361,7 @@ ${hitDetectionBypass}
         options.geometryFunction ||
         function (feature) {
           const geometry = /** @type {Point} */ (feature.getGeometry());
-          assert(geometry.getType() == 'Point', 10); // The default `geometryFunction` can only handle `Point` geometries
+          assert(!geometry || geometry.getType() === 'Point', 10); // The default `geometryFunction` can only handle `Point` or null geometries
           return geometry;
         };
 
@@ -88020,7 +95602,7 @@ ${hitDetectionBypass}
    * @property {boolean} [opaque=false] Whether the layer is opaque.
    * @property {import("./Source.js").State} [state] The source state.
    * @property {boolean} [wrapX=false] Render tiles beyond the antimeridian.
-   * @property {number} [transition] Transition time when fading in new tiles (in miliseconds).
+   * @property {number} [transition] Transition time when fading in new tiles (in milliseconds).
    * @property {number} [bandCount=4] Number of bands represented in the data.
    * @property {boolean} [interpolate=false] Use interpolated values when resampling.  By default,
    * the nearest neighbor is used when resampling.
@@ -88507,6 +96089,12 @@ ${hitDetectionBypass}
     SymbolToStringTag
   );
 
+  // Uint8Array
+  const NativeUint8Array = Uint8Array;
+
+  // Uint16Array
+  const NativeUint16Array = Uint16Array;
+
   // Uint32Array
   const NativeUint32Array = Uint32Array;
 
@@ -88536,7 +96124,6 @@ ${hitDetectionBypass}
   // WeakMap
   /**
    * Do not construct with arguments to avoid calling the "set" method
-   *
    * @type {{new <K extends {}, V>(): WeakMap<K, V>}}
    */
   const NativeWeakMap = WeakMap;
@@ -88566,7 +96153,6 @@ ${hitDetectionBypass}
 
   /**
    * Wrap the Array around the SafeIterator If Array.prototype [@@iterator] has been modified
-   *
    * @type {<T>(array: T[]) => Iterable<T>}
    */
   function safeIfNeeded(array) {
@@ -88607,14 +96193,14 @@ ${hitDetectionBypass}
     ObjectDefineProperty(DummyArrayIteratorPrototype, key, ReflectGetOwnPropertyDescriptor(ArrayIteratorPrototype, key));
   }
 
-  // algorithm: http://fox-toolkit.org/ftp/fasthalffloatconversion.pdf
+  // base algorithm: http://fox-toolkit.org/ftp/fasthalffloatconversion.pdf
 
   const buffer = new NativeArrayBuffer(4);
   const floatView = new NativeFloat32Array(buffer);
   const uint32View = new NativeUint32Array(buffer);
 
-  const baseTable = new NativeUint32Array(512);
-  const shiftTable = new NativeUint32Array(512);
+  const baseTable = new NativeUint16Array(512);
+  const shiftTable = new NativeUint8Array(512);
 
   for (let i = 0; i < 256; ++i) {
     const e = i - 127;
@@ -88657,21 +96243,18 @@ ${hitDetectionBypass}
   }
 
   const mantissaTable = new NativeUint32Array(2048);
-  const exponentTable = new NativeUint32Array(64);
-  const offsetTable = new NativeUint32Array(64);
-
   for (let i = 1; i < 1024; ++i) {
-    let m = i << 13;    // zero pad mantissa bits
-    let e = 0;          // zero exponent
+    let m = i << 13; // zero pad mantissa bits
+    let e = 0; // zero exponent
 
     // normalized
-    while((m & 0x00800000) === 0) {
+    while ((m & 0x00800000) === 0) {
       m <<= 1;
-      e -= 0x00800000;  // decrement exponent
+      e -= 0x00800000; // decrement exponent
     }
 
-    m &= ~0x00800000;   // clear leading 1 bit
-    e += 0x38800000;    // adjust bias
+    m &= ~0x00800000; // clear leading 1 bit
+    e += 0x38800000; // adjust bias
 
     mantissaTable[i] = m | e;
   }
@@ -88679,6 +96262,7 @@ ${hitDetectionBypass}
     mantissaTable[i] = 0x38000000 + ((i - 1024) << 13);
   }
 
+  const exponentTable = new NativeUint32Array(64);
   for (let i = 1; i < 31; ++i) {
     exponentTable[i] = i << 23;
   }
@@ -88689,6 +96273,7 @@ ${hitDetectionBypass}
   }
   exponentTable[63] = 0xc7800000;
 
+  const offsetTable = new NativeUint16Array(64);
   for (let i = 1; i < 64; ++i) {
     if (i !== 32) {
       offsetTable[i] = 1024;
@@ -88697,19 +96282,17 @@ ${hitDetectionBypass}
 
   /**
    * convert a half float number bits to a number
-   *
    * @param {number} float16bits - half float number bits
    * @returns {number} double float
    */
   function convertToNumber(float16bits) {
-    const m = float16bits >> 10;
-    uint32View[0] = mantissaTable[offsetTable[m] + (float16bits & 0x3ff)] + exponentTable[m];
+    const i = float16bits >> 10;
+    uint32View[0] = mantissaTable[offsetTable[i] + (float16bits & 0x3ff)] + exponentTable[i];
     return floatView[0];
   }
 
   /**
    * returns an unsigned 16-bit float at the specified byte offset from the start of the DataView
-   *
    * @param {DataView} dataView
    * @param {number} byteOffset
    * @param {[boolean]} opts
@@ -88725,17 +96308,24 @@ ${hitDetectionBypass}
 
   function getAttribute(tag, attributeName, options) {
     const debug = (options && options.debug) || false;
-    if (debug) console.log("getting " + attributeName + " in " + tag);
+    if (debug) console.log("[xml-utils] getting " + attributeName + " in " + tag);
 
     const xml = typeof tag === "object" ? tag.outer : tag;
 
-    const pattern = `${attributeName}\\="\([^"]*\)"`;
-    if (debug) console.log("pattern:", pattern);
+    // only search for attributes in the opening tag
+    const opening = xml.slice(0, xml.indexOf(">") + 1);
 
-    const re = new RegExp(pattern);
-    const match = re.exec(xml);
-    if (debug) console.log("match:", match);
-    if (match) return match[1];
+    const quotechars = ['"', "'"];
+    for (let i = 0; i < quotechars.length; i++) {
+      const char = quotechars[i];
+      const pattern = attributeName + "\\=" + char + "([^" + char + "]*)" + char;
+      if (debug) console.log("[xml-utils] pattern:", pattern);
+
+      const re = new RegExp(pattern);
+      const match = re.exec(opening);
+      if (debug) console.log("[xml-utils] match:", match);
+      if (match) return match[1];
+    }
   }
 
   getAttribute$2.exports = getAttribute;
@@ -88794,7 +96384,7 @@ ${hitDetectionBypass}
 
     if (debug) console.log("[xml-utils] starting findTagByName with", tagName, " and ", options);
 
-    const start = indexOfMatch(xml, `\<${tagName}[ \>\/]`, startIndex);
+    const start = indexOfMatch(xml, `\<${tagName}[ \n\>\/]`, startIndex);
     if (debug) console.log("[xml-utils] start:", start);
     if (start === -1) return undefined;
 
@@ -88813,8 +96403,8 @@ ${hitDetectionBypass}
         let closings = 0;
         while ((relativeEnd = indexOfMatchEnd(afterStart, "[ /]" + tagName + ">", startIndex)) !== -1) {
           const clip = afterStart.substring(startIndex, relativeEnd + 1);
-          openings += countSubstring(clip, "<" + tagName);
-          closings += countSubstring(clip, "/" + tagName + ">");
+          openings += countSubstring(clip, "<" + tagName + "[ \n\t>]");
+          closings += countSubstring(clip, "</" + tagName + ">");
           // we can't have more openings than closings
           if (closings >= openings) break;
           startIndex = relativeEnd;
@@ -89066,6 +96656,7 @@ ${hitDetectionBypass}
   const LercAddCompression = {
     None: 0,
     Deflate: 1,
+    Zstandard: 2,
   };
 
   const geoKeyNames = {
@@ -89257,7 +96848,13 @@ ${hitDetectionBypass}
   addDecoder(7, () => Promise.resolve().then(function () { return jpeg; }).then((m) => m.default));
   addDecoder([8, 32946], () => Promise.resolve().then(function () { return deflate; }).then((m) => m.default));
   addDecoder(32773, () => Promise.resolve().then(function () { return packbits; }).then((m) => m.default));
-  addDecoder(34887, () => Promise.resolve().then(function () { return lerc; }).then((m) => m.default));
+  addDecoder(34887, () => Promise.resolve().then(function () { return lerc; })
+    .then(async (m) => {
+      await m.zstd.init();
+      return m;
+    })
+    .then((m) => m.default),
+  );
   addDecoder(50001, () => Promise.resolve().then(function () { return webimage; }).then((m) => m.default));
 
   /**
@@ -89918,13 +97515,18 @@ ${hitDetectionBypass}
 
       for (let yTile = minYTile; yTile < maxYTile; ++yTile) {
         for (let xTile = minXTile; xTile < maxXTile; ++xTile) {
+          let getPromise;
+          if (this.planarConfiguration === 1) {
+            getPromise = this.getTileOrStrip(xTile, yTile, 0, poolOrDecoder, signal);
+          }
           for (let sampleIndex = 0; sampleIndex < samples.length; ++sampleIndex) {
             const si = sampleIndex;
             const sample = samples[sampleIndex];
             if (this.planarConfiguration === 2) {
-              bytesPerPixel = this.getSampleByteSize(sampleIndex);
+              bytesPerPixel = this.getSampleByteSize(sample);
+              getPromise = this.getTileOrStrip(xTile, yTile, sample, poolOrDecoder, signal);
             }
-            const promise = this.getTileOrStrip(xTile, yTile, sample, poolOrDecoder, signal).then((tile) => {
+            const promise = getPromise.then((tile) => {
               const buffer = tile.data;
               const dataView = new DataView(buffer);
               const blockHeight = this.getBlockHeight(tile.y);
@@ -90303,11 +97905,19 @@ ${hitDetectionBypass}
         ];
       }
       if (modelTransformation) {
+        if (modelTransformation[1] === 0 && modelTransformation[4] === 0) {
+          return [
+            modelTransformation[0],
+            -modelTransformation[5],
+            modelTransformation[10],
+          ];
+        }
         return [
-          modelTransformation[0],
-          modelTransformation[5],
-          modelTransformation[10],
-        ];
+          Math.sqrt((modelTransformation[0] * modelTransformation[0])
+            + (modelTransformation[4] * modelTransformation[4])),
+          -Math.sqrt((modelTransformation[1] * modelTransformation[1])
+            + (modelTransformation[5] * modelTransformation[5])),
+          modelTransformation[10]];
       }
 
       if (referenceImage) {
@@ -90334,24 +97944,56 @@ ${hitDetectionBypass}
      * Returns the image bounding box as an array of 4 values: min-x, min-y,
      * max-x and max-y. When the image has no affine transformation, then an
      * exception is thrown.
+     * @param {boolean} [tilegrid=false] If true return extent for a tilegrid
+     *                                   without adjustment for ModelTransformation.
      * @returns {Array<number>} The bounding box
      */
-    getBoundingBox() {
-      const origin = this.getOrigin();
-      const resolution = this.getResolution();
+    getBoundingBox(tilegrid = false) {
+      const height = this.getHeight();
+      const width = this.getWidth();
 
-      const x1 = origin[0];
-      const y1 = origin[1];
+      if (this.fileDirectory.ModelTransformation && !tilegrid) {
+        // eslint-disable-next-line no-unused-vars
+        const [a, b, c, d, e, f, g, h] = this.fileDirectory.ModelTransformation;
 
-      const x2 = x1 + (resolution[0] * this.getWidth());
-      const y2 = y1 + (resolution[1] * this.getHeight());
+        const corners = [
+          [0, 0],
+          [0, height],
+          [width, 0],
+          [width, height],
+        ];
 
-      return [
-        Math.min(x1, x2),
-        Math.min(y1, y2),
-        Math.max(x1, x2),
-        Math.max(y1, y2),
-      ];
+        const projected = corners.map(([I, J]) => [
+          d + (a * I) + (b * J),
+          h + (e * I) + (f * J),
+        ]);
+
+        const xs = projected.map((pt) => pt[0]);
+        const ys = projected.map((pt) => pt[1]);
+
+        return [
+          Math.min(...xs),
+          Math.min(...ys),
+          Math.max(...xs),
+          Math.max(...ys),
+        ];
+      } else {
+        const origin = this.getOrigin();
+        const resolution = this.getResolution();
+
+        const x1 = origin[0];
+        const y1 = origin[1];
+
+        const x2 = x1 + (resolution[0] * width);
+        const y2 = y1 + (resolution[1] * height);
+
+        return [
+          Math.min(x1, x2),
+          Math.min(y1, y2),
+          Math.max(x1, x2),
+          Math.max(y1, y2),
+        ];
+      }
     }
   }
 
@@ -91006,6 +98648,8 @@ ${hitDetectionBypass}
   		} else {
   			this._set(key, {value, expiry});
   		}
+
+  		return this;
   	}
 
   	has(key) {
@@ -91532,9 +99176,10 @@ ${hitDetectionBypass}
 
     /**
      * Send a request with the options
-     * @param {object} [options]
+     * @param {{headers: HeadersInit, signal: AbortSignal}} [options={}]
+     * @returns {Promise<BaseResponse>}
      */
-    async request({ headers, credentials, signal } = {}) { // eslint-disable-line no-unused-vars
+    async request({ headers, signal } = {}) { // eslint-disable-line no-unused-vars
       throw new Error('request is not implemented');
     }
   }
@@ -91571,9 +99216,13 @@ ${hitDetectionBypass}
       this.credentials = credentials;
     }
 
-    async request({ headers, credentials, signal } = {}) {
+    /**
+     * @param {{headers: HeadersInit, signal: AbortSignal}} [options={}]
+     * @returns {Promise<FetchResponse>}
+     */
+    async request({ headers, signal } = {}) {
       const response = await fetch(this.url, {
-        headers, credentials, signal,
+        headers, credentials: this.credentials, signal,
       });
       return new FetchResponse(response);
     }
@@ -95537,14 +103186,10 @@ ${hitDetectionBypass}
         viewWidth,
         viewHeight,
       ]);
-      const requestWidth = ceil(
-        (this.ratio_ * getWidth(extent)) / imageResolution,
-        DECIMALS
-      );
-      const requestHeight = ceil(
-        (this.ratio_ * getHeight(extent)) / imageResolution,
-        DECIMALS
-      );
+      const marginWidth = ceil(((this.ratio_ - 1) * viewWidth) / 2, DECIMALS);
+      const requestWidth = viewWidth + 2 * marginWidth;
+      const marginHeight = ceil(((this.ratio_ - 1) * viewHeight) / 2, DECIMALS);
+      const requestHeight = viewHeight + 2 * marginHeight;
       const requestExtent = getForViewAndSize(center, imageResolution, 0, [
         requestWidth,
         requestHeight,
@@ -95727,6 +103372,598 @@ ${hitDetectionBypass}
   }
 
   var ImageWMS$1 = ImageWMS;
+
+  /**
+   * @module ol/source/ogcTileUtil
+   */
+
+  /**
+   * See https://ogcapi.ogc.org/tiles/.
+   */
+
+  /**
+   * @typedef {'map' | 'vector'} TileType
+   */
+
+  /**
+   * @typedef {'topLeft' | 'bottomLeft'} CornerOfOrigin
+   */
+
+  /**
+   * @typedef {Object} TileSet
+   * @property {TileType} dataType Type of data represented in the tileset.
+   * @property {string} [tileMatrixSetDefinition] Reference to a tile matrix set definition.
+   * @property {TileMatrixSet} [tileMatrixSet] Tile matrix set definition.
+   * @property {Array<TileMatrixSetLimit>} [tileMatrixSetLimits] Tile matrix set limits.
+   * @property {Array<Link>} links Tileset links.
+   */
+
+  /**
+   * @typedef {Object} Link
+   * @property {string} rel The link rel attribute.
+   * @property {string} href The link URL.
+   * @property {string} type The link type.
+   */
+
+  /**
+   * @typedef {Object} TileMatrixSetLimit
+   * @property {string} tileMatrix The tile matrix id.
+   * @property {number} minTileRow The minimum tile row.
+   * @property {number} maxTileRow The maximum tile row.
+   * @property {number} minTileCol The minimum tile column.
+   * @property {number} maxTileCol The maximum tile column.
+   */
+
+  /**
+   * @typedef {Object} TileMatrixSet
+   * @property {string} id The tile matrix set identifier.
+   * @property {string} crs The coordinate reference system.
+   * @property {Array<TileMatrix>} tileMatrices Array of tile matrices.
+   */
+
+  /**
+   * @typedef {Object} TileMatrix
+   * @property {string} id The tile matrix identifier.
+   * @property {number} cellSize The pixel resolution (map units per pixel).
+   * @property {Array<number>} pointOfOrigin The map location of the matrix origin.
+   * @property {CornerOfOrigin} [cornerOfOrigin='topLeft'] The corner of the matrix that represents the origin ('topLeft' or 'bottomLeft').
+   * @property {number} matrixWidth The number of columns.
+   * @property {number} matrixHeight The number of rows.
+   * @property {number} tileWidth The pixel width of a tile.
+   * @property {number} tileHeight The pixel height of a tile.
+   */
+
+  /**
+   * @type {Object<string, boolean>}
+   */
+  const knownMapMediaTypes = {
+    'image/png': true,
+    'image/jpeg': true,
+    'image/gif': true,
+    'image/webp': true,
+  };
+
+  /**
+   * @type {Object<string, boolean>}
+   */
+  const knownVectorMediaTypes = {
+    'application/vnd.mapbox-vector-tile': true,
+    'application/geo+json': true,
+  };
+
+  /**
+   * @typedef {Object} TileSetInfo
+   * @property {string} urlTemplate The tile URL template.
+   * @property {import("../tilegrid/TileGrid.js").default} grid The tile grid.
+   * @property {import("../Tile.js").UrlFunction} urlFunction The tile URL function.
+   */
+
+  /**
+   * @typedef {Object} SourceInfo
+   * @property {string} url The tile set URL.
+   * @property {string} mediaType The preferred tile media type.
+   * @property {Array<string>} [supportedMediaTypes] The supported media types.
+   * @property {import("../proj/Projection.js").default} projection The source projection.
+   * @property {Object} [context] Optional context for constructing the URL.
+   */
+
+  /**
+   * @param {Array<Link>} links Tileset links.
+   * @param {string} [mediaType] The preferred media type.
+   * @return {string} The tile URL template.
+   */
+  function getMapTileUrlTemplate(links, mediaType) {
+    let tileUrlTemplate;
+    let fallbackUrlTemplate;
+    for (let i = 0; i < links.length; ++i) {
+      const link = links[i];
+      if (link.rel === 'item') {
+        if (link.type === mediaType) {
+          tileUrlTemplate = link.href;
+          break;
+        }
+        if (knownMapMediaTypes[link.type]) {
+          fallbackUrlTemplate = link.href;
+        } else if (!fallbackUrlTemplate && link.type.startsWith('image/')) {
+          fallbackUrlTemplate = link.href;
+        }
+      }
+    }
+
+    if (!tileUrlTemplate) {
+      if (fallbackUrlTemplate) {
+        tileUrlTemplate = fallbackUrlTemplate;
+      } else {
+        throw new Error('Could not find "item" link');
+      }
+    }
+
+    return tileUrlTemplate;
+  }
+
+  /**
+   * @param {Array<Link>} links Tileset links.
+   * @param {string} [mediaType] The preferred media type.
+   * @param {Array<string>} [supportedMediaTypes] The media types supported by the parser.
+   * @return {string} The tile URL template.
+   */
+  function getVectorTileUrlTemplate(
+    links,
+    mediaType,
+    supportedMediaTypes
+  ) {
+    let tileUrlTemplate;
+    let fallbackUrlTemplate;
+
+    /**
+     * Lookup of URL by media type.
+     * @type {Object<string, string>}
+     */
+    const hrefLookup = {};
+
+    for (let i = 0; i < links.length; ++i) {
+      const link = links[i];
+      hrefLookup[link.type] = link.href;
+      if (link.rel === 'item') {
+        if (link.type === mediaType) {
+          tileUrlTemplate = link.href;
+          break;
+        }
+        if (knownVectorMediaTypes[link.type]) {
+          fallbackUrlTemplate = link.href;
+        }
+      }
+    }
+
+    if (!tileUrlTemplate && supportedMediaTypes) {
+      for (let i = 0; i < supportedMediaTypes.length; ++i) {
+        const supportedMediaType = supportedMediaTypes[i];
+        if (hrefLookup[supportedMediaType]) {
+          tileUrlTemplate = hrefLookup[supportedMediaType];
+          break;
+        }
+      }
+    }
+
+    if (!tileUrlTemplate) {
+      if (fallbackUrlTemplate) {
+        tileUrlTemplate = fallbackUrlTemplate;
+      } else {
+        throw new Error('Could not find "item" link');
+      }
+    }
+
+    return tileUrlTemplate;
+  }
+
+  /**
+   * @param {SourceInfo} sourceInfo The source info.
+   * @param {TileMatrixSet} tileMatrixSet Tile matrix set.
+   * @param {string} tileUrlTemplate Tile URL template.
+   * @param {Array<TileMatrixSetLimit>} [tileMatrixSetLimits] Tile matrix set limits.
+   * @return {TileSetInfo} Tile set info.
+   */
+  function parseTileMatrixSet(
+    sourceInfo,
+    tileMatrixSet,
+    tileUrlTemplate,
+    tileMatrixSetLimits
+  ) {
+    let projection = sourceInfo.projection;
+    if (!projection) {
+      projection = get$2(tileMatrixSet.crs);
+      if (!projection) {
+        throw new Error(`Unsupported CRS: ${tileMatrixSet.crs}`);
+      }
+    }
+    const backwards = projection.getAxisOrientation().substr(0, 2) !== 'en';
+
+    const matrices = tileMatrixSet.tileMatrices;
+
+    /**
+     * @type {Object<string, TileMatrix>}
+     */
+    const matrixLookup = {};
+    for (let i = 0; i < matrices.length; ++i) {
+      const matrix = matrices[i];
+      matrixLookup[matrix.id] = matrix;
+    }
+
+    /**
+     * @type {Object<string, TileMatrixSetLimit>}
+     */
+    const limitLookup = {};
+
+    /**
+     * @type {Array<string>}
+     */
+    const matrixIds = [];
+
+    if (tileMatrixSetLimits) {
+      for (let i = 0; i < tileMatrixSetLimits.length; ++i) {
+        const limit = tileMatrixSetLimits[i];
+        const id = limit.tileMatrix;
+        matrixIds.push(id);
+        limitLookup[id] = limit;
+      }
+    } else {
+      for (let i = 0; i < matrices.length; ++i) {
+        const id = matrices[i].id;
+        matrixIds.push(id);
+      }
+    }
+
+    const length = matrixIds.length;
+    const origins = new Array(length);
+    const resolutions = new Array(length);
+    const sizes = new Array(length);
+    const tileSizes = new Array(length);
+    const extent = [-Infinity, -Infinity, Infinity, Infinity];
+
+    for (let i = 0; i < length; ++i) {
+      const id = matrixIds[i];
+      const matrix = matrixLookup[id];
+      const origin = matrix.pointOfOrigin;
+      if (backwards) {
+        origins[i] = [origin[1], origin[0]];
+      } else {
+        origins[i] = origin;
+      }
+      resolutions[i] = matrix.cellSize;
+      sizes[i] = [matrix.matrixWidth, matrix.matrixHeight];
+      tileSizes[i] = [matrix.tileWidth, matrix.tileHeight];
+      const limit = limitLookup[id];
+      if (limit) {
+        const tileMapWidth = matrix.cellSize * matrix.tileWidth;
+        const minX = origins[i][0] + limit.minTileCol * tileMapWidth;
+        const maxX = origins[i][0] + (limit.maxTileCol + 1) * tileMapWidth;
+
+        const tileMapHeight = matrix.cellSize * matrix.tileHeight;
+        const upsideDown = matrix.cornerOfOrigin === 'bottomLeft';
+
+        let minY;
+        let maxY;
+        if (upsideDown) {
+          minY = origins[i][1] + limit.minTileRow * tileMapHeight;
+          maxY = origins[i][1] + (limit.maxTileRow + 1) * tileMapHeight;
+        } else {
+          minY = origins[i][1] - (limit.maxTileRow + 1) * tileMapHeight;
+          maxY = origins[i][1] - limit.minTileRow * tileMapHeight;
+        }
+
+        getIntersection(extent, [minX, minY, maxX, maxY], extent);
+      }
+    }
+
+    const tileGrid = new TileGrid$1({
+      origins: origins,
+      resolutions: resolutions,
+      sizes: sizes,
+      tileSizes: tileSizes,
+      extent: tileMatrixSetLimits ? extent : undefined,
+    });
+
+    const context = sourceInfo.context;
+    const base = sourceInfo.url;
+
+    function tileUrlFunction(tileCoord, pixelRatio, projection) {
+      if (!tileCoord) {
+        return undefined;
+      }
+
+      const id = matrixIds[tileCoord[0]];
+      const matrix = matrixLookup[id];
+      const upsideDown = matrix.cornerOfOrigin === 'bottomLeft';
+
+      const localContext = {
+        tileMatrix: id,
+        tileCol: tileCoord[1],
+        tileRow: upsideDown ? -tileCoord[2] - 1 : tileCoord[2],
+      };
+
+      if (tileMatrixSetLimits) {
+        const limit = limitLookup[matrix.id];
+        if (
+          localContext.tileCol < limit.minTileCol ||
+          localContext.tileCol > limit.maxTileCol ||
+          localContext.tileRow < limit.minTileRow ||
+          localContext.tileRow > limit.maxTileRow
+        ) {
+          return undefined;
+        }
+      }
+
+      Object.assign(localContext, context);
+
+      const url = tileUrlTemplate.replace(/\{(\w+?)\}/g, function (m, p) {
+        return localContext[p];
+      });
+
+      return resolveUrl(base, url);
+    }
+
+    return {
+      grid: tileGrid,
+      urlTemplate: tileUrlTemplate,
+      urlFunction: tileUrlFunction,
+    };
+  }
+
+  /**
+   * @param {SourceInfo} sourceInfo The source info.
+   * @param {TileSet} tileSet Tile set.
+   * @return {TileSetInfo|Promise<TileSetInfo>} Tile set info.
+   */
+  function parseTileSetMetadata(sourceInfo, tileSet) {
+    const tileMatrixSetLimits = tileSet.tileMatrixSetLimits;
+    let tileUrlTemplate;
+
+    if (tileSet.dataType === 'map') {
+      tileUrlTemplate = getMapTileUrlTemplate(
+        tileSet.links,
+        sourceInfo.mediaType
+      );
+    } else if (tileSet.dataType === 'vector') {
+      tileUrlTemplate = getVectorTileUrlTemplate(
+        tileSet.links,
+        sourceInfo.mediaType,
+        sourceInfo.supportedMediaTypes
+      );
+    } else {
+      throw new Error('Expected tileset data type to be "map" or "vector"');
+    }
+
+    if (tileSet.tileMatrixSet) {
+      return parseTileMatrixSet(
+        sourceInfo,
+        tileSet.tileMatrixSet,
+        tileUrlTemplate,
+        tileMatrixSetLimits
+      );
+    }
+
+    const tileMatrixSetLink = tileSet.links.find(
+      (link) =>
+        link.rel === 'http://www.opengis.net/def/rel/ogc/1.0/tiling-scheme'
+    );
+    if (!tileMatrixSetLink) {
+      throw new Error(
+        'Expected http://www.opengis.net/def/rel/ogc/1.0/tiling-scheme link or tileMatrixSet'
+      );
+    }
+    const tileMatrixSetDefinition = tileMatrixSetLink.href;
+
+    const url = resolveUrl(sourceInfo.url, tileMatrixSetDefinition);
+    return getJSON(url).then(function (tileMatrixSet) {
+      return parseTileMatrixSet(
+        sourceInfo,
+        tileMatrixSet,
+        tileUrlTemplate,
+        tileMatrixSetLimits
+      );
+    });
+  }
+
+  /**
+   * @param {SourceInfo} sourceInfo Source info.
+   * @return {Promise<TileSetInfo>} Tile set info.
+   */
+  function getTileSetInfo(sourceInfo) {
+    return getJSON(sourceInfo.url).then(function (tileSet) {
+      return parseTileSetMetadata(sourceInfo, tileSet);
+    });
+  }
+
+  /**
+   * @module ol/source/OGCMapTile
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {string} url URL to the OGC Map Tileset endpoint.
+   * @property {Object} [context] A lookup of values to use in the tile URL template.  The `{tileMatrix}`
+   * (zoom level), `{tileRow}`, and `{tileCol}` variables in the URL will always be provided by the source.
+   * @property {string} [mediaType] The content type for the tiles (e.g. "image/png").  If not provided,
+   * the source will try to find a link with rel="item" that uses a supported image type.
+   * @property {import("../proj.js").ProjectionLike} [projection] Projection. By default, the projection
+   * will be derived from the `crs` of the `tileMatrixSet`.  You can override this by supplying
+   * a projection to the constructor.
+   * @property {import("./Source.js").AttributionLike} [attributions] Attributions.
+   * @property {number} [cacheSize] Tile cache size. The default depends on the screen size. Will be ignored if too small.
+   * @property {null|string} [crossOrigin] The `crossOrigin` attribute for loaded images.  Note that
+   * you must provide a `crossOrigin` value if you want to access pixel data with the Canvas renderer.
+   * See https://developer.mozilla.org/en-US/docs/Web/HTML/CORS_enabled_image for more detail.
+   * @property {boolean} [interpolate=true] Use interpolated values when resampling.  By default,
+   * linear interpolation is used when resampling.  Set to false to use the nearest neighbor instead.
+   * @property {number} [reprojectionErrorThreshold=0.5] Maximum allowed reprojection error (in pixels).
+   * Higher values can increase reprojection performance, but decrease precision.
+   * @property {import("../Tile.js").LoadFunction} [tileLoadFunction] Optional function to load a tile given a URL. The default is
+   * ```js
+   * function(tile, src) {
+   *   tile.getImage().src = src;
+   * };
+   * ```
+   * @property {boolean} [wrapX=true] Whether to wrap the world horizontally.
+   * @property {number} [transition] Duration of the opacity transition for rendering.
+   * To disable the opacity transition, pass `transition: 0`.
+   */
+
+  /**
+   * @classdesc
+   * Layer source for map tiles from an [OGC API - Tiles](https://ogcapi.ogc.org/tiles/) service that provides "map" type tiles.
+   * The service must conform to at least the core (http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/core)
+   * and tileset (http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/tileset) conformance classes.
+   * @api
+   */
+  class OGCMapTile extends TileImage$1 {
+    /**
+     * @param {Options} options OGC map tile options.
+     */
+    constructor(options) {
+      super({
+        attributions: options.attributions,
+        cacheSize: options.cacheSize,
+        crossOrigin: options.crossOrigin,
+        interpolate: options.interpolate,
+        projection: options.projection,
+        reprojectionErrorThreshold: options.reprojectionErrorThreshold,
+        state: 'loading',
+        tileLoadFunction: options.tileLoadFunction,
+        wrapX: options.wrapX !== undefined ? options.wrapX : true,
+        transition: options.transition,
+      });
+
+      const sourceInfo = {
+        url: options.url,
+        projection: this.getProjection(),
+        mediaType: options.mediaType,
+        context: options.context || null,
+      };
+
+      getTileSetInfo(sourceInfo)
+        .then(this.handleTileSetInfo_.bind(this))
+        .catch(this.handleError_.bind(this));
+    }
+
+    /**
+     * @param {import("./ogcTileUtil.js").TileSetInfo} tileSetInfo Tile set info.
+     * @private
+     */
+    handleTileSetInfo_(tileSetInfo) {
+      this.tileGrid = tileSetInfo.grid;
+      this.setTileUrlFunction(tileSetInfo.urlFunction, tileSetInfo.urlTemplate);
+      this.setState('ready');
+    }
+
+    /**
+     * @private
+     * @param {Error} error The error.
+     */
+    handleError_(error) {
+      error$1(error);
+      this.setState('error');
+    }
+  }
+
+  var OGCMapTile$1 = OGCMapTile;
+
+  /**
+   * @module ol/source/OGCVectorTile
+   */
+
+  /**
+   * @typedef {Object} Options
+   * @property {string} url URL to the OGC Vector Tileset endpoint.
+   * @property {Object} [context] A lookup of values to use in the tile URL template.  The `{tileMatrix}`
+   * (zoom level), `{tileRow}`, and `{tileCol}` variables in the URL will always be provided by the source.
+   * @property {import("../format/Feature.js").default} format Feature parser for tiles.
+   * @property {string} [mediaType] The content type for the tiles (e.g. "application/vnd.mapbox-vector-tile").  If not provided,
+   * the source will try to find a link with rel="item" that uses a vector type supported by the configured format.
+   * @property {import("./Source.js").AttributionLike} [attributions] Attributions.
+   * @property {boolean} [attributionsCollapsible=true] Attributions are collapsible.
+   * @property {number} [cacheSize] Initial tile cache size. Will auto-grow to hold at least twice the number of tiles in the viewport.
+   * @property {boolean} [overlaps=true] This source may have overlapping geometries. Setting this
+   * to `false` (e.g. for sources with polygons that represent administrative
+   * boundaries or TopoJSON sources) allows the renderer to optimise fill and
+   * stroke operations.
+   * @property {import("../proj.js").ProjectionLike} [projection='EPSG:3857'] Projection of the tile grid.
+   * @property {typeof import("../VectorTile.js").default} [tileClass] Class used to instantiate image tiles.
+   * Default is {@link module:ol/VectorTile~VectorTile}.
+   * @property {number} [transition] A duration for tile opacity
+   * transitions in milliseconds. A duration of 0 disables the opacity transition.
+   * @property {boolean} [wrapX=true] Whether to wrap the world horizontally.
+   * When set to `false`, only one world
+   * will be rendered. When set to `true`, tiles will be wrapped horizontally to
+   * render multiple worlds.
+   * @property {number|import("../array.js").NearestDirectionFunction} [zDirection=1]
+   * Choose whether to use tiles with a higher or lower zoom level when between integer
+   * zoom levels. See {@link module:ol/tilegrid/TileGrid~TileGrid#getZForResolution}.
+   */
+
+  /**
+   * @classdesc
+   * Layer source for map tiles from an [OGC API - Tiles](https://ogcapi.ogc.org/tiles/) service that provides "vector" type tiles.
+   * The service must conform to at least the core (http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/core)
+   * and tileset (http://www.opengis.net/spec/ogcapi-tiles-1/1.0/conf/tileset) conformance classes.
+   *
+   * Vector tile sets may come in a variety of formats (e.g. GeoJSON, MVT).  The `format` option is used to determine
+   * which of the advertised media types is used.  If you need to force the use of a particular media type, you can
+   * provide the `mediaType` option.
+   * @api
+   */
+  class OGCVectorTile extends VectorTileSource {
+    /**
+     * @param {Options} options OGC vector tile options.
+     */
+    constructor(options) {
+      super({
+        attributions: options.attributions,
+        attributionsCollapsible: options.attributionsCollapsible,
+        cacheSize: options.cacheSize,
+        format: options.format,
+        overlaps: options.overlaps,
+        projection: options.projection,
+        tileClass: options.tileClass,
+        transition: options.transition,
+        wrapX: options.wrapX,
+        zDirection: options.zDirection,
+        state: 'loading',
+      });
+
+      const sourceInfo = {
+        url: options.url,
+        projection: this.getProjection(),
+        mediaType: options.mediaType,
+        supportedMediaTypes: options.format.supportedMediaTypes,
+        context: options.context || null,
+      };
+
+      getTileSetInfo(sourceInfo)
+        .then(this.handleTileSetInfo_.bind(this))
+        .catch(this.handleError_.bind(this));
+    }
+
+    /**
+     * @param {import("./ogcTileUtil.js").TileSetInfo} tileSetInfo Tile set info.
+     * @private
+     */
+    handleTileSetInfo_(tileSetInfo) {
+      this.tileGrid = tileSetInfo.grid;
+      this.setTileUrlFunction(tileSetInfo.urlFunction, tileSetInfo.urlTemplate);
+      this.setState('ready');
+    }
+
+    /**
+     * @private
+     * @param {Error} error The error.
+     */
+    handleError_(error) {
+      error$1(error);
+      this.setState('error');
+    }
+  }
+
+  var OGCVectorTile$1 = OGCVectorTile;
 
   /**
    * @module ol/source/OSM
@@ -97717,6 +105954,8 @@ ${hitDetectionBypass}
     ImageMapGuide: ImageMapGuide$1,
     ImageStatic: Static$1,
     ImageWMS: ImageWMS$1,
+    OGCMapTile: OGCMapTile$1,
+    OGCVectorTile: OGCVectorTile$1,
     OSM: OSM$1,
     Raster: Raster,
     Source: Source$1,
@@ -97781,7 +106020,7 @@ ${hitDetectionBypass}
       }
   });
   Object.assign(nsStyle.Style, {
-      createDefaultStyle: createDefaultStyle,
+      createDefaultStyle: createDefaultStyle$1,
       createEditingStyle: createEditingStyle
   });
 
@@ -97835,6 +106074,18 @@ ${hitDetectionBypass}
           KML: format_KML,
           WFS: format_WFS,
           WKT: format_WKT,
+          EsriJSON: format_EsriJSON,
+          GPX: format_GPX,
+          IGC: format_IGC,
+          IIIFInfo: format_IIIFInfo,
+          MVT: format_MVT,
+          OWS: format_OWS,
+          Polyline: format_Polyline,
+          TopoJSON: format_TopoJSON,
+          WKB: format_WKB,
+          WMSCapabilities: format_WMSCapabilities,
+          WMSGetFeatureInfo: format_WMSGetFeatureInfo,
+          WMTSCapabilities: format_WMTSCapabilities,
           filter: nsFormat_filter
       },
       geom: Object.assign({}, nsGeom, {
@@ -108027,6 +116278,90 @@ ${hitDetectionBypass}
 
   var Lerc = LercDecode.exports;
 
+  let init;
+  let instance;
+  let heap;
+  const IMPORT_OBJECT = {
+    env: {
+      emscripten_notify_memory_growth: function (index) {
+        heap = new Uint8Array(instance.exports.memory.buffer);
+      }
+    }
+  };
+  /**
+   * ZSTD (Zstandard) decoder.
+   */
+  class ZSTDDecoder {
+    init() {
+      if (init) return init;
+      if (typeof fetch !== 'undefined') {
+        // Web.
+        init = fetch('data:application/wasm;base64,' + wasm).then(response => response.arrayBuffer()).then(arrayBuffer => WebAssembly.instantiate(arrayBuffer, IMPORT_OBJECT)).then(this._init);
+      } else {
+        // Node.js.
+        init = WebAssembly.instantiate(Buffer.from(wasm, 'base64'), IMPORT_OBJECT).then(this._init);
+      }
+      return init;
+    }
+    _init(result) {
+      instance = result.instance;
+      IMPORT_OBJECT.env.emscripten_notify_memory_growth(0); // initialize heap.
+    }
+
+    decode(array, uncompressedSize = 0) {
+      if (!instance) throw new Error(`ZSTDDecoder: Await .init() before decoding.`);
+      // Write compressed data into WASM memory.
+      const compressedSize = array.byteLength;
+      const compressedPtr = instance.exports.malloc(compressedSize);
+      heap.set(array, compressedPtr);
+      // Decompress into WASM memory.
+      uncompressedSize = uncompressedSize || Number(instance.exports.ZSTD_findDecompressedSize(compressedPtr, compressedSize));
+      const uncompressedPtr = instance.exports.malloc(uncompressedSize);
+      const actualSize = instance.exports.ZSTD_decompress(uncompressedPtr, uncompressedSize, compressedPtr, compressedSize);
+      // Read decompressed data and free WASM memory.
+      const dec = heap.slice(uncompressedPtr, uncompressedPtr + actualSize);
+      instance.exports.free(compressedPtr);
+      instance.exports.free(uncompressedPtr);
+      return dec;
+    }
+  }
+  /**
+   * BSD License
+   *
+   * For Zstandard software
+   *
+   * Copyright (c) 2016-present, Yann Collet, Facebook, Inc. All rights reserved.
+   *
+   * Redistribution and use in source and binary forms, with or without modification,
+   * are permitted provided that the following conditions are met:
+   *
+   *  * Redistributions of source code must retain the above copyright notice, this
+   *    list of conditions and the following disclaimer.
+   *
+   *  * Redistributions in binary form must reproduce the above copyright notice,
+   *    this list of conditions and the following disclaimer in the documentation
+   *    and/or other materials provided with the distribution.
+   *
+   *  * Neither the name Facebook nor the names of its contributors may be used to
+   *    endorse or promote products derived from this software without specific
+   *    prior written permission.
+   *
+   * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+   * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+   * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+   * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+   * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+   * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+   * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+   * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+   * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+   * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+   */
+  // wasm:begin
+  const wasm = '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IAMNACAEQQNxBEADQCACRQ0FIAAgAkF/aiICaiIDIAEgAmotAAA6AAAgA0EDcQ0ACwsgAkEDTQ0AA0AgACACQXxqIgJqIAEgAmooAgA2AgAgAkEDSw0ACwsgAkUNAgNAIAAgAkF/aiICaiABIAJqLQAAOgAAIAINAAsMAgsgAkEDTQ0AIAIhBANAIAMgASgCADYCACABQQRqIQEgA0EEaiEDIARBfGoiBEEDSw0ACyACQQNxIQILIAJFDQADQCADIAEtAAA6AAAgA0EBaiEDIAFBAWohASACQX9qIgINAAsLIAAL8wICAn8BfgJAIAJFDQAgACACaiIDQX9qIAE6AAAgACABOgAAIAJBA0kNACADQX5qIAE6AAAgACABOgABIANBfWogAToAACAAIAE6AAIgAkEHSQ0AIANBfGogAToAACAAIAE6AAMgAkEJSQ0AIABBACAAa0EDcSIEaiIDIAFB/wFxQYGChAhsIgE2AgAgAyACIARrQXxxIgRqIgJBfGogATYCACAEQQlJDQAgAyABNgIIIAMgATYCBCACQXhqIAE2AgAgAkF0aiABNgIAIARBGUkNACADIAE2AhggAyABNgIUIAMgATYCECADIAE2AgwgAkFwaiABNgIAIAJBbGogATYCACACQWhqIAE2AgAgAkFkaiABNgIAIAQgA0EEcUEYciIEayICQSBJDQAgAa0iBUIghiAFhCEFIAMgBGohAQNAIAEgBTcDGCABIAU3AxAgASAFNwMIIAEgBTcDACABQSBqIQEgAkFgaiICQR9LDQALCyAACy8BAn8gACgCBCAAKAIAQQJ0aiICLQACIQMgACACLwEAIAEgAi0AAxAIajYCACADCy8BAn8gACgCBCAAKAIAQQJ0aiICLQACIQMgACACLwEAIAEgAi0AAxAFajYCACADCx8AIAAgASACKAIEEAg2AgAgARAEGiAAIAJBCGo2AgQLCAAgAGdBH3MLugUBDX8jAEEQayIKJAACfyAEQQNNBEAgCkEANgIMIApBDGogAyAEEAsaIAAgASACIApBDGpBBBAVIgBBbCAAEAMbIAAgACAESxsMAQsgAEEAIAEoAgBBAXRBAmoQECENQVQgAygAACIGQQ9xIgBBCksNABogAiAAQQVqNgIAIAMgBGoiAkF8aiEMIAJBeWohDiACQXtqIRAgAEEGaiELQQQh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ASIDNgLE4AEgACgCvOABIQQgACABNgK84AEgACABIAJqNgK44AEgACABIAQgA2tqNgLA4AELpgEBAX8gACAAKALs4QEQFjYCyOABIABCADcD+OABIABCADcDuOABIABBwOABakIANwMAIABBqNAAaiIBQYyAgOAANgIAIABBADYCmOIBIABCADcDiOEBIABCAzcDgOEBIABBrNABakHgEikCADcCACAAQbTQAWpB6BIoAgA2AgAgACABNgIMIAAgAEGYIGo2AgggACAAQaAwajYCBCAAIABBEGo2AgALYQEBf0G4fyEDAkAgAUEDSQ0AIAIgABAhIgFBA3YiADYCCCACIAFBAXE2AgQgAiABQQF2QQNxIgM2AgACQCADQX9qIgFBAksNAAJAIAFBAWsOAgEAAgtBbA8LIAAhAwsgAwsMACAAIAEgAkEAEC4LiAQCA38CfiADEBYhBCAAQQBBKBAQIQAgBCACSwRAIAQPCyABRQRAQX8PCwJAAkAgA0EBRg0AIAEoAAAiBkGo6r5pRg0AQXYhAyAGQXBxQdDUtMIBRw0BQQghAyACQQhJDQEgAEEAQSgQECEAIAEoAAQhASAAQQE2AhQgACABrTcDAEEADwsgASACIAMQLyIDIAJLDQAgACADNgIYQXIhAyABIARqIgVBf2otAAAiAkEIcQ0AIAJBIHEiBkUEQEFwIQMgBS0AACIFQacBSw0BIAVBB3GtQgEgBUEDdkEKaq2GIgdCA4h+IAd8IQggBEEBaiEECyACQQZ2IQMgAkECdiEFAkAgAkEDcUF/aiICQQJLBEBBACECDAELAkACQAJAIAJBAWsOAgECAAsgASAEai0AACECIARBAWohBAwCCyABIARqLwAAIQIgBEECaiEEDAELIAEgBGooAAAhAiAEQQRqIQQLIAVBAXEhBQJ+AkACQAJAIANBf2oiA0ECTQRAIANBAWsOAgIDAQtCfyAGRQ0DGiABIARqMQAADAMLIAEgBGovAACtQoACfAwCCyABIARqKAAArQwBCyABIARqKQAACyEHIAAgBTYCICAAIAI2AhwgACAHNwMAQQAhAyAAQQA2AhQgACAHIAggBhsiBzcDCCAAIAdCgIAIIAdCgIAIVBs+AhALIAMLWwEBf0G4fyEDIAIQFiICIAFNBH8gACACakF/ai0AACIAQQNxQQJ0QaAeaigC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C0Egak8NAQsgByAHKQNoNwMQIAcgBykDYDcDCCAEIA0gB0EIaiAHQdwAaiAPIA4gESAQEB4hCwwBCyACIARqIQggBCAKEAcgAkERTwRAIARBEGohAgNAIAIgCkEQaiIKEAcgAkEQaiICIAhJDQALCyAIIAlrIQIgByATNgJcIAkgCCAOa0sEQCAJIAggEWtLBEBBbCELDAILIBAgAiAOayICaiIKIANqIBBNBEAgCCAKIAMQDxoMAgsgCCAKQQAgAmsQDyEIIAcgAiADaiIDNgJkIAggAmshCCAOIQILIAlBEE8EQCADIAhqIQMDQCAIIAIQByACQRBqIQIgCEEQaiIIIANJDQALDAELAkAgCUEHTQRAIAggAi0AADoAACAIIAItAAE6AAEgCCACLQACOgACIAggAi0AAzoAAyAIQQRqIAIgCUECdCIDQcAeaigCAGoiAhAXIAIgA0HgHmooAgBrIQIgBygCZCEDDAELIAggAhAMCyADQQlJDQAgAyAIaiEDIAhBCGoiCCACQQhqIgJrQQ9MBEADQCAIIAIQDCACQQhqIQIgCEEIaiIIIANJDQAMAgALAAsDQCAIIAIQByACQRBqIQIgCEEQaiIIIANJDQALCyAHQRhqEAQaIAsgDCALEAMiAhshDCAEIAQgC2ogAhshBCAFQX9qIgUNAAsgDBADDQFBbCEMIAdBGGoQBEECSQ0BQQAhCANAIAhBA0cEQCAAIAhBAnQiAmpBrNABaiACIAdqKAJENgIAIAhBAWohCAwBCwsgBygCXCEIC0G6fyEMIA8gCGsiACANIARrSw0AIAQEfyAEIAggABALIABqBUEACyABayEMCyAHQfAAaiQAIAwLkRcCFn8FfiMAQdABayIHJAAgByAAKALw4QEiCDYCvAEgASACaiESIAggACgCgOIBaiETAkACQCAFRQRAIAEhAwwBCyAAKALE4AEhESAAKALA4AEhFSAAKAK84AEhDyAAQQE2AozhAUEAIQgDQCAIQQNHBEAgByAIQQJ0IgJqIAAgAmpBrNABaigCADYCVCAIQQFqIQgMAQsLIAcgETYCZCAHIA82AmAgByABIA9rNgJoQWwhECAHQShqIAMgBBAGEAMNASAFQQQgBUEESBshFyAHQTxqIAdBKGogACgCABATIAdBxABqIAdBKGogACgCCBATIAdBzABqIAdB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IAdB0AFqJAAgEAslACAAQgA3AgAgAEEAOwEIIABBADoACyAAIAE2AgwgACACOgAKC7QFAQN/IwBBMGsiBCQAIABB/wFqIgVBfWohBgJAIAMvAQIEQCAEQRhqIAEgAhAGIgIQAw0BIARBEGogBEEYaiADEBwgBEEIaiAEQRhqIAMQHCAAIQMDQAJAIARBGGoQBCADIAZPckUEQCADIARBEGogBEEYahASOgAAIAMgBEEIaiAEQRhqEBI6AAEgBEEYahAERQ0BIANBAmohAwsgBUF+aiEFAn8DQEG6fyECIAMiASAFSw0FIAEgBEEQaiAEQRhqEBI6AAAgAUEBaiEDIARBGGoQBEEDRgRAQQIhAiAEQQhqDAILIAMgBUsNBSABIARBCGogBEEYahASOgABIAFBAmohA0EDIQIgBEEYahAEQQNHDQALIARBEGoLIQUgAyAFIARBGGoQEjoAACABIAJqIABrIQIMAwsgAyAEQRBqIARBGGoQEjoAAiADIARBCGogBEEYahASOgADIANBBGohAwwAAAsACyAEQRhqIAEgAhAGIgIQAw0AIARBEGogBEEYaiADEBwgBEEIaiAEQRhqIAMQHCAAIQMDQAJAIARBGGoQBCADIAZPckUEQCADIARBEGogBEEYahAROgAAIAMgBEEIaiAEQRhqEBE6AAEgBEEYahAERQ0BIANBAmohAwsgBUF+aiEFAn8DQEG6fyECIAMiASAFSw0EIAEgBEEQaiAEQRhqEBE6AAAgAUEBaiEDIARBGGoQBEEDRgRAQQIhAiAEQQhqDAILIAMgBUsNBCABIARBCGogBEEYahAROgABIAFBAmohA0EDIQIgBEEYahAEQQNHDQALIARBEGoLIQUgAyAFIARBGGoQEToAACABIAJqIABrIQIMAgsgAyAEQRBqIARBGGoQEToAAiADIARBCGogBEEYahAROgADIANBBGohAwwAAAsACyAEQTBqJAAgAgtpAQF/An8CQAJAIAJBB00NACABKAAAQbfIwuF+Rw0AIAAgASgABDYCmOIBQWIgAEEQaiABIAIQPiIDEAMNAhogAEKBgICAEDcDiOEBIAAgASADaiACIANrECoMAQsgACABIAIQKgtBAAsLrQMBBn8jAEGAAWsiAyQAQWIhCAJAIAJBCUkNACAAQZjQAGogAUEIaiIEIAJBeGogAEGY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wOABCwutAgIEfwF+IwBBQGoiBCQAAkACQCACQQhJDQAgASgAAEFwcUHQ1LTCAUcNACABIAIQIiEBIABCADcDCCAAQQA2AgQgACABNgIADAELIARBGGogASACEC0iAxADBEAgACADEBoMAQsgAwRAIABBuH8QGgwBCyACIAQoAjAiA2shAiABIANqIQMDQAJAIAAgAyACIARBCGoQLCIFEAMEfyAFBSACIAVBA2oiBU8NAUG4fwsQGgwCCyAGQQFqIQYgAiAFayECIAMgBWohAyAEKAIMRQ0ACyAEKAI4BEAgAkEDTQRAIABBuH8QGgwCCyADQQRqIQMLIAQoAighAiAEKQMYIQcgAEEANgIEIAAgAyABazYCACAAIAIgBmytIAcgB0J/URs3AwgLIARBQGskAAslAQF/IwBBEGsiAiQAIAIgACABEFEgAigCACEAIAJBEGokACAAC30BBH8jAEGQBGsiBCQAIARB/wE2AggCQCAEQRBqIARBCGogBEEMaiABIAIQFSIGEAMEQCAGIQUMAQtBVCEFIAQoAgwiB0EGSw0AIAMgBEEQaiAEKAIIIAcQQSIFEAMNACAAIAEgBmogAiAGayADEDwhBQsgBEGQBGokACAFC4cBAgJ/An5BABAWIQMCQANAIAEgA08EQAJAIAAoAABBcHFB0NS0wgFGBEAgACABECIiAhADRQ0BQn4PCyAAIAEQVSIEQn1WDQMgBCAFfCIFIARUIQJCfiEEIAINAyAAIAEQUiICEAMNAwsgASACayEBIAAgAmohAAwBCwtCfiAFIAEbIQQLIAQLPwIBfwF+IwBBMGsiAiQAAn5CfiACQQhqIAAgARAtDQAaQgAgAigCHEEBRg0AGiACKQMICyEDIAJBMGokACADC40BAQJ/IwBBMGsiASQAAkAgAEUNACAAKAKI4gENACABIABB/OEBaigCADYCKCABIAApAvThATcDICAAEDAgACgCqOIBIQIgASABKAIoNgIYIAEgASkDIDcDECACIAFBEGoQGyAAQQA2AqjiASABIAEoAig2AgggASABKQMgNwMAIAAgARAbCyABQTBqJAALKgECfyMAQRBrIgAkACAAQQA2AgggAEIANwMAIAAQWCEBIABBEGokACABC4cBAQN/IwBBEGsiAiQAAkAgACgCAEUgACgCBEVzDQAgAiAAKAIINgIIIAIgACkCADcDAAJ/IAIoAgAiAQRAIAIoAghBqOMJIAERBQAMAQtBqOMJECgLIgFFDQAgASAAKQIANwL04QEgAUH84QFqIAAoAgg2AgAgARBZIAEhAwsgAkEQaiQAIAMLywEBAn8jAEEgayIBJAAgAEGBgIDAADYCtOIBIABBADYCiOIBIABBADYC7OEBIABCADcDkOIBIABBADYCpOMJIABBADYC3OIBIABCADcCzOIBIABBADYCvOIBIABBADYCxOABIABCADcCnOIBIABBpOIBakIANwIAIABBrOIBakEANgIAIAFCADcCECABQgA3AhggASABKQMYNwMIIAEgASkDEDcDACABKAIIQQh2QQFxIQIgAEEANgLg4gEgACACNgKM4gEgAUEgaiQAC3YBA38jAEEwayIBJAAgAARAIAEgAEHE0AFqIgIoAgA2AiggASAAKQK80AE3AyAgACgCACEDIAEgAigCADYCGCABIAApArzQATcDECADIAFBEGoQGyABIAEoAig2AgggASABKQMgNwMAIAAgARAbCyABQTBqJAALzAEBAX8gACABKAK00AE2ApjiASAAIAEoAgQiAjYCwOABIAAgAjYCvOABIAAgAiABKAIIaiICNgK44AEgACACNgLE4AEgASgCuNABBEAgAEKBgICAEDcDiOEBIAAgAUGk0ABqNgIMIAAgAUGUIGo2AgggACABQZwwajYCBCAAIAFBDGo2AgAgAEGs0AFqIAFBqNABaigCADYCACAAQbDQAWogAUGs0AFqKAIANgIAIABBtNABaiABQbDQAWooAgA2AgAPCyAAQgA3A4jhAQs7ACACRQRAQbp/DwsgBEUEQEFsDwsgAiAEEGAEQCAAIAEgAiADIAQgBRBhDwsgACABIAIgAyAEIAUQZQtGAQF/IwBBEGsiBSQAIAVBCGogBBAOAn8gBS0ACQRAIAAgASACIAMgBBAyDAELIAAgASACIAMgBBA0CyEAIAVBEGokACAACzQAIAAgAyAEIAUQNiIFEAMEQCAFDwsgBSAESQR/IAEgAiADIAVqIAQgBWsgABA1BUG4fwsLRgEBfyMAQRBrIgUkACAFQQhqIAQQDgJ/IAUtAAkEQCAAIAEgAiADIAQQYgwBCyAAIAEgAiADIAQQNQshACAFQRBqJAAgAAtZAQF/QQ8hAiABIABJBEAgAUEE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';
+
+  const zstd = new ZSTDDecoder();
+
   class LercDecoder extends BaseDecoder {
     constructor(fileDirectory) {
       super();
@@ -108044,6 +116379,9 @@ ${hitDetectionBypass}
         case LercAddCompression.Deflate:
           buffer = inflate_1(new Uint8Array(buffer)).buffer; // eslint-disable-line no-param-reassign, prefer-destructuring
           break;
+        case LercAddCompression.Zstandard:
+          buffer = zstd.decode(new Uint8Array(buffer)).buffer; // eslint-disable-line no-param-reassign, prefer-destructuring
+          break;
         default:
           throw new Error(`Unsupported LERC additional compression method identifier: ${this.addCompression}`);
       }
@@ -108056,6 +116394,7 @@ ${hitDetectionBypass}
 
   var lerc = {
     __proto__: null,
+    zstd: zstd,
     'default': LercDecoder
   };
 
@@ -108119,11 +116458,11 @@ ${hitDetectionBypass}
    * limitations under the License.
    */
 
-  var browser = Worker;
+  var Worker$1 = Worker;
 
   function create() {
-            const source = "function e(e,t,r,n,i,a,o){try{var s=e[a](o),f=s.value}catch(e){return void r(e)}s.done?t(f):Promise.resolve(f).then(n,i)}function t(t){return function(){var r=this,n=arguments;return new Promise((function(i,a){var o=t.apply(r,n);function s(t){e(o,i,a,s,f,\"next\",t)}function f(t){e(o,i,a,s,f,\"throw\",t)}s(void 0)}))}}function r(e){return r=\"function\"==typeof Symbol&&\"symbol\"==typeof Symbol.iterator?function(e){return typeof e}:function(e){return e&&\"function\"==typeof Symbol&&e.constructor===Symbol&&e!==Symbol.prototype?\"symbol\":typeof e},r(e)}var n={exports:{}};!function(e){var t=function(e){var t,n=Object.prototype,i=n.hasOwnProperty,a=\"function\"==typeof Symbol?Symbol:{},o=a.iterator||\"@@iterator\",s=a.asyncIterator||\"@@asyncIterator\",f=a.toStringTag||\"@@toStringTag\";function l(e,t,r){return Object.defineProperty(e,t,{value:r,enumerable:!0,configurable:!0,writable:!0}),e[t]}try{l({},\"\")}catch(e){l=function(e,t,r){return e[t]=r}}function u(e,t,r,n){var i=t&&t.prototype instanceof y?t:y,a=Object.create(i.prototype),o=new T(n||[]);return a._invoke=function(e,t,r){var n=h;return function(i,a){if(n===p)throw new Error(\"Generator is already running\");if(n===m){if(\"throw\"===i)throw a;return E()}for(r.method=i,r.arg=a;;){var o=r.delegate;if(o){var s=I(o,r);if(s){if(s===v)continue;return s}}if(\"next\"===r.method)r.sent=r._sent=r.arg;else if(\"throw\"===r.method){if(n===h)throw n=m,r.arg;r.dispatchException(r.arg)}else\"return\"===r.method&&r.abrupt(\"return\",r.arg);n=p;var f=c(e,t,r);if(\"normal\"===f.type){if(n=r.done?m:d,f.arg===v)continue;return{value:f.arg,done:r.done}}\"throw\"===f.type&&(n=m,r.method=\"throw\",r.arg=f.arg)}}}(e,r,o),a}function c(e,t,r){try{return{type:\"normal\",arg:e.call(t,r)}}catch(e){return{type:\"throw\",arg:e}}}e.wrap=u;var h=\"suspendedStart\",d=\"suspendedYield\",p=\"executing\",m=\"completed\",v={};function y(){}function w(){}function g(){}var b={};l(b,o,(function(){return this}));var k=Object.getPrototypeOf,x=k&&k(k(D([])));x&&x!==n&&i.call(x,o)&&(b=x);var _=g.prototype=y.prototype=Object.create(b);function A(e){[\"next\",\"throw\",\"return\"].forEach((function(t){l(e,t,(function(e){return this._invoke(t,e)}))}))}function P(e,t){function n(a,o,s,f){var l=c(e[a],e,o);if(\"throw\"!==l.type){var u=l.arg,h=u.value;return h&&\"object\"===r(h)&&i.call(h,\"__await\")?t.resolve(h.__await).then((function(e){n(\"next\",e,s,f)}),(function(e){n(\"throw\",e,s,f)})):t.resolve(h).then((function(e){u.value=e,s(u)}),(function(e){return n(\"throw\",e,s,f)}))}f(l.arg)}var a;this._invoke=function(e,r){function i(){return new t((function(t,i){n(e,r,t,i)}))}return a=a?a.then(i,i):i()}}function I(e,r){var n=e.iterator[r.method];if(n===t){if(r.delegate=null,\"throw\"===r.method){if(e.iterator.return&&(r.method=\"return\",r.arg=t,I(e,r),\"throw\"===r.method))return v;r.method=\"throw\",r.arg=new TypeError(\"The iterator does not provide a 'throw' method\")}return v}var i=c(n,e.iterator,r.arg);if(\"throw\"===i.type)return r.method=\"throw\",r.arg=i.arg,r.delegate=null,v;var a=i.arg;return a?a.done?(r[e.resultName]=a.value,r.next=e.nextLoc,\"return\"!==r.method&&(r.method=\"next\",r.arg=t),r.delegate=null,v):a:(r.method=\"throw\",r.arg=new TypeError(\"iterator result is not an object\"),r.delegate=null,v)}function U(e){var t={tryLoc:e[0]};1 in e&&(t.catchLoc=e[1]),2 in e&&(t.finallyLoc=e[2],t.afterLoc=e[3]),this.tryEntries.push(t)}function S(e){var t=e.completion||{};t.type=\"normal\",delete t.arg,e.completion=t}function T(e){this.tryEntries=[{tryLoc:\"root\"}],e.forEach(U,this),this.reset(!0)}function D(e){if(e){var r=e[o];if(r)return r.call(e);if(\"function\"==typeof e.next)return e;if(!isNaN(e.length)){var n=-1,a=function r(){for(;++n<e.length;)if(i.call(e,n))return r.value=e[n],r.done=!1,r;return r.value=t,r.done=!0,r};return a.next=a}}return{next:E}}function E(){return{value:t,done:!0}}return w.prototype=g,l(_,\"constructor\",g),l(g,\"constructor\",w),w.displayName=l(g,f,\"GeneratorFunction\"),e.isGeneratorFunction=function(e){var t=\"function\"==typeof e&&e.constructor;return!!t&&(t===w||\"GeneratorFunction\"===(t.displayName||t.name))},e.mark=function(e){return Object.setPrototypeOf?Object.setPrototypeOf(e,g):(e.__proto__=g,l(e,f,\"GeneratorFunction\")),e.prototype=Object.create(_),e},e.awrap=function(e){return{__await:e}},A(P.prototype),l(P.prototype,s,(function(){return this})),e.AsyncIterator=P,e.async=function(t,r,n,i,a){void 0===a&&(a=Promise);var o=new P(u(t,r,n,i),a);return e.isGeneratorFunction(r)?o:o.next().then((function(e){return e.done?e.value:o.next()}))},A(_),l(_,f,\"Generator\"),l(_,o,(function(){return this})),l(_,\"toString\",(function(){return\"[object Generator]\"})),e.keys=function(e){var t=[];for(var r in e)t.push(r);return t.reverse(),function r(){for(;t.length;){var n=t.pop();if(n in e)return r.value=n,r.done=!1,r}return r.done=!0,r}},e.values=D,T.prototype={constructor:T,reset:function(e){if(this.prev=0,this.next=0,this.sent=this._sent=t,this.done=!1,this.delegate=null,this.method=\"next\",this.arg=t,this.tryEntries.forEach(S),!e)for(var r in this)\"t\"===r.charAt(0)&&i.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=t)},stop:function(){this.done=!0;var e=this.tryEntries[0].completion;if(\"throw\"===e.type)throw e.arg;return this.rval},dispatchException:function(e){if(this.done)throw e;var r=this;function n(n,i){return s.type=\"throw\",s.arg=e,r.next=n,i&&(r.method=\"next\",r.arg=t),!!i}for(var a=this.tryEntries.length-1;a>=0;--a){var o=this.tryEntries[a],s=o.completion;if(\"root\"===o.tryLoc)return n(\"end\");if(o.tryLoc<=this.prev){var f=i.call(o,\"catchLoc\"),l=i.call(o,\"finallyLoc\");if(f&&l){if(this.prev<o.catchLoc)return n(o.catchLoc,!0);if(this.prev<o.finallyLoc)return n(o.finallyLoc)}else if(f){if(this.prev<o.catchLoc)return n(o.catchLoc,!0)}else{if(!l)throw new Error(\"try statement without catch or finally\");if(this.prev<o.finallyLoc)return n(o.finallyLoc)}}}},abrupt:function(e,t){for(var r=this.tryEntries.length-1;r>=0;--r){var n=this.tryEntries[r];if(n.tryLoc<=this.prev&&i.call(n,\"finallyLoc\")&&this.prev<n.finallyLoc){var a=n;break}}a&&(\"break\"===e||\"continue\"===e)&&a.tryLoc<=t&&t<=a.finallyLoc&&(a=null);var o=a?a.completion:{};return o.type=e,o.arg=t,a?(this.method=\"next\",this.next=a.finallyLoc,v):this.complete(o)},complete:function(e,t){if(\"throw\"===e.type)throw e.arg;return\"break\"===e.type||\"continue\"===e.type?this.next=e.arg:\"return\"===e.type?(this.rval=this.arg=e.arg,this.method=\"return\",this.next=\"end\"):\"normal\"===e.type&&t&&(this.next=t),v},finish:function(e){for(var t=this.tryEntries.length-1;t>=0;--t){var r=this.tryEntries[t];if(r.finallyLoc===e)return this.complete(r.completion,r.afterLoc),S(r),v}},catch:function(e){for(var t=this.tryEntries.length-1;t>=0;--t){var r=this.tryEntries[t];if(r.tryLoc===e){var n=r.completion;if(\"throw\"===n.type){var i=n.arg;S(r)}return i}}throw new Error(\"illegal catch attempt\")},delegateYield:function(e,r,n){return this.delegate={iterator:D(e),resultName:r,nextLoc:n},\"next\"===this.method&&(this.arg=t),v}},e}(e.exports);try{regeneratorRuntime=t}catch(e){\"object\"===(\"undefined\"==typeof globalThis?\"undefined\":r(globalThis))?globalThis.regeneratorRuntime=t:Function(\"r\",\"regeneratorRuntime = r\")(t)}}(n);var i=n.exports,a=new Map;function o(e,t){Array.isArray(e)||(e=[e]),e.forEach((function(e){return a.set(e,t)}))}function s(e){return f.apply(this,arguments)}function f(){return(f=t(i.mark((function e(t){var r,n;return i.wrap((function(e){for(;;)switch(e.prev=e.next){case 0:if(r=a.get(t.Compression)){e.next=3;break}throw new Error(\"Unknown compression method identifier: \".concat(t.Compression));case 3:return e.next=5,r();case 5:return n=e.sent,e.abrupt(\"return\",new n(t));case 7:case\"end\":return e.stop()}}),e)})))).apply(this,arguments)}o([void 0,1],(function(){return Promise.resolve().then((function(){return _})).then((function(e){return e.default}))})),o(5,(function(){return Promise.resolve().then((function(){return S})).then((function(e){return e.default}))})),o(6,(function(){throw new Error(\"old style JPEG compression is not supported.\")})),o(7,(function(){return Promise.resolve().then((function(){return L})).then((function(e){return e.default}))})),o([8,32946],(function(){return Promise.resolve().then((function(){return Ne})).then((function(e){return e.default}))})),o(32773,(function(){return Promise.resolve().then((function(){return Ye})).then((function(e){return e.default}))})),o(34887,(function(){return Promise.resolve().then((function(){return ut})).then((function(e){return e.default}))})),o(50001,(function(){return Promise.resolve().then((function(){return dt})).then((function(e){return e.default}))}));var l=globalThis;function u(e,t){if(!(e instanceof t))throw new TypeError(\"Cannot call a class as a function\")}function c(e,t){for(var r=0;r<t.length;r++){var n=t[r];n.enumerable=n.enumerable||!1,n.configurable=!0,\"value\"in n&&(n.writable=!0),Object.defineProperty(e,n.key,n)}}function h(e,t,r){return t&&c(e.prototype,t),r&&c(e,r),e}function d(e,t){return d=Object.setPrototypeOf||function(e,t){return e.__proto__=t,e},d(e,t)}function p(e,t){if(\"function\"!=typeof t&&null!==t)throw new TypeError(\"Super expression must either be null or a function\");e.prototype=Object.create(t&&t.prototype,{constructor:{value:e,writable:!0,configurable:!0}}),t&&d(e,t)}function m(e,t){if(t&&(\"object\"===r(t)||\"function\"==typeof t))return t;if(void 0!==t)throw new TypeError(\"Derived constructors may only return object or undefined\");return function(e){if(void 0===e)throw new ReferenceError(\"this hasn't been initialised - super() hasn't been called\");return e}(e)}function v(e){return v=Object.setPrototypeOf?Object.getPrototypeOf:function(e){return e.__proto__||Object.getPrototypeOf(e)},v(e)}function y(e,t){var r=e.length-t,n=0;do{for(var i=t;i>0;i--)e[n+t]+=e[n],n++;r-=t}while(r>0)}function w(e,t,r){for(var n=0,i=e.length,a=i/r;i>t;){for(var o=t;o>0;--o)e[n+t]+=e[n],++n;i-=t}for(var s=e.slice(),f=0;f<a;++f)for(var l=0;l<r;++l)e[r*f+l]=s[(r-l-1)*a+f]}function g(e,t,r,n,i,a){if(!t||1===t)return e;for(var o=0;o<i.length;++o){if(i[o]%8!=0)throw new Error(\"When decoding with predictor, only multiple of 8 bits are supported.\");if(i[o]!==i[0])throw new Error(\"When decoding with predictor, all samples must have the same size.\")}for(var s=i[0]/8,f=2===a?1:i.length,l=0;l<n&&!(l*f*r*s>=e.byteLength);++l){var u=void 0;if(2===t){switch(i[0]){case 8:u=new Uint8Array(e,l*f*r*s,f*r*s);break;case 16:u=new Uint16Array(e,l*f*r*s,f*r*s/2);break;case 32:u=new Uint32Array(e,l*f*r*s,f*r*s/4);break;default:throw new Error(\"Predictor 2 not allowed with \".concat(i[0],\" bits per sample.\"))}y(u,f)}else 3===t&&w(u=new Uint8Array(e,l*f*r*s,f*r*s),f,s)}return e}l.addEventListener(\"message\",function(){var e=t(i.mark((function e(t){var r,n,a,o,f,u;return i.wrap((function(e){for(;;)switch(e.prev=e.next){case 0:return r=t.data,n=r.id,a=r.fileDirectory,o=r.buffer,e.next=3,s(a);case 3:return f=e.sent,e.next=6,f.decode(a,o);case 6:u=e.sent,l.postMessage({decoded:u,id:n},[u]);case 8:case\"end\":return e.stop()}}),e)})));return function(t){return e.apply(this,arguments)}}());var b=function(){function e(){u(this,e)}var r;return h(e,[{key:\"decode\",value:(r=t(i.mark((function e(t,r){var n,a,o,s,f;return i.wrap((function(e){for(;;)switch(e.prev=e.next){case 0:return e.next=2,this.decodeBlock(r);case 2:if(n=e.sent,1===(a=t.Predictor||1)){e.next=9;break}return o=!t.StripOffsets,s=o?t.TileWidth:t.ImageWidth,f=o?t.TileLength:t.RowsPerStrip||t.ImageLength,e.abrupt(\"return\",g(n,a,s,f,t.BitsPerSample,t.PlanarConfiguration));case 9:return e.abrupt(\"return\",n);case 10:case\"end\":return e.stop()}}),e,this)}))),function(e,t){return r.apply(this,arguments)})}]),e}();function k(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var x=function(e){p(r,b);var t=k(r);function r(){return u(this,r),t.apply(this,arguments)}return h(r,[{key:\"decodeBlock\",value:function(e){return e}}]),r}(),_=Object.freeze({__proto__:null,default:x});function A(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}function P(e,t){for(var r=t.length-1;r>=0;r--)e.push(t[r]);return e}function I(e){for(var t=new Uint16Array(4093),r=new Uint8Array(4093),n=0;n<=257;n++)t[n]=4096,r[n]=n;var i=258,a=9,o=0;function s(){i=258,a=9}function f(e){var t=function(e,t,r){var n=t%8,i=Math.floor(t/8),a=8-n,o=t+r-8*(i+1),s=8*(i+2)-(t+r),f=8*(i+2)-t;if(s=Math.max(0,s),i>=e.length)return console.warn(\"ran off the end of the buffer before finding EOI_CODE (end on input code)\"),257;var l=e[i]&Math.pow(2,8-n)-1,u=l<<=r-a;if(i+1<e.length){var c=e[i+1]>>>s;u+=c<<=Math.max(0,r-f)}if(o>8&&i+2<e.length){var h=8*(i+3)-(t+r);u+=e[i+2]>>>h}return u}(e,o,a);return o+=a,t}function l(e,n){return r[i]=n,t[i]=e,++i-1}function u(e){for(var n=[],i=e;4096!==i;i=t[i])n.push(r[i]);return n}var c=[];s();for(var h,d=new Uint8Array(e),p=f(d);257!==p;){if(256===p){for(s(),p=f(d);256===p;)p=f(d);if(257===p)break;if(p>256)throw new Error(\"corrupted code at scanline \".concat(p));P(c,u(p)),h=p}else if(p<i){var m=u(p);P(c,m),l(h,m[m.length-1]),h=p}else{var v=u(h);if(!v)throw new Error(\"Bogus entry. Not in dictionary, \".concat(h,\" / \").concat(i,\", position: \").concat(o));P(c,v),c.push(v[v.length-1]),l(h,v[v.length-1]),h=p}i+1>=Math.pow(2,a)&&(12===a?h=void 0:a++),p=f(d)}return new Uint8Array(c)}var U=function(e){p(r,b);var t=A(r);function r(){return u(this,r),t.apply(this,arguments)}return h(r,[{key:\"decodeBlock\",value:function(e){return I(e).buffer}}]),r}(),S=Object.freeze({__proto__:null,default:U});function T(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var D=new Int32Array([0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63]);function E(e,t){for(var r=0,n=[],i=16;i>0&&!e[i-1];)--i;n.push({children:[],index:0});for(var a,o=n[0],s=0;s<i;s++){for(var f=0;f<e[s];f++){for((o=n.pop()).children[o.index]=t[r];o.index>0;)o=n.pop();for(o.index++,n.push(o);n.length<=s;)n.push(a={children:[],index:0}),o.children[o.index]=a.children,o=a;r++}s+1<i&&(n.push(a={children:[],index:0}),o.children[o.index]=a.children,o=a)}return n[0].children}function B(e,t,n,i,a,o,s,f,l){var u=n.mcusPerLine,c=n.progressive,h=t,d=t,p=0,m=0;function v(){if(m>0)return m--,p>>m&1;if(255===(p=e[d++])){var t=e[d++];if(t)throw new Error(\"unexpected marker: \".concat((p<<8|t).toString(16)))}return m=7,p>>>7}function y(e){for(var t,n=e;null!==(t=v());){if(\"number\"==typeof(n=n[t]))return n;if(\"object\"!==r(n))throw new Error(\"invalid huffman sequence\")}return null}function w(e){for(var t=e,r=0;t>0;){var n=v();if(null===n)return;r=r<<1|n,--t}return r}function g(e){var t=w(e);return t>=1<<e-1?t:t+(-1<<e)+1}var b=0;var k,x=0;function _(e,t,r,n,i){var a=r%u,o=(r/u|0)*e.v+n,s=a*e.h+i;t(e,e.blocks[o][s])}function A(e,t,r){var n=r/e.blocksPerLine|0,i=r%e.blocksPerLine;t(e,e.blocks[n][i])}var P,I,U,S,T,E,B=i.length;E=c?0===o?0===f?function(e,t){var r=y(e.huffmanTableDC),n=0===r?0:g(r)<<l;e.pred+=n,t[0]=e.pred}:function(e,t){t[0]|=v()<<l}:0===f?function(e,t){if(b>0)b--;else for(var r=o,n=s;r<=n;){var i=y(e.huffmanTableAC),a=15&i,f=i>>4;if(0===a){if(f<15){b=w(f)+(1<<f)-1;break}r+=16}else t[D[r+=f]]=g(a)*(1<<l),r++}}:function(e,t){for(var r=o,n=s,i=0;r<=n;){var a=D[r],f=t[a]<0?-1:1;switch(x){case 0:var u=y(e.huffmanTableAC),c=15&u;if(i=u>>4,0===c)i<15?(b=w(i)+(1<<i),x=4):(i=16,x=1);else{if(1!==c)throw new Error(\"invalid ACn encoding\");k=g(c),x=i?2:3}continue;case 1:case 2:t[a]?t[a]+=(v()<<l)*f:0==--i&&(x=2===x?3:0);break;case 3:t[a]?t[a]+=(v()<<l)*f:(t[a]=k<<l,x=0);break;case 4:t[a]&&(t[a]+=(v()<<l)*f)}r++}4===x&&0==--b&&(x=0)}:function(e,t){var r=y(e.huffmanTableDC),n=0===r?0:g(r);e.pred+=n,t[0]=e.pred;for(var i=1;i<64;){var a=y(e.huffmanTableAC),o=15&a,s=a>>4;if(0===o){if(s<15)break;i+=16}else t[D[i+=s]]=g(o),i++}};var O,M,C=0;M=1===B?i[0].blocksPerLine*i[0].blocksPerColumn:u*n.mcusPerColumn;for(var L=a||M;C<M;){for(I=0;I<B;I++)i[I].pred=0;if(b=0,1===B)for(P=i[0],T=0;T<L;T++)A(P,E,C),C++;else for(T=0;T<L;T++){for(I=0;I<B;I++){var R=P=i[I],V=R.h,G=R.v;for(U=0;U<G;U++)for(S=0;S<V;S++)_(P,E,C,U,S)}if(++C===M)break}if(m=0,(O=e[d]<<8|e[d+1])<65280)throw new Error(\"marker was not found\");if(!(O>=65488&&O<=65495))break;d+=2}return d-h}function O(e,t){var r=[],n=t.blocksPerLine,i=t.blocksPerColumn,a=n<<3,o=new Int32Array(64),s=new Uint8Array(64);function f(e,r,n){var i,a,o,s,f,l,u,c,h,d,p=t.quantizationTable,m=n;for(d=0;d<64;d++)m[d]=e[d]*p[d];for(d=0;d<8;++d){var v=8*d;0!==m[1+v]||0!==m[2+v]||0!==m[3+v]||0!==m[4+v]||0!==m[5+v]||0!==m[6+v]||0!==m[7+v]?(i=5793*m[0+v]+128>>8,a=5793*m[4+v]+128>>8,o=m[2+v],s=m[6+v],f=2896*(m[1+v]-m[7+v])+128>>8,c=2896*(m[1+v]+m[7+v])+128>>8,l=m[3+v]<<4,h=i-a+1>>1,i=i+a+1>>1,a=h,h=3784*o+1567*s+128>>8,o=1567*o-3784*s+128>>8,s=h,h=f-(u=m[5+v]<<4)+1>>1,f=f+u+1>>1,u=h,h=c+l+1>>1,l=c-l+1>>1,c=h,h=i-s+1>>1,i=i+s+1>>1,s=h,h=a-o+1>>1,a=a+o+1>>1,o=h,h=2276*f+3406*c+2048>>12,f=3406*f-2276*c+2048>>12,c=h,h=799*l+4017*u+2048>>12,l=4017*l-799*u+2048>>12,u=h,m[0+v]=i+c,m[7+v]=i-c,m[1+v]=a+u,m[6+v]=a-u,m[2+v]=o+l,m[5+v]=o-l,m[3+v]=s+f,m[4+v]=s-f):(h=5793*m[0+v]+512>>10,m[0+v]=h,m[1+v]=h,m[2+v]=h,m[3+v]=h,m[4+v]=h,m[5+v]=h,m[6+v]=h,m[7+v]=h)}for(d=0;d<8;++d){var y=d;0!==m[8+y]||0!==m[16+y]||0!==m[24+y]||0!==m[32+y]||0!==m[40+y]||0!==m[48+y]||0!==m[56+y]?(i=5793*m[0+y]+2048>>12,a=5793*m[32+y]+2048>>12,o=m[16+y],s=m[48+y],f=2896*(m[8+y]-m[56+y])+2048>>12,c=2896*(m[8+y]+m[56+y])+2048>>12,l=m[24+y],h=i-a+1>>1,i=i+a+1>>1,a=h,h=3784*o+1567*s+2048>>12,o=1567*o-3784*s+2048>>12,s=h,h=f-(u=m[40+y])+1>>1,f=f+u+1>>1,u=h,h=c+l+1>>1,l=c-l+1>>1,c=h,h=i-s+1>>1,i=i+s+1>>1,s=h,h=a-o+1>>1,a=a+o+1>>1,o=h,h=2276*f+3406*c+2048>>12,f=3406*f-2276*c+2048>>12,c=h,h=799*l+4017*u+2048>>12,l=4017*l-799*u+2048>>12,u=h,m[0+y]=i+c,m[56+y]=i-c,m[8+y]=a+u,m[48+y]=a-u,m[16+y]=o+l,m[40+y]=o-l,m[24+y]=s+f,m[32+y]=s-f):(h=5793*n[d+0]+8192>>14,m[0+y]=h,m[8+y]=h,m[16+y]=h,m[24+y]=h,m[32+y]=h,m[40+y]=h,m[48+y]=h,m[56+y]=h)}for(d=0;d<64;++d){var w=128+(m[d]+8>>4);r[d]=w<0?0:w>255?255:w}}for(var l=0;l<i;l++){for(var u=l<<3,c=0;c<8;c++)r.push(new Uint8Array(a));for(var h=0;h<n;h++){f(t.blocks[l][h],s,o);for(var d=0,p=h<<3,m=0;m<8;m++)for(var v=r[u+m],y=0;y<8;y++)v[p+y]=s[d++]}}return r}var M=function(){function e(){u(this,e),this.jfif=null,this.adobe=null,this.quantizationTables=[],this.huffmanTablesAC=[],this.huffmanTablesDC=[],this.resetFrames()}return h(e,[{key:\"resetFrames\",value:function(){this.frames=[]}},{key:\"parse\",value:function(e){var t=0;function r(){var r=e[t]<<8|e[t+1];return t+=2,r}function n(e){var t,r,n=0,i=0;for(r in e.components)e.components.hasOwnProperty(r)&&(n<(t=e.components[r]).h&&(n=t.h),i<t.v&&(i=t.v));var a=Math.ceil(e.samplesPerLine/8/n),o=Math.ceil(e.scanLines/8/i);for(r in e.components)if(e.components.hasOwnProperty(r)){t=e.components[r];for(var s=Math.ceil(Math.ceil(e.samplesPerLine/8)*t.h/n),f=Math.ceil(Math.ceil(e.scanLines/8)*t.v/i),l=a*t.h,u=o*t.v,c=[],h=0;h<u;h++){for(var d=[],p=0;p<l;p++)d.push(new Int32Array(64));c.push(d)}t.blocksPerLine=s,t.blocksPerColumn=f,t.blocks=c}e.maxH=n,e.maxV=i,e.mcusPerLine=a,e.mcusPerColumn=o}var i,a,o=r();if(65496!==o)throw new Error(\"SOI not found\");for(o=r();65497!==o;){switch(o){case 65280:break;case 65504:case 65505:case 65506:case 65507:case 65508:case 65509:case 65510:case 65511:case 65512:case 65513:case 65514:case 65515:case 65516:case 65517:case 65518:case 65519:case 65534:var s=(i=void 0,a=void 0,i=r(),a=e.subarray(t,t+i-2),t+=a.length,a);65504===o&&74===s[0]&&70===s[1]&&73===s[2]&&70===s[3]&&0===s[4]&&(this.jfif={version:{major:s[5],minor:s[6]},densityUnits:s[7],xDensity:s[8]<<8|s[9],yDensity:s[10]<<8|s[11],thumbWidth:s[12],thumbHeight:s[13],thumbData:s.subarray(14,14+3*s[12]*s[13])}),65518===o&&65===s[0]&&100===s[1]&&111===s[2]&&98===s[3]&&101===s[4]&&0===s[5]&&(this.adobe={version:s[6],flags0:s[7]<<8|s[8],flags1:s[9]<<8|s[10],transformCode:s[11]});break;case 65499:for(var f=r()+t-2;t<f;){var l=e[t++],u=new Int32Array(64);if(l>>4==0)for(var c=0;c<64;c++){u[D[c]]=e[t++]}else{if(l>>4!=1)throw new Error(\"DQT: invalid table spec\");for(var h=0;h<64;h++){u[D[h]]=r()}}this.quantizationTables[15&l]=u}break;case 65472:case 65473:case 65474:r();for(var d={extended:65473===o,progressive:65474===o,precision:e[t++],scanLines:r(),samplesPerLine:r(),components:{},componentsOrder:[]},p=e[t++],m=void 0,v=0;v<p;v++){m=e[t];var y=e[t+1]>>4,w=15&e[t+1],g=e[t+2];d.componentsOrder.push(m),d.components[m]={h:y,v:w,quantizationIdx:g},t+=3}n(d),this.frames.push(d);break;case 65476:for(var b=r(),k=2;k<b;){for(var x=e[t++],_=new Uint8Array(16),A=0,P=0;P<16;P++,t++)_[P]=e[t],A+=_[P];for(var I=new Uint8Array(A),U=0;U<A;U++,t++)I[U]=e[t];k+=17+A,x>>4==0?this.huffmanTablesDC[15&x]=E(_,I):this.huffmanTablesAC[15&x]=E(_,I)}break;case 65501:r(),this.resetInterval=r();break;case 65498:r();for(var S=e[t++],T=[],O=this.frames[0],M=0;M<S;M++){var C=O.components[e[t++]],L=e[t++];C.huffmanTableDC=this.huffmanTablesDC[L>>4],C.huffmanTableAC=this.huffmanTablesAC[15&L],T.push(C)}var R=e[t++],V=e[t++],G=e[t++],F=B(e,t,O,T,this.resetInterval,R,V,G>>4,15&G);t+=F;break;case 65535:255!==e[t]&&t--;break;default:if(255===e[t-3]&&e[t-2]>=192&&e[t-2]<=254){t-=3;break}throw new Error(\"unknown JPEG marker \".concat(o.toString(16)))}o=r()}}},{key:\"getResult\",value:function(){var e=this.frames;if(0===this.frames.length)throw new Error(\"no frames were decoded\");this.frames.length>1&&console.warn(\"more than one frame is not supported\");for(var t=0;t<this.frames.length;t++)for(var r=this.frames[t].components,n=0,i=Object.keys(r);n<i.length;n++){var a=i[n];r[a].quantizationTable=this.quantizationTables[r[a].quantizationIdx],delete r[a].quantizationIdx}for(var o=e[0],s=o.components,f=o.componentsOrder,l=[],u=o.samplesPerLine,c=o.scanLines,h=0;h<f.length;h++){var d=s[f[h]];l.push({lines:O(0,d),scaleX:d.h/o.maxH,scaleY:d.v/o.maxV})}for(var p=new Uint8Array(u*c*l.length),m=0,v=0;v<c;++v)for(var y=0;y<u;++y)for(var w=0;w<l.length;++w){var g=l[w];p[m]=g.lines[0|v*g.scaleY][0|y*g.scaleX],++m}return p}}]),e}(),C=function(e){p(r,b);var t=T(r);function r(e){var n;return u(this,r),(n=t.call(this)).reader=new M,e.JPEGTables&&n.reader.parse(e.JPEGTables),n}return h(r,[{key:\"decodeBlock\",value:function(e){return this.reader.resetFrames(),this.reader.parse(new Uint8Array(e)),this.reader.getResult().buffer}}]),r}(),L=Object.freeze({__proto__:null,default:C});function R(e){for(var t=e.length;--t>=0;)e[t]=0}R(new Array(576)),R(new Array(60)),R(new Array(512)),R(new Array(256)),R(new Array(29)),R(new Array(30));var V=function(e,t,r,n){for(var i=65535&e|0,a=e>>>16&65535|0,o=0;0!==r;){r-=o=r>2e3?2e3:r;do{a=a+(i=i+t[n++]|0)|0}while(--o);i%=65521,a%=65521}return i|a<<16|0},G=new Uint32Array(function(){for(var e,t=[],r=0;r<256;r++){e=r;for(var n=0;n<8;n++)e=1&e?3988292384^e>>>1:e>>>1;t[r]=e}return t}()),F=function(e,t,r,n){var i=G,a=n+r;e^=-1;for(var o=n;o<a;o++)e=e>>>8^i[255&(e^t[o])];return-1^e},z={2:\"need dictionary\",1:\"stream end\",0:\"\",\"-1\":\"file error\",\"-2\":\"stream error\",\"-3\":\"data error\",\"-4\":\"insufficient memory\",\"-5\":\"buffer error\",\"-6\":\"incompatible version\"},j={Z_NO_FLUSH:0,Z_PARTIAL_FLUSH:1,Z_SYNC_FLUSH:2,Z_FULL_FLUSH:3,Z_FINISH:4,Z_BLOCK:5,Z_TREES:6,Z_OK:0,Z_STREAM_END:1,Z_NEED_DICT:2,Z_ERRNO:-1,Z_STREAM_ERROR:-2,Z_DATA_ERROR:-3,Z_MEM_ERROR:-4,Z_BUF_ERROR:-5,Z_NO_COMPRESSION:0,Z_BEST_SPEED:1,Z_BEST_COMPRESSION:9,Z_DEFAULT_COMPRESSION:-1,Z_FILTERED:1,Z_HUFFMAN_ONLY:2,Z_RLE:3,Z_FIXED:4,Z_DEFAULT_STRATEGY:0,Z_BINARY:0,Z_TEXT:1,Z_UNKNOWN:2,Z_DEFLATED:8},N=function(e,t){return Object.prototype.hasOwnProperty.call(e,t)},Z=function(e){for(var t=Array.prototype.slice.call(arguments,1);t.length;){var n=t.shift();if(n){if(\"object\"!==r(n))throw new TypeError(n+\"must be non-object\");for(var i in n)N(n,i)&&(e[i]=n[i])}}return e},K=function(e){for(var t=0,r=0,n=e.length;r<n;r++)t+=e[r].length;for(var i=new Uint8Array(t),a=0,o=0,s=e.length;a<s;a++){var f=e[a];i.set(f,o),o+=f.length}return i},H=!0;try{String.fromCharCode.apply(null,new Uint8Array(1))}catch(e){H=!1}for(var Y=new Uint8Array(256),X=0;X<256;X++)Y[X]=X>=252?6:X>=248?5:X>=240?4:X>=224?3:X>=192?2:1;Y[254]=Y[254]=1;var W=function(e){if(\"function\"==typeof TextEncoder&&TextEncoder.prototype.encode)return(new TextEncoder).encode(e);var t,r,n,i,a,o=e.length,s=0;for(i=0;i<o;i++)55296==(64512&(r=e.charCodeAt(i)))&&i+1<o&&56320==(64512&(n=e.charCodeAt(i+1)))&&(r=65536+(r-55296<<10)+(n-56320),i++),s+=r<128?1:r<2048?2:r<65536?3:4;for(t=new Uint8Array(s),a=0,i=0;a<s;i++)55296==(64512&(r=e.charCodeAt(i)))&&i+1<o&&56320==(64512&(n=e.charCodeAt(i+1)))&&(r=65536+(r-55296<<10)+(n-56320),i++),r<128?t[a++]=r:r<2048?(t[a++]=192|r>>>6,t[a++]=128|63&r):r<65536?(t[a++]=224|r>>>12,t[a++]=128|r>>>6&63,t[a++]=128|63&r):(t[a++]=240|r>>>18,t[a++]=128|r>>>12&63,t[a++]=128|r>>>6&63,t[a++]=128|63&r);return t},q=function(e,t){var r,n,i=t||e.length;if(\"function\"==typeof TextDecoder&&TextDecoder.prototype.decode)return(new TextDecoder).decode(e.subarray(0,t));var a=new Array(2*i);for(n=0,r=0;r<i;){var o=e[r++];if(o<128)a[n++]=o;else{var s=Y[o];if(s>4)a[n++]=65533,r+=s-1;else{for(o&=2===s?31:3===s?15:7;s>1&&r<i;)o=o<<6|63&e[r++],s--;s>1?a[n++]=65533:o<65536?a[n++]=o:(o-=65536,a[n++]=55296|o>>10&1023,a[n++]=56320|1023&o)}}}return function(e,t){if(t<65534&&e.subarray&&H)return String.fromCharCode.apply(null,e.length===t?e:e.subarray(0,t));for(var r=\"\",n=0;n<t;n++)r+=String.fromCharCode(e[n]);return r}(a,n)},J=function(e,t){(t=t||e.length)>e.length&&(t=e.length);for(var r=t-1;r>=0&&128==(192&e[r]);)r--;return r<0||0===r?t:r+Y[e[r]]>t?r:t};var Q=function(){this.input=null,this.next_in=0,this.avail_in=0,this.total_in=0,this.output=null,this.next_out=0,this.avail_out=0,this.total_out=0,this.msg=\"\",this.state=null,this.data_type=2,this.adler=0},$=function(e,t){var r,n,i,a,o,s,f,l,u,c,h,d,p,m,v,y,w,g,b,k,x,_,A,P,I=e.state;r=e.next_in,A=e.input,n=r+(e.avail_in-5),i=e.next_out,P=e.output,a=i-(t-e.avail_out),o=i+(e.avail_out-257),s=I.dmax,f=I.wsize,l=I.whave,u=I.wnext,c=I.window,h=I.hold,d=I.bits,p=I.lencode,m=I.distcode,v=(1<<I.lenbits)-1,y=(1<<I.distbits)-1;e:do{d<15&&(h+=A[r++]<<d,d+=8,h+=A[r++]<<d,d+=8),w=p[h&v];t:for(;;){if(h>>>=g=w>>>24,d-=g,0===(g=w>>>16&255))P[i++]=65535&w;else{if(!(16&g)){if(0==(64&g)){w=p[(65535&w)+(h&(1<<g)-1)];continue t}if(32&g){I.mode=12;break e}e.msg=\"invalid literal/length code\",I.mode=30;break e}b=65535&w,(g&=15)&&(d<g&&(h+=A[r++]<<d,d+=8),b+=h&(1<<g)-1,h>>>=g,d-=g),d<15&&(h+=A[r++]<<d,d+=8,h+=A[r++]<<d,d+=8),w=m[h&y];r:for(;;){if(h>>>=g=w>>>24,d-=g,!(16&(g=w>>>16&255))){if(0==(64&g)){w=m[(65535&w)+(h&(1<<g)-1)];continue r}e.msg=\"invalid distance code\",I.mode=30;break e}if(k=65535&w,d<(g&=15)&&(h+=A[r++]<<d,(d+=8)<g&&(h+=A[r++]<<d,d+=8)),(k+=h&(1<<g)-1)>s){e.msg=\"invalid distance too far back\",I.mode=30;break e}if(h>>>=g,d-=g,k>(g=i-a)){if((g=k-g)>l&&I.sane){e.msg=\"invalid distance too far back\",I.mode=30;break e}if(x=0,_=c,0===u){if(x+=f-g,g<b){b-=g;do{P[i++]=c[x++]}while(--g);x=i-k,_=P}}else if(u<g){if(x+=f+u-g,(g-=u)<b){b-=g;do{P[i++]=c[x++]}while(--g);if(x=0,u<b){b-=g=u;do{P[i++]=c[x++]}while(--g);x=i-k,_=P}}}else if(x+=u-g,g<b){b-=g;do{P[i++]=c[x++]}while(--g);x=i-k,_=P}for(;b>2;)P[i++]=_[x++],P[i++]=_[x++],P[i++]=_[x++],b-=3;b&&(P[i++]=_[x++],b>1&&(P[i++]=_[x++]))}else{x=i-k;do{P[i++]=P[x++],P[i++]=P[x++],P[i++]=P[x++],b-=3}while(b>2);b&&(P[i++]=P[x++],b>1&&(P[i++]=P[x++]))}break}}break}}while(r<n&&i<o);r-=b=d>>3,h&=(1<<(d-=b<<3))-1,e.next_in=r,e.next_out=i,e.avail_in=r<n?n-r+5:5-(r-n),e.avail_out=i<o?o-i+257:257-(i-o),I.hold=h,I.bits=d},ee=new Uint16Array([3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258,0,0]),te=new Uint8Array([16,16,16,16,16,16,16,16,17,17,17,17,18,18,18,18,19,19,19,19,20,20,20,20,21,21,21,21,16,72,78]),re=new Uint16Array([1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577,0,0]),ne=new Uint8Array([16,16,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,27,27,28,28,29,29,64,64]),ie=function(e,t,r,n,i,a,o,s){var f,l,u,c,h,d,p,m,v,y=s.bits,w=0,g=0,b=0,k=0,x=0,_=0,A=0,P=0,I=0,U=0,S=null,T=0,D=new Uint16Array(16),E=new Uint16Array(16),B=null,O=0;for(w=0;w<=15;w++)D[w]=0;for(g=0;g<n;g++)D[t[r+g]]++;for(x=y,k=15;k>=1&&0===D[k];k--);if(x>k&&(x=k),0===k)return i[a++]=20971520,i[a++]=20971520,s.bits=1,0;for(b=1;b<k&&0===D[b];b++);for(x<b&&(x=b),P=1,w=1;w<=15;w++)if(P<<=1,(P-=D[w])<0)return-1;if(P>0&&(0===e||1!==k))return-1;for(E[1]=0,w=1;w<15;w++)E[w+1]=E[w]+D[w];for(g=0;g<n;g++)0!==t[r+g]&&(o[E[t[r+g]]++]=g);if(0===e?(S=B=o,d=19):1===e?(S=ee,T-=257,B=te,O-=257,d=256):(S=re,B=ne,d=-1),U=0,g=0,w=b,h=a,_=x,A=0,u=-1,c=(I=1<<x)-1,1===e&&I>852||2===e&&I>592)return 1;for(;;){p=w-A,o[g]<d?(m=0,v=o[g]):o[g]>d?(m=B[O+o[g]],v=S[T+o[g]]):(m=96,v=0),f=1<<w-A,b=l=1<<_;do{i[h+(U>>A)+(l-=f)]=p<<24|m<<16|v|0}while(0!==l);for(f=1<<w-1;U&f;)f>>=1;if(0!==f?(U&=f-1,U+=f):U=0,g++,0==--D[w]){if(w===k)break;w=t[r+o[g]]}if(w>x&&(U&c)!==u){for(0===A&&(A=x),h+=b,P=1<<(_=w-A);_+A<k&&!((P-=D[_+A])<=0);)_++,P<<=1;if(I+=1<<_,1===e&&I>852||2===e&&I>592)return 1;i[u=U&c]=x<<24|_<<16|h-a|0}}return 0!==U&&(i[h+U]=w-A<<24|64<<16|0),s.bits=x,0},ae=j.Z_FINISH,oe=j.Z_BLOCK,se=j.Z_TREES,fe=j.Z_OK,le=j.Z_STREAM_END,ue=j.Z_NEED_DICT,ce=j.Z_STREAM_ERROR,he=j.Z_DATA_ERROR,de=j.Z_MEM_ERROR,pe=j.Z_BUF_ERROR,me=j.Z_DEFLATED,ve=function(e){return(e>>>24&255)+(e>>>8&65280)+((65280&e)<<8)+((255&e)<<24)};function ye(){this.mode=0,this.last=!1,this.wrap=0,this.havedict=!1,this.flags=0,this.dmax=0,this.check=0,this.total=0,this.head=null,this.wbits=0,this.wsize=0,this.whave=0,this.wnext=0,this.window=null,this.hold=0,this.bits=0,this.length=0,this.offset=0,this.extra=0,this.lencode=null,this.distcode=null,this.lenbits=0,this.distbits=0,this.ncode=0,this.nlen=0,this.ndist=0,this.have=0,this.next=null,this.lens=new Uint16Array(320),this.work=new Uint16Array(288),this.lendyn=null,this.distdyn=null,this.sane=0,this.back=0,this.was=0}var we,ge,be=function(e){if(!e||!e.state)return ce;var t=e.state;return e.total_in=e.total_out=t.total=0,e.msg=\"\",t.wrap&&(e.adler=1&t.wrap),t.mode=1,t.last=0,t.havedict=0,t.dmax=32768,t.head=null,t.hold=0,t.bits=0,t.lencode=t.lendyn=new Int32Array(852),t.distcode=t.distdyn=new Int32Array(592),t.sane=1,t.back=-1,fe},ke=function(e){if(!e||!e.state)return ce;var t=e.state;return t.wsize=0,t.whave=0,t.wnext=0,be(e)},xe=function(e,t){var r;if(!e||!e.state)return ce;var n=e.state;return t<0?(r=0,t=-t):(r=1+(t>>4),t<48&&(t&=15)),t&&(t<8||t>15)?ce:(null!==n.window&&n.wbits!==t&&(n.window=null),n.wrap=r,n.wbits=t,ke(e))},_e=function(e,t){if(!e)return ce;var r=new ye;e.state=r,r.window=null;var n=xe(e,t);return n!==fe&&(e.state=null),n},Ae=!0,Pe=function(e){if(Ae){we=new Int32Array(512),ge=new Int32Array(32);for(var t=0;t<144;)e.lens[t++]=8;for(;t<256;)e.lens[t++]=9;for(;t<280;)e.lens[t++]=7;for(;t<288;)e.lens[t++]=8;for(ie(1,e.lens,0,288,we,0,e.work,{bits:9}),t=0;t<32;)e.lens[t++]=5;ie(2,e.lens,0,32,ge,0,e.work,{bits:5}),Ae=!1}e.lencode=we,e.lenbits=9,e.distcode=ge,e.distbits=5},Ie=function(e,t,r,n){var i,a=e.state;return null===a.window&&(a.wsize=1<<a.wbits,a.wnext=0,a.whave=0,a.window=new Uint8Array(a.wsize)),n>=a.wsize?(a.window.set(t.subarray(r-a.wsize,r),0),a.wnext=0,a.whave=a.wsize):((i=a.wsize-a.wnext)>n&&(i=n),a.window.set(t.subarray(r-n,r-n+i),a.wnext),(n-=i)?(a.window.set(t.subarray(r-n,r),0),a.wnext=n,a.whave=a.wsize):(a.wnext+=i,a.wnext===a.wsize&&(a.wnext=0),a.whave<a.wsize&&(a.whave+=i))),0},Ue={inflateReset:ke,inflateReset2:xe,inflateResetKeep:be,inflateInit:function(e){return _e(e,15)},inflateInit2:_e,inflate:function(e,t){var r,n,i,a,o,s,f,l,u,c,h,d,p,m,v,y,w,g,b,k,x,_,A,P,I=0,U=new Uint8Array(4),S=new Uint8Array([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]);if(!e||!e.state||!e.output||!e.input&&0!==e.avail_in)return ce;12===(r=e.state).mode&&(r.mode=13),o=e.next_out,i=e.output,f=e.avail_out,a=e.next_in,n=e.input,s=e.avail_in,l=r.hold,u=r.bits,c=s,h=f,_=fe;e:for(;;)switch(r.mode){case 1:if(0===r.wrap){r.mode=13;break}for(;u<16;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(2&r.wrap&&35615===l){r.check=0,U[0]=255&l,U[1]=l>>>8&255,r.check=F(r.check,U,2,0),l=0,u=0,r.mode=2;break}if(r.flags=0,r.head&&(r.head.done=!1),!(1&r.wrap)||(((255&l)<<8)+(l>>8))%31){e.msg=\"incorrect header check\",r.mode=30;break}if((15&l)!==me){e.msg=\"unknown compression method\",r.mode=30;break}if(u-=4,x=8+(15&(l>>>=4)),0===r.wbits)r.wbits=x;else if(x>r.wbits){e.msg=\"invalid window size\",r.mode=30;break}r.dmax=1<<r.wbits,e.adler=r.check=1,r.mode=512&l?10:12,l=0,u=0;break;case 2:for(;u<16;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(r.flags=l,(255&r.flags)!==me){e.msg=\"unknown compression method\",r.mode=30;break}if(57344&r.flags){e.msg=\"unknown header flags set\",r.mode=30;break}r.head&&(r.head.text=l>>8&1),512&r.flags&&(U[0]=255&l,U[1]=l>>>8&255,r.check=F(r.check,U,2,0)),l=0,u=0,r.mode=3;case 3:for(;u<32;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.head&&(r.head.time=l),512&r.flags&&(U[0]=255&l,U[1]=l>>>8&255,U[2]=l>>>16&255,U[3]=l>>>24&255,r.check=F(r.check,U,4,0)),l=0,u=0,r.mode=4;case 4:for(;u<16;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.head&&(r.head.xflags=255&l,r.head.os=l>>8),512&r.flags&&(U[0]=255&l,U[1]=l>>>8&255,r.check=F(r.check,U,2,0)),l=0,u=0,r.mode=5;case 5:if(1024&r.flags){for(;u<16;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.length=l,r.head&&(r.head.extra_len=l),512&r.flags&&(U[0]=255&l,U[1]=l>>>8&255,r.check=F(r.check,U,2,0)),l=0,u=0}else r.head&&(r.head.extra=null);r.mode=6;case 6:if(1024&r.flags&&((d=r.length)>s&&(d=s),d&&(r.head&&(x=r.head.extra_len-r.length,r.head.extra||(r.head.extra=new Uint8Array(r.head.extra_len)),r.head.extra.set(n.subarray(a,a+d),x)),512&r.flags&&(r.check=F(r.check,n,d,a)),s-=d,a+=d,r.length-=d),r.length))break e;r.length=0,r.mode=7;case 7:if(2048&r.flags){if(0===s)break e;d=0;do{x=n[a+d++],r.head&&x&&r.length<65536&&(r.head.name+=String.fromCharCode(x))}while(x&&d<s);if(512&r.flags&&(r.check=F(r.check,n,d,a)),s-=d,a+=d,x)break e}else r.head&&(r.head.name=null);r.length=0,r.mode=8;case 8:if(4096&r.flags){if(0===s)break e;d=0;do{x=n[a+d++],r.head&&x&&r.length<65536&&(r.head.comment+=String.fromCharCode(x))}while(x&&d<s);if(512&r.flags&&(r.check=F(r.check,n,d,a)),s-=d,a+=d,x)break e}else r.head&&(r.head.comment=null);r.mode=9;case 9:if(512&r.flags){for(;u<16;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(l!==(65535&r.check)){e.msg=\"header crc mismatch\",r.mode=30;break}l=0,u=0}r.head&&(r.head.hcrc=r.flags>>9&1,r.head.done=!0),e.adler=r.check=0,r.mode=12;break;case 10:for(;u<32;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}e.adler=r.check=ve(l),l=0,u=0,r.mode=11;case 11:if(0===r.havedict)return e.next_out=o,e.avail_out=f,e.next_in=a,e.avail_in=s,r.hold=l,r.bits=u,ue;e.adler=r.check=1,r.mode=12;case 12:if(t===oe||t===se)break e;case 13:if(r.last){l>>>=7&u,u-=7&u,r.mode=27;break}for(;u<3;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}switch(r.last=1&l,u-=1,3&(l>>>=1)){case 0:r.mode=14;break;case 1:if(Pe(r),r.mode=20,t===se){l>>>=2,u-=2;break e}break;case 2:r.mode=17;break;case 3:e.msg=\"invalid block type\",r.mode=30}l>>>=2,u-=2;break;case 14:for(l>>>=7&u,u-=7&u;u<32;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if((65535&l)!=(l>>>16^65535)){e.msg=\"invalid stored block lengths\",r.mode=30;break}if(r.length=65535&l,l=0,u=0,r.mode=15,t===se)break e;case 15:r.mode=16;case 16:if(d=r.length){if(d>s&&(d=s),d>f&&(d=f),0===d)break e;i.set(n.subarray(a,a+d),o),s-=d,a+=d,f-=d,o+=d,r.length-=d;break}r.mode=12;break;case 17:for(;u<14;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(r.nlen=257+(31&l),l>>>=5,u-=5,r.ndist=1+(31&l),l>>>=5,u-=5,r.ncode=4+(15&l),l>>>=4,u-=4,r.nlen>286||r.ndist>30){e.msg=\"too many length or distance symbols\",r.mode=30;break}r.have=0,r.mode=18;case 18:for(;r.have<r.ncode;){for(;u<3;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.lens[S[r.have++]]=7&l,l>>>=3,u-=3}for(;r.have<19;)r.lens[S[r.have++]]=0;if(r.lencode=r.lendyn,r.lenbits=7,A={bits:r.lenbits},_=ie(0,r.lens,0,19,r.lencode,0,r.work,A),r.lenbits=A.bits,_){e.msg=\"invalid code lengths set\",r.mode=30;break}r.have=0,r.mode=19;case 19:for(;r.have<r.nlen+r.ndist;){for(;y=(I=r.lencode[l&(1<<r.lenbits)-1])>>>16&255,w=65535&I,!((v=I>>>24)<=u);){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(w<16)l>>>=v,u-=v,r.lens[r.have++]=w;else{if(16===w){for(P=v+2;u<P;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(l>>>=v,u-=v,0===r.have){e.msg=\"invalid bit length repeat\",r.mode=30;break}x=r.lens[r.have-1],d=3+(3&l),l>>>=2,u-=2}else if(17===w){for(P=v+3;u<P;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}u-=v,x=0,d=3+(7&(l>>>=v)),l>>>=3,u-=3}else{for(P=v+7;u<P;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}u-=v,x=0,d=11+(127&(l>>>=v)),l>>>=7,u-=7}if(r.have+d>r.nlen+r.ndist){e.msg=\"invalid bit length repeat\",r.mode=30;break}for(;d--;)r.lens[r.have++]=x}}if(30===r.mode)break;if(0===r.lens[256]){e.msg=\"invalid code -- missing end-of-block\",r.mode=30;break}if(r.lenbits=9,A={bits:r.lenbits},_=ie(1,r.lens,0,r.nlen,r.lencode,0,r.work,A),r.lenbits=A.bits,_){e.msg=\"invalid literal/lengths set\",r.mode=30;break}if(r.distbits=6,r.distcode=r.distdyn,A={bits:r.distbits},_=ie(2,r.lens,r.nlen,r.ndist,r.distcode,0,r.work,A),r.distbits=A.bits,_){e.msg=\"invalid distances set\",r.mode=30;break}if(r.mode=20,t===se)break e;case 20:r.mode=21;case 21:if(s>=6&&f>=258){e.next_out=o,e.avail_out=f,e.next_in=a,e.avail_in=s,r.hold=l,r.bits=u,$(e,h),o=e.next_out,i=e.output,f=e.avail_out,a=e.next_in,n=e.input,s=e.avail_in,l=r.hold,u=r.bits,12===r.mode&&(r.back=-1);break}for(r.back=0;y=(I=r.lencode[l&(1<<r.lenbits)-1])>>>16&255,w=65535&I,!((v=I>>>24)<=u);){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(y&&0==(240&y)){for(g=v,b=y,k=w;y=(I=r.lencode[k+((l&(1<<g+b)-1)>>g)])>>>16&255,w=65535&I,!(g+(v=I>>>24)<=u);){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}l>>>=g,u-=g,r.back+=g}if(l>>>=v,u-=v,r.back+=v,r.length=w,0===y){r.mode=26;break}if(32&y){r.back=-1,r.mode=12;break}if(64&y){e.msg=\"invalid literal/length code\",r.mode=30;break}r.extra=15&y,r.mode=22;case 22:if(r.extra){for(P=r.extra;u<P;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.length+=l&(1<<r.extra)-1,l>>>=r.extra,u-=r.extra,r.back+=r.extra}r.was=r.length,r.mode=23;case 23:for(;y=(I=r.distcode[l&(1<<r.distbits)-1])>>>16&255,w=65535&I,!((v=I>>>24)<=u);){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(0==(240&y)){for(g=v,b=y,k=w;y=(I=r.distcode[k+((l&(1<<g+b)-1)>>g)])>>>16&255,w=65535&I,!(g+(v=I>>>24)<=u);){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}l>>>=g,u-=g,r.back+=g}if(l>>>=v,u-=v,r.back+=v,64&y){e.msg=\"invalid distance code\",r.mode=30;break}r.offset=w,r.extra=15&y,r.mode=24;case 24:if(r.extra){for(P=r.extra;u<P;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}r.offset+=l&(1<<r.extra)-1,l>>>=r.extra,u-=r.extra,r.back+=r.extra}if(r.offset>r.dmax){e.msg=\"invalid distance too far back\",r.mode=30;break}r.mode=25;case 25:if(0===f)break e;if(d=h-f,r.offset>d){if((d=r.offset-d)>r.whave&&r.sane){e.msg=\"invalid distance too far back\",r.mode=30;break}d>r.wnext?(d-=r.wnext,p=r.wsize-d):p=r.wnext-d,d>r.length&&(d=r.length),m=r.window}else m=i,p=o-r.offset,d=r.length;d>f&&(d=f),f-=d,r.length-=d;do{i[o++]=m[p++]}while(--d);0===r.length&&(r.mode=21);break;case 26:if(0===f)break e;i[o++]=r.length,f--,r.mode=21;break;case 27:if(r.wrap){for(;u<32;){if(0===s)break e;s--,l|=n[a++]<<u,u+=8}if(h-=f,e.total_out+=h,r.total+=h,h&&(e.adler=r.check=r.flags?F(r.check,i,h,o-h):V(r.check,i,h,o-h)),h=f,(r.flags?l:ve(l))!==r.check){e.msg=\"incorrect data check\",r.mode=30;break}l=0,u=0}r.mode=28;case 28:if(r.wrap&&r.flags){for(;u<32;){if(0===s)break e;s--,l+=n[a++]<<u,u+=8}if(l!==(4294967295&r.total)){e.msg=\"incorrect length check\",r.mode=30;break}l=0,u=0}r.mode=29;case 29:_=le;break e;case 30:_=he;break e;case 31:return de;default:return ce}return e.next_out=o,e.avail_out=f,e.next_in=a,e.avail_in=s,r.hold=l,r.bits=u,(r.wsize||h!==e.avail_out&&r.mode<30&&(r.mode<27||t!==ae))&&Ie(e,e.output,e.next_out,h-e.avail_out),c-=e.avail_in,h-=e.avail_out,e.total_in+=c,e.total_out+=h,r.total+=h,r.wrap&&h&&(e.adler=r.check=r.flags?F(r.check,i,h,e.next_out-h):V(r.check,i,h,e.next_out-h)),e.data_type=r.bits+(r.last?64:0)+(12===r.mode?128:0)+(20===r.mode||15===r.mode?256:0),(0===c&&0===h||t===ae)&&_===fe&&(_=pe),_},inflateEnd:function(e){if(!e||!e.state)return ce;var t=e.state;return t.window&&(t.window=null),e.state=null,fe},inflateGetHeader:function(e,t){if(!e||!e.state)return ce;var r=e.state;return 0==(2&r.wrap)?ce:(r.head=t,t.done=!1,fe)},inflateSetDictionary:function(e,t){var r,n=t.length;return e&&e.state?0!==(r=e.state).wrap&&11!==r.mode?ce:11===r.mode&&V(1,t,n,0)!==r.check?he:Ie(e,t,n,n)?(r.mode=31,de):(r.havedict=1,fe):ce},inflateInfo:\"pako inflate (from Nodeca project)\"};var Se=function(){this.text=0,this.time=0,this.xflags=0,this.os=0,this.extra=null,this.extra_len=0,this.name=\"\",this.comment=\"\",this.hcrc=0,this.done=!1},Te=Object.prototype.toString,De=j.Z_NO_FLUSH,Ee=j.Z_FINISH,Be=j.Z_OK,Oe=j.Z_STREAM_END,Me=j.Z_NEED_DICT,Ce=j.Z_STREAM_ERROR,Le=j.Z_DATA_ERROR,Re=j.Z_MEM_ERROR;function Ve(e){this.options=Z({chunkSize:65536,windowBits:15,to:\"\"},e||{});var t=this.options;t.raw&&t.windowBits>=0&&t.windowBits<16&&(t.windowBits=-t.windowBits,0===t.windowBits&&(t.windowBits=-15)),!(t.windowBits>=0&&t.windowBits<16)||e&&e.windowBits||(t.windowBits+=32),t.windowBits>15&&t.windowBits<48&&0==(15&t.windowBits)&&(t.windowBits|=15),this.err=0,this.msg=\"\",this.ended=!1,this.chunks=[],this.strm=new Q,this.strm.avail_out=0;var r=Ue.inflateInit2(this.strm,t.windowBits);if(r!==Be)throw new Error(z[r]);if(this.header=new Se,Ue.inflateGetHeader(this.strm,this.header),t.dictionary&&(\"string\"==typeof t.dictionary?t.dictionary=W(t.dictionary):\"[object ArrayBuffer]\"===Te.call(t.dictionary)&&(t.dictionary=new Uint8Array(t.dictionary)),t.raw&&(r=Ue.inflateSetDictionary(this.strm,t.dictionary))!==Be))throw new Error(z[r])}function Ge(e,t){var r=new Ve(t);if(r.push(e),r.err)throw r.msg||z[r.err];return r.result}Ve.prototype.push=function(e,t){var r,n,i,a=this.strm,o=this.options.chunkSize,s=this.options.dictionary;if(this.ended)return!1;for(n=t===~~t?t:!0===t?Ee:De,\"[object ArrayBuffer]\"===Te.call(e)?a.input=new Uint8Array(e):a.input=e,a.next_in=0,a.avail_in=a.input.length;;){for(0===a.avail_out&&(a.output=new Uint8Array(o),a.next_out=0,a.avail_out=o),(r=Ue.inflate(a,n))===Me&&s&&((r=Ue.inflateSetDictionary(a,s))===Be?r=Ue.inflate(a,n):r===Le&&(r=Me));a.avail_in>0&&r===Oe&&a.state.wrap>0&&0!==e[a.next_in];)Ue.inflateReset(a),r=Ue.inflate(a,n);switch(r){case Ce:case Le:case Me:case Re:return this.onEnd(r),this.ended=!0,!1}if(i=a.avail_out,a.next_out&&(0===a.avail_out||r===Oe))if(\"string\"===this.options.to){var f=J(a.output,a.next_out),l=a.next_out-f,u=q(a.output,f);a.next_out=l,a.avail_out=o-l,l&&a.output.set(a.output.subarray(f,f+l),0),this.onData(u)}else this.onData(a.output.length===a.next_out?a.output:a.output.subarray(0,a.next_out));if(r!==Be||0!==i){if(r===Oe)return r=Ue.inflateEnd(this.strm),this.onEnd(r),this.ended=!0,!0;if(0===a.avail_in)break}}return!0},Ve.prototype.onData=function(e){this.chunks.push(e)},Ve.prototype.onEnd=function(e){e===Be&&(\"string\"===this.options.to?this.result=this.chunks.join(\"\"):this.result=K(this.chunks)),this.chunks=[],this.err=e,this.msg=this.strm.msg};var Fe={Inflate:Ve,inflate:Ge,inflateRaw:function(e,t){return(t=t||{}).raw=!0,Ge(e,t)},ungzip:Ge,constants:j}.inflate;function ze(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var je=function(e){p(r,b);var t=ze(r);function r(){return u(this,r),t.apply(this,arguments)}return h(r,[{key:\"decodeBlock\",value:function(e){return Fe(new Uint8Array(e)).buffer}}]),r}(),Ne=Object.freeze({__proto__:null,default:je});function Ze(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var Ke,He=function(e){p(r,b);var t=Ze(r);function r(){return u(this,r),t.apply(this,arguments)}return h(r,[{key:\"decodeBlock\",value:function(e){for(var t=new DataView(e),r=[],n=0;n<e.byteLength;++n){var i=t.getInt8(n);if(i<0){var a=t.getUint8(n+1);i=-i;for(var o=0;o<=i;++o)r.push(a);n+=1}else{for(var s=0;s<=i;++s)r.push(t.getUint8(n+s+1));n+=i+1}}return new Uint8Array(r).buffer}}]),r}(),Ye=Object.freeze({__proto__:null,default:He}),Xe={exports:{}};Ke=Xe,\n/* Copyright 2015-2021 Esri. Licensed under the Apache License, Version 2.0 (the \"License\"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 @preserve */\nfunction(){var e,t,r,n,i,a,o,s,f,l,u,c,h,d,p,m,v=(e={defaultNoDataValue:-34027999387901484e22,decode:function(a,o){var s=(o=o||{}).encodedMaskData||null===o.encodedMaskData,f=i(a,o.inputOffset||0,s),l=null!==o.noDataValue?o.noDataValue:e.defaultNoDataValue,u=t(f,o.pixelType||Float32Array,o.encodedMaskData,l,o.returnMask),c={width:f.width,height:f.height,pixelData:u.resultPixels,minValue:u.minValue,maxValue:f.pixels.maxValue,noDataValue:l};return u.resultMask&&(c.maskData=u.resultMask),o.returnEncodedMask&&f.mask&&(c.encodedMaskData=f.mask.bitset?f.mask.bitset:null),o.returnFileInfo&&(c.fileInfo=r(f),o.computeUsedBitDepths&&(c.fileInfo.bitDepths=n(f))),c}},t=function(e,t,r,n,i){var o,s,f,l=0,u=e.pixels.numBlocksX,c=e.pixels.numBlocksY,h=Math.floor(e.width/u),d=Math.floor(e.height/c),p=2*e.maxZError,m=Number.MAX_VALUE;r=r||(e.mask?e.mask.bitset:null),s=new t(e.width*e.height),i&&r&&(f=new Uint8Array(e.width*e.height));for(var v,y,w=new Float32Array(h*d),g=0;g<=c;g++){var b=g!==c?d:e.height%c;if(0!==b)for(var k=0;k<=u;k++){var x=k!==u?h:e.width%u;if(0!==x){var _,A,P,I,U=g*e.width*d+k*h,S=e.width-x,T=e.pixels.blocks[l];if(T.encoding<2?(0===T.encoding?_=T.rawData:(a(T.stuffedData,T.bitsPerPixel,T.numValidPixels,T.offset,p,w,e.pixels.maxValue),_=w),A=0):P=2===T.encoding?0:T.offset,r)for(y=0;y<b;y++){for(7&U&&(I=r[U>>3],I<<=7&U),v=0;v<x;v++)7&U||(I=r[U>>3]),128&I?(f&&(f[U]=1),m=m>(o=T.encoding<2?_[A++]:P)?o:m,s[U++]=o):(f&&(f[U]=0),s[U++]=n),I<<=1;U+=S}else if(T.encoding<2)for(y=0;y<b;y++){for(v=0;v<x;v++)m=m>(o=_[A++])?o:m,s[U++]=o;U+=S}else for(m=m>P?P:m,y=0;y<b;y++){for(v=0;v<x;v++)s[U++]=P;U+=S}if(1===T.encoding&&A!==T.numValidPixels)throw\"Block and Mask do not match\";l++}}}return{resultPixels:s,resultMask:f,minValue:m}},r=function(e){return{fileIdentifierString:e.fileIdentifierString,fileVersion:e.fileVersion,imageType:e.imageType,height:e.height,width:e.width,maxZError:e.maxZError,eofOffset:e.eofOffset,mask:e.mask?{numBlocksX:e.mask.numBlocksX,numBlocksY:e.mask.numBlocksY,numBytes:e.mask.numBytes,maxValue:e.mask.maxValue}:null,pixels:{numBlocksX:e.pixels.numBlocksX,numBlocksY:e.pixels.numBlocksY,numBytes:e.pixels.numBytes,maxValue:e.pixels.maxValue,noDataValue:e.noDataValue}}},n=function(e){for(var t=e.pixels.numBlocksX*e.pixels.numBlocksY,r={},n=0;n<t;n++){var i=e.pixels.blocks[n];0===i.encoding?r.float32=!0:1===i.encoding?r[i.bitsPerPixel]=!0:r[0]=!0}return Object.keys(r)},i=function(e,t,r){var n={},i=new Uint8Array(e,t,10);if(n.fileIdentifierString=String.fromCharCode.apply(null,i),\"CntZImage\"!==n.fileIdentifierString.trim())throw\"Unexpected file identifier string: \"+n.fileIdentifierString;t+=10;var a=new DataView(e,t,24);if(n.fileVersion=a.getInt32(0,!0),n.imageType=a.getInt32(4,!0),n.height=a.getUint32(8,!0),n.width=a.getUint32(12,!0),n.maxZError=a.getFloat64(16,!0),t+=24,!r)if(a=new DataView(e,t,16),n.mask={},n.mask.numBlocksY=a.getUint32(0,!0),n.mask.numBlocksX=a.getUint32(4,!0),n.mask.numBytes=a.getUint32(8,!0),n.mask.maxValue=a.getFloat32(12,!0),t+=16,n.mask.numBytes>0){var o=new Uint8Array(Math.ceil(n.width*n.height/8)),s=(a=new DataView(e,t,n.mask.numBytes)).getInt16(0,!0),f=2,l=0;do{if(s>0)for(;s--;)o[l++]=a.getUint8(f++);else{var u=a.getUint8(f++);for(s=-s;s--;)o[l++]=u}s=a.getInt16(f,!0),f+=2}while(f<n.mask.numBytes);if(-32768!==s||l<o.length)throw\"Unexpected end of mask RLE encoding\";n.mask.bitset=o,t+=n.mask.numBytes}else 0==(n.mask.numBytes|n.mask.numBlocksY|n.mask.maxValue)&&(n.mask.bitset=new Uint8Array(Math.ceil(n.width*n.height/8)));a=new DataView(e,t,16),n.pixels={},n.pixels.numBlocksY=a.getUint32(0,!0),n.pixels.numBlocksX=a.getUint32(4,!0),n.pixels.numBytes=a.getUint32(8,!0),n.pixels.maxValue=a.getFloat32(12,!0),t+=16;var c=n.pixels.numBlocksX,h=n.pixels.numBlocksY,d=c+(n.width%c>0?1:0),p=h+(n.height%h>0?1:0);n.pixels.blocks=new Array(d*p);for(var m=0,v=0;v<p;v++)for(var y=0;y<d;y++){var w=0,g=e.byteLength-t;a=new DataView(e,t,Math.min(10,g));var b={};n.pixels.blocks[m++]=b;var k=a.getUint8(0);if(w++,b.encoding=63&k,b.encoding>3)throw\"Invalid block encoding (\"+b.encoding+\")\";if(2!==b.encoding){if(0!==k&&2!==k){if(k>>=6,b.offsetType=k,2===k)b.offset=a.getInt8(1),w++;else if(1===k)b.offset=a.getInt16(1,!0),w+=2;else{if(0!==k)throw\"Invalid block offset type\";b.offset=a.getFloat32(1,!0),w+=4}if(1===b.encoding)if(k=a.getUint8(w),w++,b.bitsPerPixel=63&k,k>>=6,b.numValidPixelsType=k,2===k)b.numValidPixels=a.getUint8(w),w++;else if(1===k)b.numValidPixels=a.getUint16(w,!0),w+=2;else{if(0!==k)throw\"Invalid valid pixel count type\";b.numValidPixels=a.getUint32(w,!0),w+=4}}var x;if(t+=w,3!==b.encoding)if(0===b.encoding){var _=(n.pixels.numBytes-1)/4;if(_!==Math.floor(_))throw\"uncompressed block has invalid length\";x=new ArrayBuffer(4*_),new Uint8Array(x).set(new Uint8Array(e,t,4*_));var A=new Float32Array(x);b.rawData=A,t+=4*_}else if(1===b.encoding){var P=Math.ceil(b.numValidPixels*b.bitsPerPixel/8),I=Math.ceil(P/4);x=new ArrayBuffer(4*I),new Uint8Array(x).set(new Uint8Array(e,t,P)),b.stuffedData=new Uint32Array(x),t+=P}}else t++}return n.eofOffset=t,n},a=function(e,t,r,n,i,a,o){var s,f,l,u=(1<<t)-1,c=0,h=0,d=Math.ceil((o-n)/i),p=4*e.length-Math.ceil(t*r/8);for(e[e.length-1]<<=8*p,s=0;s<r;s++){if(0===h&&(l=e[c++],h=32),h>=t)f=l>>>h-t&u,h-=t;else{var m=t-h;f=(l&u)<<m&u,f+=(l=e[c++])>>>(h=32-m)}a[s]=f<d?n+f*i:o}return a},e),y=(o=function(e,t,r,n,i,a,o,s){var f,l,u,c,h,d=(1<<r)-1,p=0,m=0,v=4*e.length-Math.ceil(r*n/8);if(e[e.length-1]<<=8*v,i)for(f=0;f<n;f++)0===m&&(u=e[p++],m=32),m>=r?(l=u>>>m-r&d,m-=r):(l=(u&d)<<(c=r-m)&d,l+=(u=e[p++])>>>(m=32-c)),t[f]=i[l];else for(h=Math.ceil((s-a)/o),f=0;f<n;f++)0===m&&(u=e[p++],m=32),m>=r?(l=u>>>m-r&d,m-=r):(l=(u&d)<<(c=r-m)&d,l+=(u=e[p++])>>>(m=32-c)),t[f]=l<h?a+l*o:s},s=function(e,t,r,n,i,a){var o,s=(1<<t)-1,f=0,l=0,u=0,c=0,h=0,d=[],p=4*e.length-Math.ceil(t*r/8);e[e.length-1]<<=8*p;var m=Math.ceil((a-n)/i);for(l=0;l<r;l++)0===c&&(o=e[f++],c=32),c>=t?(h=o>>>c-t&s,c-=t):(h=(o&s)<<(u=t-c)&s,h+=(o=e[f++])>>>(c=32-u)),d[l]=h<m?n+h*i:a;return d.unshift(n),d},f=function(e,t,r,n,i,a,o,s){var f,l,u,c,h=(1<<r)-1,d=0,p=0,m=0;if(i)for(f=0;f<n;f++)0===p&&(u=e[d++],p=32,m=0),p>=r?(l=u>>>m&h,p-=r,m+=r):(l=u>>>m&h,p=32-(c=r-p),l|=((u=e[d++])&(1<<c)-1)<<r-c,m=c),t[f]=i[l];else{var v=Math.ceil((s-a)/o);for(f=0;f<n;f++)0===p&&(u=e[d++],p=32,m=0),p>=r?(l=u>>>m&h,p-=r,m+=r):(l=u>>>m&h,p=32-(c=r-p),l|=((u=e[d++])&(1<<c)-1)<<r-c,m=c),t[f]=l<v?a+l*o:s}return t},l=function(e,t,r,n,i,a){var o,s=(1<<t)-1,f=0,l=0,u=0,c=0,h=0,d=0,p=[],m=Math.ceil((a-n)/i);for(l=0;l<r;l++)0===c&&(o=e[f++],c=32,d=0),c>=t?(h=o>>>d&s,c-=t,d+=t):(h=o>>>d&s,c=32-(u=t-c),h|=((o=e[f++])&(1<<u)-1)<<t-u,d=u),p[l]=h<m?n+h*i:a;return p.unshift(n),p},u=function(e,t,r,n){var i,a,o,s,f=(1<<r)-1,l=0,u=0,c=4*e.length-Math.ceil(r*n/8);for(e[e.length-1]<<=8*c,i=0;i<n;i++)0===u&&(o=e[l++],u=32),u>=r?(a=o>>>u-r&f,u-=r):(a=(o&f)<<(s=r-u)&f,a+=(o=e[l++])>>>(u=32-s)),t[i]=a;return t},c=function(e,t,r,n){var i,a,o,s,f=(1<<r)-1,l=0,u=0,c=0;for(i=0;i<n;i++)0===u&&(o=e[l++],u=32,c=0),u>=r?(a=o>>>c&f,u-=r,c+=r):(a=o>>>c&f,u=32-(s=r-u),a|=((o=e[l++])&(1<<s)-1)<<r-s,c=s),t[i]=a;return t},h={HUFFMAN_LUT_BITS_MAX:12,computeChecksumFletcher32:function(e){for(var t=65535,r=65535,n=e.length,i=Math.floor(n/2),a=0;i;){var o=i>=359?359:i;i-=o;do{t+=e[a++]<<8,r+=t+=e[a++]}while(--o);t=(65535&t)+(t>>>16),r=(65535&r)+(r>>>16)}return 1&n&&(r+=t+=e[a]<<8),((r=(65535&r)+(r>>>16))<<16|(t=(65535&t)+(t>>>16)))>>>0},readHeaderInfo:function(e,t){var r=t.ptr,n=new Uint8Array(e,r,6),i={};if(i.fileIdentifierString=String.fromCharCode.apply(null,n),0!==i.fileIdentifierString.lastIndexOf(\"Lerc2\",0))throw\"Unexpected file identifier string (expect Lerc2 ): \"+i.fileIdentifierString;r+=6;var a,o=new DataView(e,r,8),s=o.getInt32(0,!0);if(i.fileVersion=s,r+=4,s>=3&&(i.checksum=o.getUint32(4,!0),r+=4),o=new DataView(e,r,12),i.height=o.getUint32(0,!0),i.width=o.getUint32(4,!0),r+=8,s>=4?(i.numDims=o.getUint32(8,!0),r+=4):i.numDims=1,o=new DataView(e,r,40),i.numValidPixel=o.getUint32(0,!0),i.microBlockSize=o.getInt32(4,!0),i.blobSize=o.getInt32(8,!0),i.imageType=o.getInt32(12,!0),i.maxZError=o.getFloat64(16,!0),i.zMin=o.getFloat64(24,!0),i.zMax=o.getFloat64(32,!0),r+=40,t.headerInfo=i,t.ptr=r,s>=3&&(a=s>=4?52:48,this.computeChecksumFletcher32(new Uint8Array(e,r-a,i.blobSize-14))!==i.checksum))throw\"Checksum failed.\";return!0},checkMinMaxRanges:function(e,t){var r=t.headerInfo,n=this.getDataTypeArray(r.imageType),i=r.numDims*this.getDataTypeSize(r.imageType),a=this.readSubArray(e,t.ptr,n,i),o=this.readSubArray(e,t.ptr+i,n,i);t.ptr+=2*i;var s,f=!0;for(s=0;s<r.numDims;s++)if(a[s]!==o[s]){f=!1;break}return r.minValues=a,r.maxValues=o,f},readSubArray:function(e,t,r,n){var i;if(r===Uint8Array)i=new Uint8Array(e,t,n);else{var a=new ArrayBuffer(n);new Uint8Array(a).set(new Uint8Array(e,t,n)),i=new r(a)}return i},readMask:function(e,t){var r,n,i=t.ptr,a=t.headerInfo,o=a.width*a.height,s=a.numValidPixel,f=new DataView(e,i,4),l={};if(l.numBytes=f.getUint32(0,!0),i+=4,(0===s||o===s)&&0!==l.numBytes)throw\"invalid mask\";if(0===s)r=new Uint8Array(Math.ceil(o/8)),l.bitset=r,n=new Uint8Array(o),t.pixels.resultMask=n,i+=l.numBytes;else if(l.numBytes>0){r=new Uint8Array(Math.ceil(o/8));var u=(f=new DataView(e,i,l.numBytes)).getInt16(0,!0),c=2,h=0,d=0;do{if(u>0)for(;u--;)r[h++]=f.getUint8(c++);else for(d=f.getUint8(c++),u=-u;u--;)r[h++]=d;u=f.getInt16(c,!0),c+=2}while(c<l.numBytes);if(-32768!==u||h<r.length)throw\"Unexpected end of mask RLE encoding\";n=new Uint8Array(o);var p=0,m=0;for(m=0;m<o;m++)7&m?(p=r[m>>3],p<<=7&m):p=r[m>>3],128&p&&(n[m]=1);t.pixels.resultMask=n,l.bitset=r,i+=l.numBytes}return t.ptr=i,t.mask=l,!0},readDataOneSweep:function(e,t,r,n){var i,a=t.ptr,o=t.headerInfo,s=o.numDims,f=o.width*o.height,l=o.imageType,u=o.numValidPixel*h.getDataTypeSize(l)*s,c=t.pixels.resultMask;if(r===Uint8Array)i=new Uint8Array(e,a,u);else{var d=new ArrayBuffer(u);new Uint8Array(d).set(new Uint8Array(e,a,u)),i=new r(d)}if(i.length===f*s)t.pixels.resultPixels=n?h.swapDimensionOrder(i,f,s,r,!0):i;else{t.pixels.resultPixels=new r(f*s);var p=0,m=0,v=0,y=0;if(s>1){if(n){for(m=0;m<f;m++)if(c[m])for(y=m,v=0;v<s;v++,y+=f)t.pixels.resultPixels[y]=i[p++]}else for(m=0;m<f;m++)if(c[m])for(y=m*s,v=0;v<s;v++)t.pixels.resultPixels[y+v]=i[p++]}else for(m=0;m<f;m++)c[m]&&(t.pixels.resultPixels[m]=i[p++])}return a+=u,t.ptr=a,!0},readHuffmanTree:function(e,t){var r=this.HUFFMAN_LUT_BITS_MAX,n=new DataView(e,t.ptr,16);if(t.ptr+=16,n.getInt32(0,!0)<2)throw\"unsupported Huffman version\";var i=n.getInt32(4,!0),a=n.getInt32(8,!0),o=n.getInt32(12,!0);if(a>=o)return!1;var s=new Uint32Array(o-a);h.decodeBits(e,t,s);var f,l,u,c,p=[];for(f=a;f<o;f++)p[l=f-(f<i?0:i)]={first:s[f-a],second:null};var m=e.byteLength-t.ptr,v=Math.ceil(m/4),y=new ArrayBuffer(4*v);new Uint8Array(y).set(new Uint8Array(e,t.ptr,m));var w,g=new Uint32Array(y),b=0,k=0;for(w=g[0],f=a;f<o;f++)(c=p[l=f-(f<i?0:i)].first)>0&&(p[l].second=w<<b>>>32-c,32-b>=c?32===(b+=c)&&(b=0,w=g[++k]):(b+=c-32,w=g[++k],p[l].second|=w>>>32-b));var x=0,_=0,A=new d;for(f=0;f<p.length;f++)void 0!==p[f]&&(x=Math.max(x,p[f].first));_=x>=r?r:x;var P,I,U,S,T,D=[];for(f=a;f<o;f++)if((c=p[l=f-(f<i?0:i)].first)>0)if(P=[c,l],c<=_)for(I=p[l].second<<_-c,U=1<<_-c,u=0;u<U;u++)D[I|u]=P;else for(I=p[l].second,T=A,S=c-1;S>=0;S--)I>>>S&1?(T.right||(T.right=new d),T=T.right):(T.left||(T.left=new d),T=T.left),0!==S||T.val||(T.val=P[1]);return{decodeLut:D,numBitsLUTQick:_,numBitsLUT:x,tree:A,stuffedData:g,srcPtr:k,bitPos:b}},readHuffman:function(e,t,r,n){var i,a,o,s,f,l,u,c,d,p=t.headerInfo.numDims,m=t.headerInfo.height,v=t.headerInfo.width,y=v*m,w=this.readHuffmanTree(e,t),g=w.decodeLut,b=w.tree,k=w.stuffedData,x=w.srcPtr,_=w.bitPos,A=w.numBitsLUTQick,P=w.numBitsLUT,I=0===t.headerInfo.imageType?128:0,U=t.pixels.resultMask,S=0;_>0&&(x++,_=0);var T,D=k[x],E=1===t.encodeMode,B=new r(y*p),O=B;if(p<2||E){for(T=0;T<p;T++)if(p>1&&(O=new r(B.buffer,y*T,y),S=0),t.headerInfo.numValidPixel===v*m)for(c=0,l=0;l<m;l++)for(u=0;u<v;u++,c++){if(a=0,f=s=D<<_>>>32-A,32-_<A&&(f=s|=k[x+1]>>>64-_-A),g[f])a=g[f][1],_+=g[f][0];else for(f=s=D<<_>>>32-P,32-_<P&&(f=s|=k[x+1]>>>64-_-P),i=b,d=0;d<P;d++)if(!(i=s>>>P-d-1&1?i.right:i.left).left&&!i.right){a=i.val,_=_+d+1;break}_>=32&&(_-=32,D=k[++x]),o=a-I,E?(o+=u>0?S:l>0?O[c-v]:S,o&=255,O[c]=o,S=o):O[c]=o}else for(c=0,l=0;l<m;l++)for(u=0;u<v;u++,c++)if(U[c]){if(a=0,f=s=D<<_>>>32-A,32-_<A&&(f=s|=k[x+1]>>>64-_-A),g[f])a=g[f][1],_+=g[f][0];else for(f=s=D<<_>>>32-P,32-_<P&&(f=s|=k[x+1]>>>64-_-P),i=b,d=0;d<P;d++)if(!(i=s>>>P-d-1&1?i.right:i.left).left&&!i.right){a=i.val,_=_+d+1;break}_>=32&&(_-=32,D=k[++x]),o=a-I,E?(u>0&&U[c-1]?o+=S:l>0&&U[c-v]?o+=O[c-v]:o+=S,o&=255,O[c]=o,S=o):O[c]=o}}else for(c=0,l=0;l<m;l++)for(u=0;u<v;u++)if(c=l*v+u,!U||U[c])for(T=0;T<p;T++,c+=y){if(a=0,f=s=D<<_>>>32-A,32-_<A&&(f=s|=k[x+1]>>>64-_-A),g[f])a=g[f][1],_+=g[f][0];else for(f=s=D<<_>>>32-P,32-_<P&&(f=s|=k[x+1]>>>64-_-P),i=b,d=0;d<P;d++)if(!(i=s>>>P-d-1&1?i.right:i.left).left&&!i.right){a=i.val,_=_+d+1;break}_>=32&&(_-=32,D=k[++x]),o=a-I,O[c]=o}t.ptr=t.ptr+4*(x+1)+(_>0?4:0),t.pixels.resultPixels=B,p>1&&!n&&(t.pixels.resultPixels=h.swapDimensionOrder(B,y,p,r))},decodeBits:function(e,t,r,n,i){var a=t.headerInfo,h=a.fileVersion,d=0,p=e.byteLength-t.ptr>=5?5:e.byteLength-t.ptr,m=new DataView(e,t.ptr,p),v=m.getUint8(0);d++;var y=v>>6,w=0===y?4:3-y,g=(32&v)>0,b=31&v,k=0;if(1===w)k=m.getUint8(d),d++;else if(2===w)k=m.getUint16(d,!0),d+=2;else{if(4!==w)throw\"Invalid valid pixel count type\";k=m.getUint32(d,!0),d+=4}var x,_,A,P,I,U,S,T,D,E=2*a.maxZError,B=a.numDims>1?a.maxValues[i]:a.zMax;if(g){for(t.counter.lut++,T=m.getUint8(d),d++,P=Math.ceil((T-1)*b/8),I=Math.ceil(P/4),_=new ArrayBuffer(4*I),A=new Uint8Array(_),t.ptr+=d,A.set(new Uint8Array(e,t.ptr,P)),S=new Uint32Array(_),t.ptr+=P,D=0;T-1>>>D;)D++;P=Math.ceil(k*D/8),I=Math.ceil(P/4),_=new ArrayBuffer(4*I),(A=new Uint8Array(_)).set(new Uint8Array(e,t.ptr,P)),x=new Uint32Array(_),t.ptr+=P,U=h>=3?l(S,b,T-1,n,E,B):s(S,b,T-1,n,E,B),h>=3?f(x,r,D,k,U):o(x,r,D,k,U)}else t.counter.bitstuffer++,D=b,t.ptr+=d,D>0&&(P=Math.ceil(k*D/8),I=Math.ceil(P/4),_=new ArrayBuffer(4*I),(A=new Uint8Array(_)).set(new Uint8Array(e,t.ptr,P)),x=new Uint32Array(_),t.ptr+=P,h>=3?null==n?c(x,r,D,k):f(x,r,D,k,!1,n,E,B):null==n?u(x,r,D,k):o(x,r,D,k,!1,n,E,B))},readTiles:function(e,t,r,n){var i=t.headerInfo,a=i.width,o=i.height,s=a*o,f=i.microBlockSize,l=i.imageType,u=h.getDataTypeSize(l),c=Math.ceil(a/f),d=Math.ceil(o/f);t.pixels.numBlocksY=d,t.pixels.numBlocksX=c,t.pixels.ptr=0;var p,m,v,y,w,g,b,k,x,_,A=0,P=0,I=0,U=0,S=0,T=0,D=0,E=0,B=0,O=0,M=0,C=0,L=0,R=0,V=0,G=new r(f*f),F=o%f||f,z=a%f||f,j=i.numDims,N=t.pixels.resultMask,Z=t.pixels.resultPixels,K=i.fileVersion>=5?14:15,H=i.zMax;for(I=0;I<d;I++)for(S=I!==d-1?f:F,U=0;U<c;U++)for(O=I*a*f+U*f,M=a-(T=U!==c-1?f:z),k=0;k<j;k++){if(j>1?(_=Z,O=I*a*f+U*f,Z=new r(t.pixels.resultPixels.buffer,s*k*u,s),H=i.maxValues[k]):_=null,D=e.byteLength-t.ptr,m={},V=0,E=(p=new DataView(e,t.ptr,Math.min(10,D))).getUint8(0),V++,x=i.fileVersion>=5?4&E:0,B=E>>6&255,(E>>2&K)!=(U*f>>3&K))throw\"integrity issue\";if(x&&0===k)throw\"integrity issue\";if((w=3&E)>3)throw t.ptr+=V,\"Invalid block encoding (\"+w+\")\";if(2!==w)if(0===w){if(x)throw\"integrity issue\";if(t.counter.uncompressed++,t.ptr+=V,C=(C=S*T*u)<(L=e.byteLength-t.ptr)?C:L,v=new ArrayBuffer(C%u==0?C:C+u-C%u),new Uint8Array(v).set(new Uint8Array(e,t.ptr,C)),y=new r(v),R=0,N)for(A=0;A<S;A++){for(P=0;P<T;P++)N[O]&&(Z[O]=y[R++]),O++;O+=M}else for(A=0;A<S;A++){for(P=0;P<T;P++)Z[O++]=y[R++];O+=M}t.ptr+=R*u}else if(g=h.getDataTypeUsed(x&&l<6?4:l,B),b=h.getOnePixel(m,V,g,p),V+=h.getDataTypeSize(g),3===w)if(t.ptr+=V,t.counter.constantoffset++,N)for(A=0;A<S;A++){for(P=0;P<T;P++)N[O]&&(Z[O]=x?Math.min(H,_[O]+b):b),O++;O+=M}else for(A=0;A<S;A++){for(P=0;P<T;P++)Z[O]=x?Math.min(H,_[O]+b):b,O++;O+=M}else if(t.ptr+=V,h.decodeBits(e,t,G,b,k),V=0,x)if(N)for(A=0;A<S;A++){for(P=0;P<T;P++)N[O]&&(Z[O]=G[V++]+_[O]),O++;O+=M}else for(A=0;A<S;A++){for(P=0;P<T;P++)Z[O]=G[V++]+_[O],O++;O+=M}else if(N)for(A=0;A<S;A++){for(P=0;P<T;P++)N[O]&&(Z[O]=G[V++]),O++;O+=M}else for(A=0;A<S;A++){for(P=0;P<T;P++)Z[O++]=G[V++];O+=M}else{if(x)if(N)for(A=0;A<S;A++)for(P=0;P<T;P++)N[O]&&(Z[O]=_[O]),O++;else for(A=0;A<S;A++)for(P=0;P<T;P++)Z[O]=_[O],O++;t.counter.constant++,t.ptr+=V}}j>1&&!n&&(t.pixels.resultPixels=h.swapDimensionOrder(t.pixels.resultPixels,s,j,r))},formatFileInfo:function(e){return{fileIdentifierString:e.headerInfo.fileIdentifierString,fileVersion:e.headerInfo.fileVersion,imageType:e.headerInfo.imageType,height:e.headerInfo.height,width:e.headerInfo.width,numValidPixel:e.headerInfo.numValidPixel,microBlockSize:e.headerInfo.microBlockSize,blobSize:e.headerInfo.blobSize,maxZError:e.headerInfo.maxZError,pixelType:h.getPixelType(e.headerInfo.imageType),eofOffset:e.eofOffset,mask:e.mask?{numBytes:e.mask.numBytes}:null,pixels:{numBlocksX:e.pixels.numBlocksX,numBlocksY:e.pixels.numBlocksY,maxValue:e.headerInfo.zMax,minValue:e.headerInfo.zMin,noDataValue:e.noDataValue}}},constructConstantSurface:function(e,t){var r=e.headerInfo.zMax,n=e.headerInfo.zMin,i=e.headerInfo.maxValues,a=e.headerInfo.numDims,o=e.headerInfo.height*e.headerInfo.width,s=0,f=0,l=0,u=e.pixels.resultMask,c=e.pixels.resultPixels;if(u)if(a>1){if(t)for(s=0;s<a;s++)for(l=s*o,r=i[s],f=0;f<o;f++)u[f]&&(c[l+f]=r);else for(f=0;f<o;f++)if(u[f])for(l=f*a,s=0;s<a;s++)c[l+a]=i[s]}else for(f=0;f<o;f++)u[f]&&(c[f]=r);else if(a>1&&n!==r)if(t)for(s=0;s<a;s++)for(l=s*o,r=i[s],f=0;f<o;f++)c[l+f]=r;else for(f=0;f<o;f++)for(l=f*a,s=0;s<a;s++)c[l+s]=i[s];else for(f=0;f<o*a;f++)c[f]=r},getDataTypeArray:function(e){var t;switch(e){case 0:t=Int8Array;break;case 1:t=Uint8Array;break;case 2:t=Int16Array;break;case 3:t=Uint16Array;break;case 4:t=Int32Array;break;case 5:t=Uint32Array;break;case 6:default:t=Float32Array;break;case 7:t=Float64Array}return t},getPixelType:function(e){var t;switch(e){case 0:t=\"S8\";break;case 1:t=\"U8\";break;case 2:t=\"S16\";break;case 3:t=\"U16\";break;case 4:t=\"S32\";break;case 5:t=\"U32\";break;case 6:default:t=\"F32\";break;case 7:t=\"F64\"}return t},isValidPixelValue:function(e,t){if(null==t)return!1;var r;switch(e){case 0:r=t>=-128&&t<=127;break;case 1:r=t>=0&&t<=255;break;case 2:r=t>=-32768&&t<=32767;break;case 3:r=t>=0&&t<=65536;break;case 4:r=t>=-2147483648&&t<=2147483647;break;case 5:r=t>=0&&t<=4294967296;break;case 6:r=t>=-34027999387901484e22&&t<=34027999387901484e22;break;case 7:r=t>=-17976931348623157e292&&t<=17976931348623157e292;break;default:r=!1}return r},getDataTypeSize:function(e){var t=0;switch(e){case 0:case 1:t=1;break;case 2:case 3:t=2;break;case 4:case 5:case 6:t=4;break;case 7:t=8;break;default:t=e}return t},getDataTypeUsed:function(e,t){var r=e;switch(e){case 2:case 4:r=e-t;break;case 3:case 5:r=e-2*t;break;case 6:r=0===t?e:1===t?2:1;break;case 7:r=0===t?e:e-2*t+1;break;default:r=e}return r},getOnePixel:function(e,t,r,n){var i=0;switch(r){case 0:i=n.getInt8(t);break;case 1:i=n.getUint8(t);break;case 2:i=n.getInt16(t,!0);break;case 3:i=n.getUint16(t,!0);break;case 4:i=n.getInt32(t,!0);break;case 5:i=n.getUInt32(t,!0);break;case 6:i=n.getFloat32(t,!0);break;case 7:i=n.getFloat64(t,!0);break;default:throw\"the decoder does not understand this pixel type\"}return i},swapDimensionOrder:function(e,t,r,n,i){var a=0,o=0,s=0,f=0,l=e;if(r>1)if(l=new n(t*r),i)for(a=0;a<t;a++)for(f=a,s=0;s<r;s++,f+=t)l[f]=e[o++];else for(a=0;a<t;a++)for(f=a,s=0;s<r;s++,f+=t)l[o++]=e[f];return l}},d=function(e,t,r){this.val=e,this.left=t,this.right=r},{decode:function(e,t){var r=(t=t||{}).noDataValue,n=0,i={};i.ptr=t.inputOffset||0,i.pixels={},h.readHeaderInfo(e,i);var a=i.headerInfo,o=a.fileVersion,s=h.getDataTypeArray(a.imageType);if(o>5)throw\"unsupported lerc version 2.\"+o;h.readMask(e,i),a.numValidPixel===a.width*a.height||i.pixels.resultMask||(i.pixels.resultMask=t.maskData);var f=a.width*a.height;i.pixels.resultPixels=new s(f*a.numDims),i.counter={onesweep:0,uncompressed:0,lut:0,bitstuffer:0,constant:0,constantoffset:0};var l,u=!t.returnPixelInterleavedDims;if(0!==a.numValidPixel)if(a.zMax===a.zMin)h.constructConstantSurface(i,u);else if(o>=4&&h.checkMinMaxRanges(e,i))h.constructConstantSurface(i,u);else{var c=new DataView(e,i.ptr,2),d=c.getUint8(0);if(i.ptr++,d)h.readDataOneSweep(e,i,s,u);else if(o>1&&a.imageType<=1&&Math.abs(a.maxZError-.5)<1e-5){var p=c.getUint8(1);if(i.ptr++,i.encodeMode=p,p>2||o<4&&p>1)throw\"Invalid Huffman flag \"+p;p?h.readHuffman(e,i,s,u):h.readTiles(e,i,s,u)}else h.readTiles(e,i,s,u)}i.eofOffset=i.ptr,t.inputOffset?(l=i.headerInfo.blobSize+t.inputOffset-i.ptr,Math.abs(l)>=1&&(i.eofOffset=t.inputOffset+i.headerInfo.blobSize)):(l=i.headerInfo.blobSize-i.ptr,Math.abs(l)>=1&&(i.eofOffset=i.headerInfo.blobSize));var m={width:a.width,height:a.height,pixelData:i.pixels.resultPixels,minValue:a.zMin,maxValue:a.zMax,validPixelCount:a.numValidPixel,dimCount:a.numDims,dimStats:{minValues:a.minValues,maxValues:a.maxValues},maskData:i.pixels.resultMask};if(i.pixels.resultMask&&h.isValidPixelValue(a.imageType,r)){var v=i.pixels.resultMask;for(n=0;n<f;n++)v[n]||(m.pixelData[n]=r);m.noDataValue=r}return i.noDataValue=r,t.returnFileInfo&&(m.fileInfo=h.formatFileInfo(i)),m},getBandCount:function(e){for(var t=0,r=0,n={ptr:0,pixels:{}};r<e.byteLength-58;)h.readHeaderInfo(e,n),r+=n.headerInfo.blobSize,t++,n.ptr=r;return t}}),w=(p=new ArrayBuffer(4),m=new Uint8Array(p),new Uint32Array(p)[0]=1,1===m[0]),g={decode:function(e,t){if(!w)throw\"Big endian system is not supported.\";var r,n,i=(t=t||{}).inputOffset||0,a=new Uint8Array(e,i,10),o=String.fromCharCode.apply(null,a);if(\"CntZImage\"===o.trim())r=v,n=1;else{if(\"Lerc2\"!==o.substring(0,5))throw\"Unexpected file identifier string: \"+o;r=y,n=2}for(var s,f,l,u,c,h,d=0,p=e.byteLength-10,m=[],g={width:0,height:0,pixels:[],pixelType:t.pixelType,mask:null,statistics:[]},b=0;i<p;){var k=r.decode(e,{inputOffset:i,encodedMaskData:s,maskData:l,returnMask:0===d,returnEncodedMask:0===d,returnFileInfo:!0,returnPixelInterleavedDims:t.returnPixelInterleavedDims,pixelType:t.pixelType||null,noDataValue:t.noDataValue||null});i=k.fileInfo.eofOffset,l=k.maskData,0===d&&(s=k.encodedMaskData,g.width=k.width,g.height=k.height,g.dimCount=k.dimCount||1,g.pixelType=k.pixelType||k.fileInfo.pixelType,g.mask=l),n>1&&(l&&m.push(l),k.fileInfo.mask&&k.fileInfo.mask.numBytes>0&&b++),d++,g.pixels.push(k.pixelData),g.statistics.push({minValue:k.minValue,maxValue:k.maxValue,noDataValue:k.noDataValue,dimStats:k.dimStats})}if(n>1&&b>1){for(h=g.width*g.height,g.bandMasks=m,(l=new Uint8Array(h)).set(m[0]),u=1;u<m.length;u++)for(f=m[u],c=0;c<h;c++)l[c]=l[c]&f[c];g.maskData=l}return g}};Ke.exports?Ke.exports=g:this.Lerc=g}();var We=Xe.exports,qe={315:\"Artist\",258:\"BitsPerSample\",265:\"CellLength\",264:\"CellWidth\",320:\"ColorMap\",259:\"Compression\",33432:\"Copyright\",306:\"DateTime\",338:\"ExtraSamples\",266:\"FillOrder\",289:\"FreeByteCounts\",288:\"FreeOffsets\",291:\"GrayResponseCurve\",290:\"GrayResponseUnit\",316:\"HostComputer\",270:\"ImageDescription\",257:\"ImageLength\",256:\"ImageWidth\",271:\"Make\",281:\"MaxSampleValue\",280:\"MinSampleValue\",272:\"Model\",254:\"NewSubfileType\",274:\"Orientation\",262:\"PhotometricInterpretation\",284:\"PlanarConfiguration\",296:\"ResolutionUnit\",278:\"RowsPerStrip\",277:\"SamplesPerPixel\",305:\"Software\",279:\"StripByteCounts\",273:\"StripOffsets\",255:\"SubfileType\",263:\"Threshholding\",282:\"XResolution\",283:\"YResolution\",326:\"BadFaxLines\",327:\"CleanFaxData\",343:\"ClipPath\",328:\"ConsecutiveBadFaxLines\",433:\"Decode\",434:\"DefaultImageColor\",269:\"DocumentName\",336:\"DotRange\",321:\"HalftoneHints\",346:\"Indexed\",347:\"JPEGTables\",285:\"PageName\",297:\"PageNumber\",317:\"Predictor\",319:\"PrimaryChromaticities\",532:\"ReferenceBlackWhite\",339:\"SampleFormat\",340:\"SMinSampleValue\",341:\"SMaxSampleValue\",559:\"StripRowCounts\",330:\"SubIFDs\",292:\"T4Options\",293:\"T6Options\",325:\"TileByteCounts\",323:\"TileLength\",324:\"TileOffsets\",322:\"TileWidth\",301:\"TransferFunction\",318:\"WhitePoint\",344:\"XClipPathUnits\",286:\"XPosition\",529:\"YCbCrCoefficients\",531:\"YCbCrPositioning\",530:\"YCbCrSubSampling\",345:\"YClipPathUnits\",287:\"YPosition\",37378:\"ApertureValue\",40961:\"ColorSpace\",36868:\"DateTimeDigitized\",36867:\"DateTimeOriginal\",34665:\"Exif IFD\",36864:\"ExifVersion\",33434:\"ExposureTime\",41728:\"FileSource\",37385:\"Flash\",40960:\"FlashpixVersion\",33437:\"FNumber\",42016:\"ImageUniqueID\",37384:\"LightSource\",37500:\"MakerNote\",37377:\"ShutterSpeedValue\",37510:\"UserComment\",33723:\"IPTC\",34675:\"ICC Profile\",700:\"XMP\",42112:\"GDAL_METADATA\",42113:\"GDAL_NODATA\",34377:\"Photoshop\",33550:\"ModelPixelScale\",33922:\"ModelTiepoint\",34264:\"ModelTransformation\",34735:\"GeoKeyDirectory\",34736:\"GeoDoubleParams\",34737:\"GeoAsciiParams\",50674:\"LercParameters\"},Je={};for(var Qe in qe)qe.hasOwnProperty(Qe)&&(Je[qe[Qe]]=parseInt(Qe,10));Je.BitsPerSample,Je.ExtraSamples,Je.SampleFormat,Je.StripByteCounts,Je.StripOffsets,Je.StripRowCounts,Je.TileByteCounts,Je.TileOffsets,Je.SubIFDs;var $e={1:\"BYTE\",2:\"ASCII\",3:\"SHORT\",4:\"LONG\",5:\"RATIONAL\",6:\"SBYTE\",7:\"UNDEFINED\",8:\"SSHORT\",9:\"SLONG\",10:\"SRATIONAL\",11:\"FLOAT\",12:\"DOUBLE\",13:\"IFD\",16:\"LONG8\",17:\"SLONG8\",18:\"IFD8\"},et={};for(var tt in $e)$e.hasOwnProperty(tt)&&(et[$e[tt]]=parseInt(tt,10));var rt=1,nt=0,it=1,at={1024:\"GTModelTypeGeoKey\",1025:\"GTRasterTypeGeoKey\",1026:\"GTCitationGeoKey\",2048:\"GeographicTypeGeoKey\",2049:\"GeogCitationGeoKey\",2050:\"GeogGeodeticDatumGeoKey\",2051:\"GeogPrimeMeridianGeoKey\",2052:\"GeogLinearUnitsGeoKey\",2053:\"GeogLinearUnitSizeGeoKey\",2054:\"GeogAngularUnitsGeoKey\",2055:\"GeogAngularUnitSizeGeoKey\",2056:\"GeogEllipsoidGeoKey\",2057:\"GeogSemiMajorAxisGeoKey\",2058:\"GeogSemiMinorAxisGeoKey\",2059:\"GeogInvFlatteningGeoKey\",2060:\"GeogAzimuthUnitsGeoKey\",2061:\"GeogPrimeMeridianLongGeoKey\",2062:\"GeogTOWGS84GeoKey\",3072:\"ProjectedCSTypeGeoKey\",3073:\"PCSCitationGeoKey\",3074:\"ProjectionGeoKey\",3075:\"ProjCoordTransGeoKey\",3076:\"ProjLinearUnitsGeoKey\",3077:\"ProjLinearUnitSizeGeoKey\",3078:\"ProjStdParallel1GeoKey\",3079:\"ProjStdParallel2GeoKey\",3080:\"ProjNatOriginLongGeoKey\",3081:\"ProjNatOriginLatGeoKey\",3082:\"ProjFalseEastingGeoKey\",3083:\"ProjFalseNorthingGeoKey\",3084:\"ProjFalseOriginLongGeoKey\",3085:\"ProjFalseOriginLatGeoKey\",3086:\"ProjFalseOriginEastingGeoKey\",3087:\"ProjFalseOriginNorthingGeoKey\",3088:\"ProjCenterLongGeoKey\",3089:\"ProjCenterLatGeoKey\",3090:\"ProjCenterEastingGeoKey\",3091:\"ProjCenterNorthingGeoKey\",3092:\"ProjScaleAtNatOriginGeoKey\",3093:\"ProjScaleAtCenterGeoKey\",3094:\"ProjAzimuthAngleGeoKey\",3095:\"ProjStraightVertPoleLongGeoKey\",3096:\"ProjRectifiedGridAngleGeoKey\",4096:\"VerticalCSTypeGeoKey\",4097:\"VerticalCitationGeoKey\",4098:\"VerticalDatumGeoKey\",4099:\"VerticalUnitsGeoKey\"},ot={};for(var st in at)at.hasOwnProperty(st)&&(ot[at[st]]=parseInt(st,10));function ft(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var lt=function(e){p(r,b);var t=ft(r);function r(e){var n;return u(this,r),(n=t.call(this)).planarConfiguration=void 0!==e.PlanarConfiguration?e.PlanarConfiguration:1,n.samplesPerPixel=void 0!==e.SamplesPerPixel?e.SamplesPerPixel:1,n.addCompression=e.LercParameters[rt],n}return h(r,[{key:\"decodeBlock\",value:function(e){switch(this.addCompression){case nt:break;case it:e=Fe(new Uint8Array(e)).buffer;break;default:throw new Error(\"Unsupported LERC additional compression method identifier: \".concat(this.addCompression))}return We.decode(e,{returnPixelInterleavedDims:1===this.planarConfiguration}).pixels[0].buffer}}]),r}(),ut=Object.freeze({__proto__:null,default:lt});function ct(e){var t=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(e){return!1}}();return function(){var r,n=v(e);if(t){var i=v(this).constructor;r=Reflect.construct(n,arguments,i)}else r=n.apply(this,arguments);return m(this,r)}}var ht=function(e){p(a,b);var r,n=ct(a);function a(){var e;if(u(this,a),e=n.call(this),\"undefined\"==typeof createImageBitmap)throw new Error(\"Cannot decode WebImage as `createImageBitmap` is not available\");if(\"undefined\"==typeof document&&\"undefined\"==typeof OffscreenCanvas)throw new Error(\"Cannot decode WebImage as neither `document` nor `OffscreenCanvas` is not available\");return e}return h(a,[{key:\"decode\",value:(r=t(i.mark((function e(t,r){var n,a,o,s;return i.wrap((function(e){for(;;)switch(e.prev=e.next){case 0:return n=new Blob([r]),e.next=3,createImageBitmap(n);case 3:return a=e.sent,\"undefined\"!=typeof document?((o=document.createElement(\"canvas\")).width=a.width,o.height=a.height):o=new OffscreenCanvas(a.width,a.height),(s=o.getContext(\"2d\")).drawImage(a,0,0),e.abrupt(\"return\",s.getImageData(0,0,a.width,a.height).data.buffer);case 8:case\"end\":return e.stop()}}),e)}))),function(e,t){return r.apply(this,arguments)})}]),a}(),dt=Object.freeze({__proto__:null,default:ht});";
-            return new browser(typeof Blob === 'undefined'
+            const source = "function A(A,e,t,i,r,I,g){try{var n=A[I](g),a=n.value}catch(A){return void t(A)}n.done?e(a):Promise.resolve(a).then(i,r)}function e(e){return function(){var t=this,i=arguments;return new Promise((function(r,I){var g=e.apply(t,i);function n(e){A(g,r,I,n,a,\"next\",e)}function a(e){A(g,r,I,n,a,\"throw\",e)}n(void 0)}))}}function t(A){return t=\"function\"==typeof Symbol&&\"symbol\"==typeof Symbol.iterator?function(A){return typeof A}:function(A){return A&&\"function\"==typeof Symbol&&A.constructor===Symbol&&A!==Symbol.prototype?\"symbol\":typeof A},t(A)}var i={exports:{}};!function(A){var e=function(A){var e,i=Object.prototype,r=i.hasOwnProperty,I=\"function\"==typeof Symbol?Symbol:{},g=I.iterator||\"@@iterator\",n=I.asyncIterator||\"@@asyncIterator\",a=I.toStringTag||\"@@toStringTag\";function o(A,e,t){return Object.defineProperty(A,e,{value:t,enumerable:!0,configurable:!0,writable:!0}),A[e]}try{o({},\"\")}catch(A){o=function(A,e,t){return A[e]=t}}function B(A,e,t,i){var r=e&&e.prototype instanceof h?e:h,I=Object.create(r.prototype),g=new S(i||[]);return I._invoke=function(A,e,t){var i=Q;return function(r,I){if(i===s)throw new Error(\"Generator is already running\");if(i===f){if(\"throw\"===r)throw I;return R()}for(t.method=r,t.arg=I;;){var g=t.delegate;if(g){var n=m(g,t);if(n){if(n===c)continue;return n}}if(\"next\"===t.method)t.sent=t._sent=t.arg;else if(\"throw\"===t.method){if(i===Q)throw i=f,t.arg;t.dispatchException(t.arg)}else\"return\"===t.method&&t.abrupt(\"return\",t.arg);i=s;var a=C(A,e,t);if(\"normal\"===a.type){if(i=t.done?f:E,a.arg===c)continue;return{value:a.arg,done:t.done}}\"throw\"===a.type&&(i=f,t.method=\"throw\",t.arg=a.arg)}}}(A,t,g),I}function C(A,e,t){try{return{type:\"normal\",arg:A.call(e,t)}}catch(A){return{type:\"throw\",arg:A}}}A.wrap=B;var Q=\"suspendedStart\",E=\"suspendedYield\",s=\"executing\",f=\"completed\",c={};function h(){}function l(){}function u(){}var w={};o(w,g,(function(){return this}));var d=Object.getPrototypeOf,D=d&&d(d(v([])));D&&D!==i&&r.call(D,g)&&(w=D);var y=u.prototype=h.prototype=Object.create(w);function k(A){[\"next\",\"throw\",\"return\"].forEach((function(e){o(A,e,(function(A){return this._invoke(e,A)}))}))}function p(A,e){function i(I,g,n,a){var o=C(A[I],A,g);if(\"throw\"!==o.type){var B=o.arg,Q=B.value;return Q&&\"object\"===t(Q)&&r.call(Q,\"__await\")?e.resolve(Q.__await).then((function(A){i(\"next\",A,n,a)}),(function(A){i(\"throw\",A,n,a)})):e.resolve(Q).then((function(A){B.value=A,n(B)}),(function(A){return i(\"throw\",A,n,a)}))}a(o.arg)}var I;this._invoke=function(A,t){function r(){return new e((function(e,r){i(A,t,e,r)}))}return I=I?I.then(r,r):r()}}function m(A,t){var i=A.iterator[t.method];if(i===e){if(t.delegate=null,\"throw\"===t.method){if(A.iterator.return&&(t.method=\"return\",t.arg=e,m(A,t),\"throw\"===t.method))return c;t.method=\"throw\",t.arg=new TypeError(\"The iterator does not provide a 'throw' method\")}return c}var r=C(i,A.iterator,t.arg);if(\"throw\"===r.type)return t.method=\"throw\",t.arg=r.arg,t.delegate=null,c;var I=r.arg;return I?I.done?(t[A.resultName]=I.value,t.next=A.nextLoc,\"return\"!==t.method&&(t.method=\"next\",t.arg=e),t.delegate=null,c):I:(t.method=\"throw\",t.arg=new TypeError(\"iterator result is not an object\"),t.delegate=null,c)}function G(A){var e={tryLoc:A[0]};1 in A&&(e.catchLoc=A[1]),2 in A&&(e.finallyLoc=A[2],e.afterLoc=A[3]),this.tryEntries.push(e)}function F(A){var e=A.completion||{};e.type=\"normal\",delete e.arg,A.completion=e}function S(A){this.tryEntries=[{tryLoc:\"root\"}],A.forEach(G,this),this.reset(!0)}function v(A){if(A){var t=A[g];if(t)return t.call(A);if(\"function\"==typeof A.next)return A;if(!isNaN(A.length)){var i=-1,I=function t(){for(;++i<A.length;)if(r.call(A,i))return t.value=A[i],t.done=!1,t;return t.value=e,t.done=!0,t};return I.next=I}}return{next:R}}function R(){return{value:e,done:!0}}return l.prototype=u,o(y,\"constructor\",u),o(u,\"constructor\",l),l.displayName=o(u,a,\"GeneratorFunction\"),A.isGeneratorFunction=function(A){var e=\"function\"==typeof A&&A.constructor;return!!e&&(e===l||\"GeneratorFunction\"===(e.displayName||e.name))},A.mark=function(A){return Object.setPrototypeOf?Object.setPrototypeOf(A,u):(A.__proto__=u,o(A,a,\"GeneratorFunction\")),A.prototype=Object.create(y),A},A.awrap=function(A){return{__await:A}},k(p.prototype),o(p.prototype,n,(function(){return this})),A.AsyncIterator=p,A.async=function(e,t,i,r,I){void 0===I&&(I=Promise);var g=new p(B(e,t,i,r),I);return A.isGeneratorFunction(t)?g:g.next().then((function(A){return A.done?A.value:g.next()}))},k(y),o(y,a,\"Generator\"),o(y,g,(function(){return this})),o(y,\"toString\",(function(){return\"[object Generator]\"})),A.keys=function(A){var e=[];for(var t in A)e.push(t);return e.reverse(),function t(){for(;e.length;){var i=e.pop();if(i in A)return t.value=i,t.done=!1,t}return t.done=!0,t}},A.values=v,S.prototype={constructor:S,reset:function(A){if(this.prev=0,this.next=0,this.sent=this._sent=e,this.done=!1,this.delegate=null,this.method=\"next\",this.arg=e,this.tryEntries.forEach(F),!A)for(var t in this)\"t\"===t.charAt(0)&&r.call(this,t)&&!isNaN(+t.slice(1))&&(this[t]=e)},stop:function(){this.done=!0;var A=this.tryEntries[0].completion;if(\"throw\"===A.type)throw A.arg;return this.rval},dispatchException:function(A){if(this.done)throw A;var t=this;function i(i,r){return n.type=\"throw\",n.arg=A,t.next=i,r&&(t.method=\"next\",t.arg=e),!!r}for(var I=this.tryEntries.length-1;I>=0;--I){var g=this.tryEntries[I],n=g.completion;if(\"root\"===g.tryLoc)return i(\"end\");if(g.tryLoc<=this.prev){var a=r.call(g,\"catchLoc\"),o=r.call(g,\"finallyLoc\");if(a&&o){if(this.prev<g.catchLoc)return i(g.catchLoc,!0);if(this.prev<g.finallyLoc)return i(g.finallyLoc)}else if(a){if(this.prev<g.catchLoc)return i(g.catchLoc,!0)}else{if(!o)throw new Error(\"try statement without catch or finally\");if(this.prev<g.finallyLoc)return i(g.finallyLoc)}}}},abrupt:function(A,e){for(var t=this.tryEntries.length-1;t>=0;--t){var i=this.tryEntries[t];if(i.tryLoc<=this.prev&&r.call(i,\"finallyLoc\")&&this.prev<i.finallyLoc){var I=i;break}}I&&(\"break\"===A||\"continue\"===A)&&I.tryLoc<=e&&e<=I.finallyLoc&&(I=null);var g=I?I.completion:{};return g.type=A,g.arg=e,I?(this.method=\"next\",this.next=I.finallyLoc,c):this.complete(g)},complete:function(A,e){if(\"throw\"===A.type)throw A.arg;return\"break\"===A.type||\"continue\"===A.type?this.next=A.arg:\"return\"===A.type?(this.rval=this.arg=A.arg,this.method=\"return\",this.next=\"end\"):\"normal\"===A.type&&e&&(this.next=e),c},finish:function(A){for(var e=this.tryEntries.length-1;e>=0;--e){var t=this.tryEntries[e];if(t.finallyLoc===A)return this.complete(t.completion,t.afterLoc),F(t),c}},catch:function(A){for(var e=this.tryEntries.length-1;e>=0;--e){var t=this.tryEntries[e];if(t.tryLoc===A){var i=t.completion;if(\"throw\"===i.type){var r=i.arg;F(t)}return r}}throw new Error(\"illegal catch attempt\")},delegateYield:function(A,t,i){return this.delegate={iterator:v(A),resultName:t,nextLoc:i},\"next\"===this.method&&(this.arg=e),c}},A}(A.exports);try{regeneratorRuntime=e}catch(A){\"object\"===(\"undefined\"==typeof globalThis?\"undefined\":t(globalThis))?globalThis.regeneratorRuntime=e:Function(\"r\",\"regeneratorRuntime = r\")(e)}}(i);var r=i.exports,I=new Map;function g(A,e){Array.isArray(A)||(A=[A]),A.forEach((function(A){return I.set(A,e)}))}function n(A){return a.apply(this,arguments)}function a(){return(a=e(r.mark((function A(e){var t,i;return r.wrap((function(A){for(;;)switch(A.prev=A.next){case 0:if(t=I.get(e.Compression)){A.next=3;break}throw new Error(\"Unknown compression method identifier: \".concat(e.Compression));case 3:return A.next=5,t();case 5:return i=A.sent,A.abrupt(\"return\",new i(e));case 7:case\"end\":return A.stop()}}),A)})))).apply(this,arguments)}g([void 0,1],(function(){return Promise.resolve().then((function(){return y})).then((function(A){return A.default}))})),g(5,(function(){return Promise.resolve().then((function(){return F})).then((function(A){return A.default}))})),g(6,(function(){throw new Error(\"old style JPEG compression is not supported.\")})),g(7,(function(){return Promise.resolve().then((function(){return N})).then((function(A){return A.default}))})),g([8,32946],(function(){return Promise.resolve().then((function(){return OA})).then((function(A){return A.default}))})),g(32773,(function(){return Promise.resolve().then((function(){return _A})).then((function(A){return A.default}))})),g(34887,(function(){return Promise.resolve().then((function(){return le})).then(function(){var A=e(r.mark((function A(e){return r.wrap((function(A){for(;;)switch(A.prev=A.next){case 0:return A.next=2,e.zstd.init();case 2:return A.abrupt(\"return\",e);case 3:case\"end\":return A.stop()}}),A)})));return function(e){return A.apply(this,arguments)}}()).then((function(A){return A.default}))})),g(50001,(function(){return Promise.resolve().then((function(){return de})).then((function(A){return A.default}))}));var o=globalThis;function B(A,e){if(!(A instanceof e))throw new TypeError(\"Cannot call a class as a function\")}function C(A,e){for(var t=0;t<e.length;t++){var i=e[t];i.enumerable=i.enumerable||!1,i.configurable=!0,\"value\"in i&&(i.writable=!0),Object.defineProperty(A,i.key,i)}}function Q(A,e,t){return e&&C(A.prototype,e),t&&C(A,t),A}function E(A,e){return E=Object.setPrototypeOf||function(A,e){return A.__proto__=e,A},E(A,e)}function s(A,e){if(\"function\"!=typeof e&&null!==e)throw new TypeError(\"Super expression must either be null or a function\");A.prototype=Object.create(e&&e.prototype,{constructor:{value:A,writable:!0,configurable:!0}}),e&&E(A,e)}function f(A,e){if(e&&(\"object\"===t(e)||\"function\"==typeof e))return e;if(void 0!==e)throw new TypeError(\"Derived constructors may only return object or undefined\");return function(A){if(void 0===A)throw new ReferenceError(\"this hasn't been initialised - super() hasn't been called\");return A}(A)}function c(A){return c=Object.setPrototypeOf?Object.getPrototypeOf:function(A){return A.__proto__||Object.getPrototypeOf(A)},c(A)}function h(A,e){var t=A.length-e,i=0;do{for(var r=e;r>0;r--)A[i+e]+=A[i],i++;t-=e}while(t>0)}function l(A,e,t){for(var i=0,r=A.length,I=r/t;r>e;){for(var g=e;g>0;--g)A[i+e]+=A[i],++i;r-=e}for(var n=A.slice(),a=0;a<I;++a)for(var o=0;o<t;++o)A[t*a+o]=n[(t-o-1)*I+a]}function u(A,e,t,i,r,I){if(!e||1===e)return A;for(var g=0;g<r.length;++g){if(r[g]%8!=0)throw new Error(\"When decoding with predictor, only multiple of 8 bits are supported.\");if(r[g]!==r[0])throw new Error(\"When decoding with predictor, all samples must have the same size.\")}for(var n=r[0]/8,a=2===I?1:r.length,o=0;o<i&&!(o*a*t*n>=A.byteLength);++o){var B=void 0;if(2===e){switch(r[0]){case 8:B=new Uint8Array(A,o*a*t*n,a*t*n);break;case 16:B=new Uint16Array(A,o*a*t*n,a*t*n/2);break;case 32:B=new Uint32Array(A,o*a*t*n,a*t*n/4);break;default:throw new Error(\"Predictor 2 not allowed with \".concat(r[0],\" bits per sample.\"))}h(B,a)}else 3===e&&l(B=new Uint8Array(A,o*a*t*n,a*t*n),a,n)}return A}o.addEventListener(\"message\",function(){var A=e(r.mark((function A(e){var t,i,I,g,a,B;return r.wrap((function(A){for(;;)switch(A.prev=A.next){case 0:return t=e.data,i=t.id,I=t.fileDirectory,g=t.buffer,A.next=3,n(I);case 3:return a=A.sent,A.next=6,a.decode(I,g);case 6:B=A.sent,o.postMessage({decoded:B,id:i},[B]);case 8:case\"end\":return A.stop()}}),A)})));return function(e){return A.apply(this,arguments)}}());var w=function(){function A(){B(this,A)}var t;return Q(A,[{key:\"decode\",value:(t=e(r.mark((function A(e,t){var i,I,g,n,a;return r.wrap((function(A){for(;;)switch(A.prev=A.next){case 0:return A.next=2,this.decodeBlock(t);case 2:if(i=A.sent,1===(I=e.Predictor||1)){A.next=9;break}return g=!e.StripOffsets,n=g?e.TileWidth:e.ImageWidth,a=g?e.TileLength:e.RowsPerStrip||e.ImageLength,A.abrupt(\"return\",u(i,I,n,a,e.BitsPerSample,e.PlanarConfiguration));case 9:return A.abrupt(\"return\",i);case 10:case\"end\":return A.stop()}}),A,this)}))),function(A,e){return t.apply(this,arguments)})}]),A}();function d(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var D=function(A){s(t,w);var e=d(t);function t(){return B(this,t),e.apply(this,arguments)}return Q(t,[{key:\"decodeBlock\",value:function(A){return A}}]),t}(),y=Object.freeze({__proto__:null,default:D});function k(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}function p(A,e){for(var t=e.length-1;t>=0;t--)A.push(e[t]);return A}function m(A){for(var e=new Uint16Array(4093),t=new Uint8Array(4093),i=0;i<=257;i++)e[i]=4096,t[i]=i;var r=258,I=9,g=0;function n(){r=258,I=9}function a(A){var e=function(A,e,t){var i=e%8,r=Math.floor(e/8),I=8-i,g=e+t-8*(r+1),n=8*(r+2)-(e+t),a=8*(r+2)-e;if(n=Math.max(0,n),r>=A.length)return console.warn(\"ran off the end of the buffer before finding EOI_CODE (end on input code)\"),257;var o=A[r]&Math.pow(2,8-i)-1,B=o<<=t-I;if(r+1<A.length){var C=A[r+1]>>>n;B+=C<<=Math.max(0,t-a)}if(g>8&&r+2<A.length){var Q=8*(r+3)-(e+t);B+=A[r+2]>>>Q}return B}(A,g,I);return g+=I,e}function o(A,i){return t[r]=i,e[r]=A,++r-1}function B(A){for(var i=[],r=A;4096!==r;r=e[r])i.push(t[r]);return i}var C=[];n();for(var Q,E=new Uint8Array(A),s=a(E);257!==s;){if(256===s){for(n(),s=a(E);256===s;)s=a(E);if(257===s)break;if(s>256)throw new Error(\"corrupted code at scanline \".concat(s));p(C,B(s)),Q=s}else if(s<r){var f=B(s);p(C,f),o(Q,f[f.length-1]),Q=s}else{var c=B(Q);if(!c)throw new Error(\"Bogus entry. Not in dictionary, \".concat(Q,\" / \").concat(r,\", position: \").concat(g));p(C,c),C.push(c[c.length-1]),o(Q,c[c.length-1]),Q=s}r+1>=Math.pow(2,I)&&(12===I?Q=void 0:I++),s=a(E)}return new Uint8Array(C)}var G=function(A){s(t,w);var e=k(t);function t(){return B(this,t),e.apply(this,arguments)}return Q(t,[{key:\"decodeBlock\",value:function(A){return m(A).buffer}}]),t}(),F=Object.freeze({__proto__:null,default:G});function S(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var v=new Int32Array([0,1,8,16,9,2,3,10,17,24,32,25,18,11,4,5,12,19,26,33,40,48,41,34,27,20,13,6,7,14,21,28,35,42,49,56,57,50,43,36,29,22,15,23,30,37,44,51,58,59,52,45,38,31,39,46,53,60,61,54,47,55,62,63]);function R(A,e){for(var t=0,i=[],r=16;r>0&&!A[r-1];)--r;i.push({children:[],index:0});for(var I,g=i[0],n=0;n<r;n++){for(var a=0;a<A[n];a++){for((g=i.pop()).children[g.index]=e[t];g.index>0;)g=i.pop();for(g.index++,i.push(g);i.length<=n;)i.push(I={children:[],index:0}),g.children[g.index]=I.children,g=I;t++}n+1<r&&(i.push(I={children:[],index:0}),g.children[g.index]=I.children,g=I)}return i[0].children}function U(A,e,i,r,I,g,n,a,o){var B=i.mcusPerLine,C=i.progressive,Q=e,E=e,s=0,f=0;function c(){if(f>0)return f--,s>>f&1;if(255===(s=A[E++])){var e=A[E++];if(e)throw new Error(\"unexpected marker: \".concat((s<<8|e).toString(16)))}return f=7,s>>>7}function h(A){for(var e,i=A;null!==(e=c());){if(\"number\"==typeof(i=i[e]))return i;if(\"object\"!==t(i))throw new Error(\"invalid huffman sequence\")}return null}function l(A){for(var e=A,t=0;e>0;){var i=c();if(null===i)return;t=t<<1|i,--e}return t}function u(A){var e=l(A);return e>=1<<A-1?e:e+(-1<<A)+1}var w=0;var d,D=0;function y(A,e,t,i,r){var I=t%B,g=(t/B|0)*A.v+i,n=I*A.h+r;e(A,A.blocks[g][n])}function k(A,e,t){var i=t/A.blocksPerLine|0,r=t%A.blocksPerLine;e(A,A.blocks[i][r])}var p,m,G,F,S,R,U=r.length;R=C?0===g?0===a?function(A,e){var t=h(A.huffmanTableDC),i=0===t?0:u(t)<<o;A.pred+=i,e[0]=A.pred}:function(A,e){e[0]|=c()<<o}:0===a?function(A,e){if(w>0)w--;else for(var t=g,i=n;t<=i;){var r=h(A.huffmanTableAC),I=15&r,a=r>>4;if(0===I){if(a<15){w=l(a)+(1<<a)-1;break}t+=16}else e[v[t+=a]]=u(I)*(1<<o),t++}}:function(A,e){for(var t=g,i=n,r=0;t<=i;){var I=v[t],a=e[I]<0?-1:1;switch(D){case 0:var B=h(A.huffmanTableAC),C=15&B;if(r=B>>4,0===C)r<15?(w=l(r)+(1<<r),D=4):(r=16,D=1);else{if(1!==C)throw new Error(\"invalid ACn encoding\");d=u(C),D=r?2:3}continue;case 1:case 2:e[I]?e[I]+=(c()<<o)*a:0==--r&&(D=2===D?3:0);break;case 3:e[I]?e[I]+=(c()<<o)*a:(e[I]=d<<o,D=0);break;case 4:e[I]&&(e[I]+=(c()<<o)*a)}t++}4===D&&0==--w&&(D=0)}:function(A,e){var t=h(A.huffmanTableDC),i=0===t?0:u(t);A.pred+=i,e[0]=A.pred;for(var r=1;r<64;){var I=h(A.huffmanTableAC),g=15&I,n=I>>4;if(0===g){if(n<15)break;r+=16}else e[v[r+=n]]=u(g),r++}};var L,b,M=0;b=1===U?r[0].blocksPerLine*r[0].blocksPerColumn:B*i.mcusPerColumn;for(var N=I||b;M<b;){for(m=0;m<U;m++)r[m].pred=0;if(w=0,1===U)for(p=r[0],S=0;S<N;S++)k(p,R,M),M++;else for(S=0;S<N;S++){for(m=0;m<U;m++){var x=p=r[m],J=x.h,q=x.v;for(G=0;G<q;G++)for(F=0;F<J;F++)y(p,R,M,G,F)}if(++M===b)break}if(f=0,(L=A[E]<<8|A[E+1])<65280)throw new Error(\"marker was not found\");if(!(L>=65488&&L<=65495))break;E+=2}return E-Q}function L(A,e){var t=[],i=e.blocksPerLine,r=e.blocksPerColumn,I=i<<3,g=new Int32Array(64),n=new Uint8Array(64);function a(A,t,i){var r,I,g,n,a,o,B,C,Q,E,s=e.quantizationTable,f=i;for(E=0;E<64;E++)f[E]=A[E]*s[E];for(E=0;E<8;++E){var c=8*E;0!==f[1+c]||0!==f[2+c]||0!==f[3+c]||0!==f[4+c]||0!==f[5+c]||0!==f[6+c]||0!==f[7+c]?(r=5793*f[0+c]+128>>8,I=5793*f[4+c]+128>>8,g=f[2+c],n=f[6+c],a=2896*(f[1+c]-f[7+c])+128>>8,C=2896*(f[1+c]+f[7+c])+128>>8,o=f[3+c]<<4,Q=r-I+1>>1,r=r+I+1>>1,I=Q,Q=3784*g+1567*n+128>>8,g=1567*g-3784*n+128>>8,n=Q,Q=a-(B=f[5+c]<<4)+1>>1,a=a+B+1>>1,B=Q,Q=C+o+1>>1,o=C-o+1>>1,C=Q,Q=r-n+1>>1,r=r+n+1>>1,n=Q,Q=I-g+1>>1,I=I+g+1>>1,g=Q,Q=2276*a+3406*C+2048>>12,a=3406*a-2276*C+2048>>12,C=Q,Q=799*o+4017*B+2048>>12,o=4017*o-799*B+2048>>12,B=Q,f[0+c]=r+C,f[7+c]=r-C,f[1+c]=I+B,f[6+c]=I-B,f[2+c]=g+o,f[5+c]=g-o,f[3+c]=n+a,f[4+c]=n-a):(Q=5793*f[0+c]+512>>10,f[0+c]=Q,f[1+c]=Q,f[2+c]=Q,f[3+c]=Q,f[4+c]=Q,f[5+c]=Q,f[6+c]=Q,f[7+c]=Q)}for(E=0;E<8;++E){var h=E;0!==f[8+h]||0!==f[16+h]||0!==f[24+h]||0!==f[32+h]||0!==f[40+h]||0!==f[48+h]||0!==f[56+h]?(r=5793*f[0+h]+2048>>12,I=5793*f[32+h]+2048>>12,g=f[16+h],n=f[48+h],a=2896*(f[8+h]-f[56+h])+2048>>12,C=2896*(f[8+h]+f[56+h])+2048>>12,o=f[24+h],Q=r-I+1>>1,r=r+I+1>>1,I=Q,Q=3784*g+1567*n+2048>>12,g=1567*g-3784*n+2048>>12,n=Q,Q=a-(B=f[40+h])+1>>1,a=a+B+1>>1,B=Q,Q=C+o+1>>1,o=C-o+1>>1,C=Q,Q=r-n+1>>1,r=r+n+1>>1,n=Q,Q=I-g+1>>1,I=I+g+1>>1,g=Q,Q=2276*a+3406*C+2048>>12,a=3406*a-2276*C+2048>>12,C=Q,Q=799*o+4017*B+2048>>12,o=4017*o-799*B+2048>>12,B=Q,f[0+h]=r+C,f[56+h]=r-C,f[8+h]=I+B,f[48+h]=I-B,f[16+h]=g+o,f[40+h]=g-o,f[24+h]=n+a,f[32+h]=n-a):(Q=5793*i[E+0]+8192>>14,f[0+h]=Q,f[8+h]=Q,f[16+h]=Q,f[24+h]=Q,f[32+h]=Q,f[40+h]=Q,f[48+h]=Q,f[56+h]=Q)}for(E=0;E<64;++E){var l=128+(f[E]+8>>4);t[E]=l<0?0:l>255?255:l}}for(var o=0;o<r;o++){for(var B=o<<3,C=0;C<8;C++)t.push(new Uint8Array(I));for(var Q=0;Q<i;Q++){a(e.blocks[o][Q],n,g);for(var E=0,s=Q<<3,f=0;f<8;f++)for(var c=t[B+f],h=0;h<8;h++)c[s+h]=n[E++]}}return t}var b=function(){function A(){B(this,A),this.jfif=null,this.adobe=null,this.quantizationTables=[],this.huffmanTablesAC=[],this.huffmanTablesDC=[],this.resetFrames()}return Q(A,[{key:\"resetFrames\",value:function(){this.frames=[]}},{key:\"parse\",value:function(A){var e=0;function t(){var t=A[e]<<8|A[e+1];return e+=2,t}function i(A){var e,t,i=0,r=0;for(t in A.components)A.components.hasOwnProperty(t)&&(i<(e=A.components[t]).h&&(i=e.h),r<e.v&&(r=e.v));var I=Math.ceil(A.samplesPerLine/8/i),g=Math.ceil(A.scanLines/8/r);for(t in A.components)if(A.components.hasOwnProperty(t)){e=A.components[t];for(var n=Math.ceil(Math.ceil(A.samplesPerLine/8)*e.h/i),a=Math.ceil(Math.ceil(A.scanLines/8)*e.v/r),o=I*e.h,B=g*e.v,C=[],Q=0;Q<B;Q++){for(var E=[],s=0;s<o;s++)E.push(new Int32Array(64));C.push(E)}e.blocksPerLine=n,e.blocksPerColumn=a,e.blocks=C}A.maxH=i,A.maxV=r,A.mcusPerLine=I,A.mcusPerColumn=g}var r,I,g=t();if(65496!==g)throw new Error(\"SOI not found\");for(g=t();65497!==g;){switch(g){case 65280:break;case 65504:case 65505:case 65506:case 65507:case 65508:case 65509:case 65510:case 65511:case 65512:case 65513:case 65514:case 65515:case 65516:case 65517:case 65518:case 65519:case 65534:var n=(r=void 0,I=void 0,r=t(),I=A.subarray(e,e+r-2),e+=I.length,I);65504===g&&74===n[0]&&70===n[1]&&73===n[2]&&70===n[3]&&0===n[4]&&(this.jfif={version:{major:n[5],minor:n[6]},densityUnits:n[7],xDensity:n[8]<<8|n[9],yDensity:n[10]<<8|n[11],thumbWidth:n[12],thumbHeight:n[13],thumbData:n.subarray(14,14+3*n[12]*n[13])}),65518===g&&65===n[0]&&100===n[1]&&111===n[2]&&98===n[3]&&101===n[4]&&0===n[5]&&(this.adobe={version:n[6],flags0:n[7]<<8|n[8],flags1:n[9]<<8|n[10],transformCode:n[11]});break;case 65499:for(var a=t()+e-2;e<a;){var o=A[e++],B=new Int32Array(64);if(o>>4==0)for(var C=0;C<64;C++){B[v[C]]=A[e++]}else{if(o>>4!=1)throw new Error(\"DQT: invalid table spec\");for(var Q=0;Q<64;Q++){B[v[Q]]=t()}}this.quantizationTables[15&o]=B}break;case 65472:case 65473:case 65474:t();for(var E={extended:65473===g,progressive:65474===g,precision:A[e++],scanLines:t(),samplesPerLine:t(),components:{},componentsOrder:[]},s=A[e++],f=void 0,c=0;c<s;c++){f=A[e];var h=A[e+1]>>4,l=15&A[e+1],u=A[e+2];E.componentsOrder.push(f),E.components[f]={h:h,v:l,quantizationIdx:u},e+=3}i(E),this.frames.push(E);break;case 65476:for(var w=t(),d=2;d<w;){for(var D=A[e++],y=new Uint8Array(16),k=0,p=0;p<16;p++,e++)y[p]=A[e],k+=y[p];for(var m=new Uint8Array(k),G=0;G<k;G++,e++)m[G]=A[e];d+=17+k,D>>4==0?this.huffmanTablesDC[15&D]=R(y,m):this.huffmanTablesAC[15&D]=R(y,m)}break;case 65501:t(),this.resetInterval=t();break;case 65498:t();for(var F=A[e++],S=[],L=this.frames[0],b=0;b<F;b++){var M=L.components[A[e++]],N=A[e++];M.huffmanTableDC=this.huffmanTablesDC[N>>4],M.huffmanTableAC=this.huffmanTablesAC[15&N],S.push(M)}var x=A[e++],J=A[e++],q=A[e++],Y=U(A,e,L,S,this.resetInterval,x,J,q>>4,15&q);e+=Y;break;case 65535:255!==A[e]&&e--;break;default:if(255===A[e-3]&&A[e-2]>=192&&A[e-2]<=254){e-=3;break}throw new Error(\"unknown JPEG marker \".concat(g.toString(16)))}g=t()}}},{key:\"getResult\",value:function(){var A=this.frames;if(0===this.frames.length)throw new Error(\"no frames were decoded\");this.frames.length>1&&console.warn(\"more than one frame is not supported\");for(var e=0;e<this.frames.length;e++)for(var t=this.frames[e].components,i=0,r=Object.keys(t);i<r.length;i++){var I=r[i];t[I].quantizationTable=this.quantizationTables[t[I].quantizationIdx],delete t[I].quantizationIdx}for(var g=A[0],n=g.components,a=g.componentsOrder,o=[],B=g.samplesPerLine,C=g.scanLines,Q=0;Q<a.length;Q++){var E=n[a[Q]];o.push({lines:L(0,E),scaleX:E.h/g.maxH,scaleY:E.v/g.maxV})}for(var s=new Uint8Array(B*C*o.length),f=0,c=0;c<C;++c)for(var h=0;h<B;++h)for(var l=0;l<o.length;++l){var u=o[l];s[f]=u.lines[0|c*u.scaleY][0|h*u.scaleX],++f}return s}}]),A}(),M=function(A){s(t,w);var e=S(t);function t(A){var i;return B(this,t),(i=e.call(this)).reader=new b,A.JPEGTables&&i.reader.parse(A.JPEGTables),i}return Q(t,[{key:\"decodeBlock\",value:function(A){return this.reader.resetFrames(),this.reader.parse(new Uint8Array(A)),this.reader.getResult().buffer}}]),t}(),N=Object.freeze({__proto__:null,default:M});function x(A){for(var e=A.length;--e>=0;)A[e]=0}x(new Array(576)),x(new Array(60)),x(new Array(512)),x(new Array(256)),x(new Array(29)),x(new Array(30));var J=function(A,e,t,i){for(var r=65535&A|0,I=A>>>16&65535|0,g=0;0!==t;){t-=g=t>2e3?2e3:t;do{I=I+(r=r+e[i++]|0)|0}while(--g);r%=65521,I%=65521}return r|I<<16|0},q=new Uint32Array(function(){for(var A,e=[],t=0;t<256;t++){A=t;for(var i=0;i<8;i++)A=1&A?3988292384^A>>>1:A>>>1;e[t]=A}return e}()),Y=function(A,e,t,i){var r=q,I=i+t;A^=-1;for(var g=i;g<I;g++)A=A>>>8^r[255&(A^e[g])];return-1^A},K={2:\"need dictionary\",1:\"stream end\",0:\"\",\"-1\":\"file error\",\"-2\":\"stream error\",\"-3\":\"data error\",\"-4\":\"insufficient memory\",\"-5\":\"buffer error\",\"-6\":\"incompatible version\"},H={Z_NO_FLUSH:0,Z_PARTIAL_FLUSH:1,Z_SYNC_FLUSH:2,Z_FULL_FLUSH:3,Z_FINISH:4,Z_BLOCK:5,Z_TREES:6,Z_OK:0,Z_STREAM_END:1,Z_NEED_DICT:2,Z_ERRNO:-1,Z_STREAM_ERROR:-2,Z_DATA_ERROR:-3,Z_MEM_ERROR:-4,Z_BUF_ERROR:-5,Z_NO_COMPRESSION:0,Z_BEST_SPEED:1,Z_BEST_COMPRESSION:9,Z_DEFAULT_COMPRESSION:-1,Z_FILTERED:1,Z_HUFFMAN_ONLY:2,Z_RLE:3,Z_FIXED:4,Z_DEFAULT_STRATEGY:0,Z_BINARY:0,Z_TEXT:1,Z_UNKNOWN:2,Z_DEFLATED:8},O=function(A,e){return Object.prototype.hasOwnProperty.call(A,e)},P=function(A){for(var e=Array.prototype.slice.call(arguments,1);e.length;){var i=e.shift();if(i){if(\"object\"!==t(i))throw new TypeError(i+\"must be non-object\");for(var r in i)O(i,r)&&(A[r]=i[r])}}return A},T=function(A){for(var e=0,t=0,i=A.length;t<i;t++)e+=A[t].length;for(var r=new Uint8Array(e),I=0,g=0,n=A.length;I<n;I++){var a=A[I];r.set(a,g),g+=a.length}return r},V=!0;try{String.fromCharCode.apply(null,new Uint8Array(1))}catch(A){V=!1}for(var _=new Uint8Array(256),X=0;X<256;X++)_[X]=X>=252?6:X>=248?5:X>=240?4:X>=224?3:X>=192?2:1;_[254]=_[254]=1;var Z=function(A){if(\"function\"==typeof TextEncoder&&TextEncoder.prototype.encode)return(new TextEncoder).encode(A);var e,t,i,r,I,g=A.length,n=0;for(r=0;r<g;r++)55296==(64512&(t=A.charCodeAt(r)))&&r+1<g&&56320==(64512&(i=A.charCodeAt(r+1)))&&(t=65536+(t-55296<<10)+(i-56320),r++),n+=t<128?1:t<2048?2:t<65536?3:4;for(e=new Uint8Array(n),I=0,r=0;I<n;r++)55296==(64512&(t=A.charCodeAt(r)))&&r+1<g&&56320==(64512&(i=A.charCodeAt(r+1)))&&(t=65536+(t-55296<<10)+(i-56320),r++),t<128?e[I++]=t:t<2048?(e[I++]=192|t>>>6,e[I++]=128|63&t):t<65536?(e[I++]=224|t>>>12,e[I++]=128|t>>>6&63,e[I++]=128|63&t):(e[I++]=240|t>>>18,e[I++]=128|t>>>12&63,e[I++]=128|t>>>6&63,e[I++]=128|63&t);return e},j=function(A,e){var t,i,r=e||A.length;if(\"function\"==typeof TextDecoder&&TextDecoder.prototype.decode)return(new TextDecoder).decode(A.subarray(0,e));var I=new Array(2*r);for(i=0,t=0;t<r;){var g=A[t++];if(g<128)I[i++]=g;else{var n=_[g];if(n>4)I[i++]=65533,t+=n-1;else{for(g&=2===n?31:3===n?15:7;n>1&&t<r;)g=g<<6|63&A[t++],n--;n>1?I[i++]=65533:g<65536?I[i++]=g:(g-=65536,I[i++]=55296|g>>10&1023,I[i++]=56320|1023&g)}}}return function(A,e){if(e<65534&&A.subarray&&V)return String.fromCharCode.apply(null,A.length===e?A:A.subarray(0,e));for(var t=\"\",i=0;i<e;i++)t+=String.fromCharCode(A[i]);return t}(I,i)},W=function(A,e){(e=e||A.length)>A.length&&(e=A.length);for(var t=e-1;t>=0&&128==(192&A[t]);)t--;return t<0||0===t?e:t+_[A[t]]>e?t:e};var z=function(){this.input=null,this.next_in=0,this.avail_in=0,this.total_in=0,this.output=null,this.next_out=0,this.avail_out=0,this.total_out=0,this.msg=\"\",this.state=null,this.data_type=2,this.adler=0},$=function(A,e){var t,i,r,I,g,n,a,o,B,C,Q,E,s,f,c,h,l,u,w,d,D,y,k,p,m=A.state;t=A.next_in,k=A.input,i=t+(A.avail_in-5),r=A.next_out,p=A.output,I=r-(e-A.avail_out),g=r+(A.avail_out-257),n=m.dmax,a=m.wsize,o=m.whave,B=m.wnext,C=m.window,Q=m.hold,E=m.bits,s=m.lencode,f=m.distcode,c=(1<<m.lenbits)-1,h=(1<<m.distbits)-1;A:do{E<15&&(Q+=k[t++]<<E,E+=8,Q+=k[t++]<<E,E+=8),l=s[Q&c];e:for(;;){if(Q>>>=u=l>>>24,E-=u,0===(u=l>>>16&255))p[r++]=65535&l;else{if(!(16&u)){if(0==(64&u)){l=s[(65535&l)+(Q&(1<<u)-1)];continue e}if(32&u){m.mode=12;break A}A.msg=\"invalid literal/length code\",m.mode=30;break A}w=65535&l,(u&=15)&&(E<u&&(Q+=k[t++]<<E,E+=8),w+=Q&(1<<u)-1,Q>>>=u,E-=u),E<15&&(Q+=k[t++]<<E,E+=8,Q+=k[t++]<<E,E+=8),l=f[Q&h];t:for(;;){if(Q>>>=u=l>>>24,E-=u,!(16&(u=l>>>16&255))){if(0==(64&u)){l=f[(65535&l)+(Q&(1<<u)-1)];continue t}A.msg=\"invalid distance code\",m.mode=30;break A}if(d=65535&l,E<(u&=15)&&(Q+=k[t++]<<E,(E+=8)<u&&(Q+=k[t++]<<E,E+=8)),(d+=Q&(1<<u)-1)>n){A.msg=\"invalid distance too far back\",m.mode=30;break A}if(Q>>>=u,E-=u,d>(u=r-I)){if((u=d-u)>o&&m.sane){A.msg=\"invalid distance too far back\",m.mode=30;break A}if(D=0,y=C,0===B){if(D+=a-u,u<w){w-=u;do{p[r++]=C[D++]}while(--u);D=r-d,y=p}}else if(B<u){if(D+=a+B-u,(u-=B)<w){w-=u;do{p[r++]=C[D++]}while(--u);if(D=0,B<w){w-=u=B;do{p[r++]=C[D++]}while(--u);D=r-d,y=p}}}else if(D+=B-u,u<w){w-=u;do{p[r++]=C[D++]}while(--u);D=r-d,y=p}for(;w>2;)p[r++]=y[D++],p[r++]=y[D++],p[r++]=y[D++],w-=3;w&&(p[r++]=y[D++],w>1&&(p[r++]=y[D++]))}else{D=r-d;do{p[r++]=p[D++],p[r++]=p[D++],p[r++]=p[D++],w-=3}while(w>2);w&&(p[r++]=p[D++],w>1&&(p[r++]=p[D++]))}break}}break}}while(t<i&&r<g);t-=w=E>>3,Q&=(1<<(E-=w<<3))-1,A.next_in=t,A.next_out=r,A.avail_in=t<i?i-t+5:5-(t-i),A.avail_out=r<g?g-r+257:257-(r-g),m.hold=Q,m.bits=E},AA=new Uint16Array([3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258,0,0]),eA=new Uint8Array([16,16,16,16,16,16,16,16,17,17,17,17,18,18,18,18,19,19,19,19,20,20,20,20,21,21,21,21,16,72,78]),tA=new Uint16Array([1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577,0,0]),iA=new Uint8Array([16,16,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,27,27,28,28,29,29,64,64]),rA=function(A,e,t,i,r,I,g,n){var a,o,B,C,Q,E,s,f,c,h=n.bits,l=0,u=0,w=0,d=0,D=0,y=0,k=0,p=0,m=0,G=0,F=null,S=0,v=new Uint16Array(16),R=new Uint16Array(16),U=null,L=0;for(l=0;l<=15;l++)v[l]=0;for(u=0;u<i;u++)v[e[t+u]]++;for(D=h,d=15;d>=1&&0===v[d];d--);if(D>d&&(D=d),0===d)return r[I++]=20971520,r[I++]=20971520,n.bits=1,0;for(w=1;w<d&&0===v[w];w++);for(D<w&&(D=w),p=1,l=1;l<=15;l++)if(p<<=1,(p-=v[l])<0)return-1;if(p>0&&(0===A||1!==d))return-1;for(R[1]=0,l=1;l<15;l++)R[l+1]=R[l]+v[l];for(u=0;u<i;u++)0!==e[t+u]&&(g[R[e[t+u]]++]=u);if(0===A?(F=U=g,E=19):1===A?(F=AA,S-=257,U=eA,L-=257,E=256):(F=tA,U=iA,E=-1),G=0,u=0,l=w,Q=I,y=D,k=0,B=-1,C=(m=1<<D)-1,1===A&&m>852||2===A&&m>592)return 1;for(;;){s=l-k,g[u]<E?(f=0,c=g[u]):g[u]>E?(f=U[L+g[u]],c=F[S+g[u]]):(f=96,c=0),a=1<<l-k,w=o=1<<y;do{r[Q+(G>>k)+(o-=a)]=s<<24|f<<16|c|0}while(0!==o);for(a=1<<l-1;G&a;)a>>=1;if(0!==a?(G&=a-1,G+=a):G=0,u++,0==--v[l]){if(l===d)break;l=e[t+g[u]]}if(l>D&&(G&C)!==B){for(0===k&&(k=D),Q+=w,p=1<<(y=l-k);y+k<d&&!((p-=v[y+k])<=0);)y++,p<<=1;if(m+=1<<y,1===A&&m>852||2===A&&m>592)return 1;r[B=G&C]=D<<24|y<<16|Q-I|0}}return 0!==G&&(r[Q+G]=l-k<<24|64<<16|0),n.bits=D,0},IA=H.Z_FINISH,gA=H.Z_BLOCK,nA=H.Z_TREES,aA=H.Z_OK,oA=H.Z_STREAM_END,BA=H.Z_NEED_DICT,CA=H.Z_STREAM_ERROR,QA=H.Z_DATA_ERROR,EA=H.Z_MEM_ERROR,sA=H.Z_BUF_ERROR,fA=H.Z_DEFLATED,cA=function(A){return(A>>>24&255)+(A>>>8&65280)+((65280&A)<<8)+((255&A)<<24)};function hA(){this.mode=0,this.last=!1,this.wrap=0,this.havedict=!1,this.flags=0,this.dmax=0,this.check=0,this.total=0,this.head=null,this.wbits=0,this.wsize=0,this.whave=0,this.wnext=0,this.window=null,this.hold=0,this.bits=0,this.length=0,this.offset=0,this.extra=0,this.lencode=null,this.distcode=null,this.lenbits=0,this.distbits=0,this.ncode=0,this.nlen=0,this.ndist=0,this.have=0,this.next=null,this.lens=new Uint16Array(320),this.work=new Uint16Array(288),this.lendyn=null,this.distdyn=null,this.sane=0,this.back=0,this.was=0}var lA,uA,wA=function(A){if(!A||!A.state)return CA;var e=A.state;return A.total_in=A.total_out=e.total=0,A.msg=\"\",e.wrap&&(A.adler=1&e.wrap),e.mode=1,e.last=0,e.havedict=0,e.dmax=32768,e.head=null,e.hold=0,e.bits=0,e.lencode=e.lendyn=new Int32Array(852),e.distcode=e.distdyn=new Int32Array(592),e.sane=1,e.back=-1,aA},dA=function(A){if(!A||!A.state)return CA;var e=A.state;return e.wsize=0,e.whave=0,e.wnext=0,wA(A)},DA=function(A,e){var t;if(!A||!A.state)return CA;var i=A.state;return e<0?(t=0,e=-e):(t=1+(e>>4),e<48&&(e&=15)),e&&(e<8||e>15)?CA:(null!==i.window&&i.wbits!==e&&(i.window=null),i.wrap=t,i.wbits=e,dA(A))},yA=function(A,e){if(!A)return CA;var t=new hA;A.state=t,t.window=null;var i=DA(A,e);return i!==aA&&(A.state=null),i},kA=!0,pA=function(A){if(kA){lA=new Int32Array(512),uA=new Int32Array(32);for(var e=0;e<144;)A.lens[e++]=8;for(;e<256;)A.lens[e++]=9;for(;e<280;)A.lens[e++]=7;for(;e<288;)A.lens[e++]=8;for(rA(1,A.lens,0,288,lA,0,A.work,{bits:9}),e=0;e<32;)A.lens[e++]=5;rA(2,A.lens,0,32,uA,0,A.work,{bits:5}),kA=!1}A.lencode=lA,A.lenbits=9,A.distcode=uA,A.distbits=5},mA=function(A,e,t,i){var r,I=A.state;return null===I.window&&(I.wsize=1<<I.wbits,I.wnext=0,I.whave=0,I.window=new Uint8Array(I.wsize)),i>=I.wsize?(I.window.set(e.subarray(t-I.wsize,t),0),I.wnext=0,I.whave=I.wsize):((r=I.wsize-I.wnext)>i&&(r=i),I.window.set(e.subarray(t-i,t-i+r),I.wnext),(i-=r)?(I.window.set(e.subarray(t-i,t),0),I.wnext=i,I.whave=I.wsize):(I.wnext+=r,I.wnext===I.wsize&&(I.wnext=0),I.whave<I.wsize&&(I.whave+=r))),0},GA={inflateReset:dA,inflateReset2:DA,inflateResetKeep:wA,inflateInit:function(A){return yA(A,15)},inflateInit2:yA,inflate:function(A,e){var t,i,r,I,g,n,a,o,B,C,Q,E,s,f,c,h,l,u,w,d,D,y,k,p,m=0,G=new Uint8Array(4),F=new Uint8Array([16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15]);if(!A||!A.state||!A.output||!A.input&&0!==A.avail_in)return CA;12===(t=A.state).mode&&(t.mode=13),g=A.next_out,r=A.output,a=A.avail_out,I=A.next_in,i=A.input,n=A.avail_in,o=t.hold,B=t.bits,C=n,Q=a,y=aA;A:for(;;)switch(t.mode){case 1:if(0===t.wrap){t.mode=13;break}for(;B<16;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(2&t.wrap&&35615===o){t.check=0,G[0]=255&o,G[1]=o>>>8&255,t.check=Y(t.check,G,2,0),o=0,B=0,t.mode=2;break}if(t.flags=0,t.head&&(t.head.done=!1),!(1&t.wrap)||(((255&o)<<8)+(o>>8))%31){A.msg=\"incorrect header check\",t.mode=30;break}if((15&o)!==fA){A.msg=\"unknown compression method\",t.mode=30;break}if(B-=4,D=8+(15&(o>>>=4)),0===t.wbits)t.wbits=D;else if(D>t.wbits){A.msg=\"invalid window size\",t.mode=30;break}t.dmax=1<<t.wbits,A.adler=t.check=1,t.mode=512&o?10:12,o=0,B=0;break;case 2:for(;B<16;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(t.flags=o,(255&t.flags)!==fA){A.msg=\"unknown compression method\",t.mode=30;break}if(57344&t.flags){A.msg=\"unknown header flags set\",t.mode=30;break}t.head&&(t.head.text=o>>8&1),512&t.flags&&(G[0]=255&o,G[1]=o>>>8&255,t.check=Y(t.check,G,2,0)),o=0,B=0,t.mode=3;case 3:for(;B<32;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.head&&(t.head.time=o),512&t.flags&&(G[0]=255&o,G[1]=o>>>8&255,G[2]=o>>>16&255,G[3]=o>>>24&255,t.check=Y(t.check,G,4,0)),o=0,B=0,t.mode=4;case 4:for(;B<16;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.head&&(t.head.xflags=255&o,t.head.os=o>>8),512&t.flags&&(G[0]=255&o,G[1]=o>>>8&255,t.check=Y(t.check,G,2,0)),o=0,B=0,t.mode=5;case 5:if(1024&t.flags){for(;B<16;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.length=o,t.head&&(t.head.extra_len=o),512&t.flags&&(G[0]=255&o,G[1]=o>>>8&255,t.check=Y(t.check,G,2,0)),o=0,B=0}else t.head&&(t.head.extra=null);t.mode=6;case 6:if(1024&t.flags&&((E=t.length)>n&&(E=n),E&&(t.head&&(D=t.head.extra_len-t.length,t.head.extra||(t.head.extra=new Uint8Array(t.head.extra_len)),t.head.extra.set(i.subarray(I,I+E),D)),512&t.flags&&(t.check=Y(t.check,i,E,I)),n-=E,I+=E,t.length-=E),t.length))break A;t.length=0,t.mode=7;case 7:if(2048&t.flags){if(0===n)break A;E=0;do{D=i[I+E++],t.head&&D&&t.length<65536&&(t.head.name+=String.fromCharCode(D))}while(D&&E<n);if(512&t.flags&&(t.check=Y(t.check,i,E,I)),n-=E,I+=E,D)break A}else t.head&&(t.head.name=null);t.length=0,t.mode=8;case 8:if(4096&t.flags){if(0===n)break A;E=0;do{D=i[I+E++],t.head&&D&&t.length<65536&&(t.head.comment+=String.fromCharCode(D))}while(D&&E<n);if(512&t.flags&&(t.check=Y(t.check,i,E,I)),n-=E,I+=E,D)break A}else t.head&&(t.head.comment=null);t.mode=9;case 9:if(512&t.flags){for(;B<16;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(o!==(65535&t.check)){A.msg=\"header crc mismatch\",t.mode=30;break}o=0,B=0}t.head&&(t.head.hcrc=t.flags>>9&1,t.head.done=!0),A.adler=t.check=0,t.mode=12;break;case 10:for(;B<32;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}A.adler=t.check=cA(o),o=0,B=0,t.mode=11;case 11:if(0===t.havedict)return A.next_out=g,A.avail_out=a,A.next_in=I,A.avail_in=n,t.hold=o,t.bits=B,BA;A.adler=t.check=1,t.mode=12;case 12:if(e===gA||e===nA)break A;case 13:if(t.last){o>>>=7&B,B-=7&B,t.mode=27;break}for(;B<3;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}switch(t.last=1&o,B-=1,3&(o>>>=1)){case 0:t.mode=14;break;case 1:if(pA(t),t.mode=20,e===nA){o>>>=2,B-=2;break A}break;case 2:t.mode=17;break;case 3:A.msg=\"invalid block type\",t.mode=30}o>>>=2,B-=2;break;case 14:for(o>>>=7&B,B-=7&B;B<32;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if((65535&o)!=(o>>>16^65535)){A.msg=\"invalid stored block lengths\",t.mode=30;break}if(t.length=65535&o,o=0,B=0,t.mode=15,e===nA)break A;case 15:t.mode=16;case 16:if(E=t.length){if(E>n&&(E=n),E>a&&(E=a),0===E)break A;r.set(i.subarray(I,I+E),g),n-=E,I+=E,a-=E,g+=E,t.length-=E;break}t.mode=12;break;case 17:for(;B<14;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(t.nlen=257+(31&o),o>>>=5,B-=5,t.ndist=1+(31&o),o>>>=5,B-=5,t.ncode=4+(15&o),o>>>=4,B-=4,t.nlen>286||t.ndist>30){A.msg=\"too many length or distance symbols\",t.mode=30;break}t.have=0,t.mode=18;case 18:for(;t.have<t.ncode;){for(;B<3;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.lens[F[t.have++]]=7&o,o>>>=3,B-=3}for(;t.have<19;)t.lens[F[t.have++]]=0;if(t.lencode=t.lendyn,t.lenbits=7,k={bits:t.lenbits},y=rA(0,t.lens,0,19,t.lencode,0,t.work,k),t.lenbits=k.bits,y){A.msg=\"invalid code lengths set\",t.mode=30;break}t.have=0,t.mode=19;case 19:for(;t.have<t.nlen+t.ndist;){for(;h=(m=t.lencode[o&(1<<t.lenbits)-1])>>>16&255,l=65535&m,!((c=m>>>24)<=B);){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(l<16)o>>>=c,B-=c,t.lens[t.have++]=l;else{if(16===l){for(p=c+2;B<p;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(o>>>=c,B-=c,0===t.have){A.msg=\"invalid bit length repeat\",t.mode=30;break}D=t.lens[t.have-1],E=3+(3&o),o>>>=2,B-=2}else if(17===l){for(p=c+3;B<p;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}B-=c,D=0,E=3+(7&(o>>>=c)),o>>>=3,B-=3}else{for(p=c+7;B<p;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}B-=c,D=0,E=11+(127&(o>>>=c)),o>>>=7,B-=7}if(t.have+E>t.nlen+t.ndist){A.msg=\"invalid bit length repeat\",t.mode=30;break}for(;E--;)t.lens[t.have++]=D}}if(30===t.mode)break;if(0===t.lens[256]){A.msg=\"invalid code -- missing end-of-block\",t.mode=30;break}if(t.lenbits=9,k={bits:t.lenbits},y=rA(1,t.lens,0,t.nlen,t.lencode,0,t.work,k),t.lenbits=k.bits,y){A.msg=\"invalid literal/lengths set\",t.mode=30;break}if(t.distbits=6,t.distcode=t.distdyn,k={bits:t.distbits},y=rA(2,t.lens,t.nlen,t.ndist,t.distcode,0,t.work,k),t.distbits=k.bits,y){A.msg=\"invalid distances set\",t.mode=30;break}if(t.mode=20,e===nA)break A;case 20:t.mode=21;case 21:if(n>=6&&a>=258){A.next_out=g,A.avail_out=a,A.next_in=I,A.avail_in=n,t.hold=o,t.bits=B,$(A,Q),g=A.next_out,r=A.output,a=A.avail_out,I=A.next_in,i=A.input,n=A.avail_in,o=t.hold,B=t.bits,12===t.mode&&(t.back=-1);break}for(t.back=0;h=(m=t.lencode[o&(1<<t.lenbits)-1])>>>16&255,l=65535&m,!((c=m>>>24)<=B);){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(h&&0==(240&h)){for(u=c,w=h,d=l;h=(m=t.lencode[d+((o&(1<<u+w)-1)>>u)])>>>16&255,l=65535&m,!(u+(c=m>>>24)<=B);){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}o>>>=u,B-=u,t.back+=u}if(o>>>=c,B-=c,t.back+=c,t.length=l,0===h){t.mode=26;break}if(32&h){t.back=-1,t.mode=12;break}if(64&h){A.msg=\"invalid literal/length code\",t.mode=30;break}t.extra=15&h,t.mode=22;case 22:if(t.extra){for(p=t.extra;B<p;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.length+=o&(1<<t.extra)-1,o>>>=t.extra,B-=t.extra,t.back+=t.extra}t.was=t.length,t.mode=23;case 23:for(;h=(m=t.distcode[o&(1<<t.distbits)-1])>>>16&255,l=65535&m,!((c=m>>>24)<=B);){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(0==(240&h)){for(u=c,w=h,d=l;h=(m=t.distcode[d+((o&(1<<u+w)-1)>>u)])>>>16&255,l=65535&m,!(u+(c=m>>>24)<=B);){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}o>>>=u,B-=u,t.back+=u}if(o>>>=c,B-=c,t.back+=c,64&h){A.msg=\"invalid distance code\",t.mode=30;break}t.offset=l,t.extra=15&h,t.mode=24;case 24:if(t.extra){for(p=t.extra;B<p;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}t.offset+=o&(1<<t.extra)-1,o>>>=t.extra,B-=t.extra,t.back+=t.extra}if(t.offset>t.dmax){A.msg=\"invalid distance too far back\",t.mode=30;break}t.mode=25;case 25:if(0===a)break A;if(E=Q-a,t.offset>E){if((E=t.offset-E)>t.whave&&t.sane){A.msg=\"invalid distance too far back\",t.mode=30;break}E>t.wnext?(E-=t.wnext,s=t.wsize-E):s=t.wnext-E,E>t.length&&(E=t.length),f=t.window}else f=r,s=g-t.offset,E=t.length;E>a&&(E=a),a-=E,t.length-=E;do{r[g++]=f[s++]}while(--E);0===t.length&&(t.mode=21);break;case 26:if(0===a)break A;r[g++]=t.length,a--,t.mode=21;break;case 27:if(t.wrap){for(;B<32;){if(0===n)break A;n--,o|=i[I++]<<B,B+=8}if(Q-=a,A.total_out+=Q,t.total+=Q,Q&&(A.adler=t.check=t.flags?Y(t.check,r,Q,g-Q):J(t.check,r,Q,g-Q)),Q=a,(t.flags?o:cA(o))!==t.check){A.msg=\"incorrect data check\",t.mode=30;break}o=0,B=0}t.mode=28;case 28:if(t.wrap&&t.flags){for(;B<32;){if(0===n)break A;n--,o+=i[I++]<<B,B+=8}if(o!==(4294967295&t.total)){A.msg=\"incorrect length check\",t.mode=30;break}o=0,B=0}t.mode=29;case 29:y=oA;break A;case 30:y=QA;break A;case 31:return EA;default:return CA}return A.next_out=g,A.avail_out=a,A.next_in=I,A.avail_in=n,t.hold=o,t.bits=B,(t.wsize||Q!==A.avail_out&&t.mode<30&&(t.mode<27||e!==IA))&&mA(A,A.output,A.next_out,Q-A.avail_out),C-=A.avail_in,Q-=A.avail_out,A.total_in+=C,A.total_out+=Q,t.total+=Q,t.wrap&&Q&&(A.adler=t.check=t.flags?Y(t.check,r,Q,A.next_out-Q):J(t.check,r,Q,A.next_out-Q)),A.data_type=t.bits+(t.last?64:0)+(12===t.mode?128:0)+(20===t.mode||15===t.mode?256:0),(0===C&&0===Q||e===IA)&&y===aA&&(y=sA),y},inflateEnd:function(A){if(!A||!A.state)return CA;var e=A.state;return e.window&&(e.window=null),A.state=null,aA},inflateGetHeader:function(A,e){if(!A||!A.state)return CA;var t=A.state;return 0==(2&t.wrap)?CA:(t.head=e,e.done=!1,aA)},inflateSetDictionary:function(A,e){var t,i=e.length;return A&&A.state?0!==(t=A.state).wrap&&11!==t.mode?CA:11===t.mode&&J(1,e,i,0)!==t.check?QA:mA(A,e,i,i)?(t.mode=31,EA):(t.havedict=1,aA):CA},inflateInfo:\"pako inflate (from Nodeca project)\"};var FA=function(){this.text=0,this.time=0,this.xflags=0,this.os=0,this.extra=null,this.extra_len=0,this.name=\"\",this.comment=\"\",this.hcrc=0,this.done=!1},SA=Object.prototype.toString,vA=H.Z_NO_FLUSH,RA=H.Z_FINISH,UA=H.Z_OK,LA=H.Z_STREAM_END,bA=H.Z_NEED_DICT,MA=H.Z_STREAM_ERROR,NA=H.Z_DATA_ERROR,xA=H.Z_MEM_ERROR;function JA(A){this.options=P({chunkSize:65536,windowBits:15,to:\"\"},A||{});var e=this.options;e.raw&&e.windowBits>=0&&e.windowBits<16&&(e.windowBits=-e.windowBits,0===e.windowBits&&(e.windowBits=-15)),!(e.windowBits>=0&&e.windowBits<16)||A&&A.windowBits||(e.windowBits+=32),e.windowBits>15&&e.windowBits<48&&0==(15&e.windowBits)&&(e.windowBits|=15),this.err=0,this.msg=\"\",this.ended=!1,this.chunks=[],this.strm=new z,this.strm.avail_out=0;var t=GA.inflateInit2(this.strm,e.windowBits);if(t!==UA)throw new Error(K[t]);if(this.header=new FA,GA.inflateGetHeader(this.strm,this.header),e.dictionary&&(\"string\"==typeof e.dictionary?e.dictionary=Z(e.dictionary):\"[object ArrayBuffer]\"===SA.call(e.dictionary)&&(e.dictionary=new Uint8Array(e.dictionary)),e.raw&&(t=GA.inflateSetDictionary(this.strm,e.dictionary))!==UA))throw new Error(K[t])}function qA(A,e){var t=new JA(e);if(t.push(A),t.err)throw t.msg||K[t.err];return t.result}JA.prototype.push=function(A,e){var t,i,r,I=this.strm,g=this.options.chunkSize,n=this.options.dictionary;if(this.ended)return!1;for(i=e===~~e?e:!0===e?RA:vA,\"[object ArrayBuffer]\"===SA.call(A)?I.input=new Uint8Array(A):I.input=A,I.next_in=0,I.avail_in=I.input.length;;){for(0===I.avail_out&&(I.output=new Uint8Array(g),I.next_out=0,I.avail_out=g),(t=GA.inflate(I,i))===bA&&n&&((t=GA.inflateSetDictionary(I,n))===UA?t=GA.inflate(I,i):t===NA&&(t=bA));I.avail_in>0&&t===LA&&I.state.wrap>0&&0!==A[I.next_in];)GA.inflateReset(I),t=GA.inflate(I,i);switch(t){case MA:case NA:case bA:case xA:return this.onEnd(t),this.ended=!0,!1}if(r=I.avail_out,I.next_out&&(0===I.avail_out||t===LA))if(\"string\"===this.options.to){var a=W(I.output,I.next_out),o=I.next_out-a,B=j(I.output,a);I.next_out=o,I.avail_out=g-o,o&&I.output.set(I.output.subarray(a,a+o),0),this.onData(B)}else this.onData(I.output.length===I.next_out?I.output:I.output.subarray(0,I.next_out));if(t!==UA||0!==r){if(t===LA)return t=GA.inflateEnd(this.strm),this.onEnd(t),this.ended=!0,!0;if(0===I.avail_in)break}}return!0},JA.prototype.onData=function(A){this.chunks.push(A)},JA.prototype.onEnd=function(A){A===UA&&(\"string\"===this.options.to?this.result=this.chunks.join(\"\"):this.result=T(this.chunks)),this.chunks=[],this.err=A,this.msg=this.strm.msg};var YA={Inflate:JA,inflate:qA,inflateRaw:function(A,e){return(e=e||{}).raw=!0,qA(A,e)},ungzip:qA,constants:H}.inflate;function KA(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var HA=function(A){s(t,w);var e=KA(t);function t(){return B(this,t),e.apply(this,arguments)}return Q(t,[{key:\"decodeBlock\",value:function(A){return YA(new Uint8Array(A)).buffer}}]),t}(),OA=Object.freeze({__proto__:null,default:HA});function PA(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var TA,VA=function(A){s(t,w);var e=PA(t);function t(){return B(this,t),e.apply(this,arguments)}return Q(t,[{key:\"decodeBlock\",value:function(A){for(var e=new DataView(A),t=[],i=0;i<A.byteLength;++i){var r=e.getInt8(i);if(r<0){var I=e.getUint8(i+1);r=-r;for(var g=0;g<=r;++g)t.push(I);i+=1}else{for(var n=0;n<=r;++n)t.push(e.getUint8(i+n+1));i+=r+1}}return new Uint8Array(t).buffer}}]),t}(),_A=Object.freeze({__proto__:null,default:VA}),XA={exports:{}};TA=XA,\n/* Copyright 2015-2021 Esri. Licensed under the Apache License, Version 2.0 (the \"License\"); you may not use this file except in compliance with the License. You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0 @preserve */\nfunction(){var A,e,t,i,r,I,g,n,a,o,B,C,Q,E,s,f,c=(A={defaultNoDataValue:-34027999387901484e22,decode:function(I,g){var n=(g=g||{}).encodedMaskData||null===g.encodedMaskData,a=r(I,g.inputOffset||0,n),o=null!==g.noDataValue?g.noDataValue:A.defaultNoDataValue,B=e(a,g.pixelType||Float32Array,g.encodedMaskData,o,g.returnMask),C={width:a.width,height:a.height,pixelData:B.resultPixels,minValue:B.minValue,maxValue:a.pixels.maxValue,noDataValue:o};return B.resultMask&&(C.maskData=B.resultMask),g.returnEncodedMask&&a.mask&&(C.encodedMaskData=a.mask.bitset?a.mask.bitset:null),g.returnFileInfo&&(C.fileInfo=t(a),g.computeUsedBitDepths&&(C.fileInfo.bitDepths=i(a))),C}},e=function(A,e,t,i,r){var g,n,a,o=0,B=A.pixels.numBlocksX,C=A.pixels.numBlocksY,Q=Math.floor(A.width/B),E=Math.floor(A.height/C),s=2*A.maxZError,f=Number.MAX_VALUE;t=t||(A.mask?A.mask.bitset:null),n=new e(A.width*A.height),r&&t&&(a=new Uint8Array(A.width*A.height));for(var c,h,l=new Float32Array(Q*E),u=0;u<=C;u++){var w=u!==C?E:A.height%C;if(0!==w)for(var d=0;d<=B;d++){var D=d!==B?Q:A.width%B;if(0!==D){var y,k,p,m,G=u*A.width*E+d*Q,F=A.width-D,S=A.pixels.blocks[o];if(S.encoding<2?(0===S.encoding?y=S.rawData:(I(S.stuffedData,S.bitsPerPixel,S.numValidPixels,S.offset,s,l,A.pixels.maxValue),y=l),k=0):p=2===S.encoding?0:S.offset,t)for(h=0;h<w;h++){for(7&G&&(m=t[G>>3],m<<=7&G),c=0;c<D;c++)7&G||(m=t[G>>3]),128&m?(a&&(a[G]=1),f=f>(g=S.encoding<2?y[k++]:p)?g:f,n[G++]=g):(a&&(a[G]=0),n[G++]=i),m<<=1;G+=F}else if(S.encoding<2)for(h=0;h<w;h++){for(c=0;c<D;c++)f=f>(g=y[k++])?g:f,n[G++]=g;G+=F}else for(f=f>p?p:f,h=0;h<w;h++){for(c=0;c<D;c++)n[G++]=p;G+=F}if(1===S.encoding&&k!==S.numValidPixels)throw\"Block and Mask do not match\";o++}}}return{resultPixels:n,resultMask:a,minValue:f}},t=function(A){return{fileIdentifierString:A.fileIdentifierString,fileVersion:A.fileVersion,imageType:A.imageType,height:A.height,width:A.width,maxZError:A.maxZError,eofOffset:A.eofOffset,mask:A.mask?{numBlocksX:A.mask.numBlocksX,numBlocksY:A.mask.numBlocksY,numBytes:A.mask.numBytes,maxValue:A.mask.maxValue}:null,pixels:{numBlocksX:A.pixels.numBlocksX,numBlocksY:A.pixels.numBlocksY,numBytes:A.pixels.numBytes,maxValue:A.pixels.maxValue,noDataValue:A.noDataValue}}},i=function(A){for(var e=A.pixels.numBlocksX*A.pixels.numBlocksY,t={},i=0;i<e;i++){var r=A.pixels.blocks[i];0===r.encoding?t.float32=!0:1===r.encoding?t[r.bitsPerPixel]=!0:t[0]=!0}return Object.keys(t)},r=function(A,e,t){var i={},r=new Uint8Array(A,e,10);if(i.fileIdentifierString=String.fromCharCode.apply(null,r),\"CntZImage\"!==i.fileIdentifierString.trim())throw\"Unexpected file identifier string: \"+i.fileIdentifierString;e+=10;var I=new DataView(A,e,24);if(i.fileVersion=I.getInt32(0,!0),i.imageType=I.getInt32(4,!0),i.height=I.getUint32(8,!0),i.width=I.getUint32(12,!0),i.maxZError=I.getFloat64(16,!0),e+=24,!t)if(I=new DataView(A,e,16),i.mask={},i.mask.numBlocksY=I.getUint32(0,!0),i.mask.numBlocksX=I.getUint32(4,!0),i.mask.numBytes=I.getUint32(8,!0),i.mask.maxValue=I.getFloat32(12,!0),e+=16,i.mask.numBytes>0){var g=new Uint8Array(Math.ceil(i.width*i.height/8)),n=(I=new DataView(A,e,i.mask.numBytes)).getInt16(0,!0),a=2,o=0;do{if(n>0)for(;n--;)g[o++]=I.getUint8(a++);else{var B=I.getUint8(a++);for(n=-n;n--;)g[o++]=B}n=I.getInt16(a,!0),a+=2}while(a<i.mask.numBytes);if(-32768!==n||o<g.length)throw\"Unexpected end of mask RLE encoding\";i.mask.bitset=g,e+=i.mask.numBytes}else 0==(i.mask.numBytes|i.mask.numBlocksY|i.mask.maxValue)&&(i.mask.bitset=new Uint8Array(Math.ceil(i.width*i.height/8)));I=new DataView(A,e,16),i.pixels={},i.pixels.numBlocksY=I.getUint32(0,!0),i.pixels.numBlocksX=I.getUint32(4,!0),i.pixels.numBytes=I.getUint32(8,!0),i.pixels.maxValue=I.getFloat32(12,!0),e+=16;var C=i.pixels.numBlocksX,Q=i.pixels.numBlocksY,E=C+(i.width%C>0?1:0),s=Q+(i.height%Q>0?1:0);i.pixels.blocks=new Array(E*s);for(var f=0,c=0;c<s;c++)for(var h=0;h<E;h++){var l=0,u=A.byteLength-e;I=new DataView(A,e,Math.min(10,u));var w={};i.pixels.blocks[f++]=w;var d=I.getUint8(0);if(l++,w.encoding=63&d,w.encoding>3)throw\"Invalid block encoding (\"+w.encoding+\")\";if(2!==w.encoding){if(0!==d&&2!==d){if(d>>=6,w.offsetType=d,2===d)w.offset=I.getInt8(1),l++;else if(1===d)w.offset=I.getInt16(1,!0),l+=2;else{if(0!==d)throw\"Invalid block offset type\";w.offset=I.getFloat32(1,!0),l+=4}if(1===w.encoding)if(d=I.getUint8(l),l++,w.bitsPerPixel=63&d,d>>=6,w.numValidPixelsType=d,2===d)w.numValidPixels=I.getUint8(l),l++;else if(1===d)w.numValidPixels=I.getUint16(l,!0),l+=2;else{if(0!==d)throw\"Invalid valid pixel count type\";w.numValidPixels=I.getUint32(l,!0),l+=4}}var D;if(e+=l,3!==w.encoding)if(0===w.encoding){var y=(i.pixels.numBytes-1)/4;if(y!==Math.floor(y))throw\"uncompressed block has invalid length\";D=new ArrayBuffer(4*y),new Uint8Array(D).set(new Uint8Array(A,e,4*y));var k=new Float32Array(D);w.rawData=k,e+=4*y}else if(1===w.encoding){var p=Math.ceil(w.numValidPixels*w.bitsPerPixel/8),m=Math.ceil(p/4);D=new ArrayBuffer(4*m),new Uint8Array(D).set(new Uint8Array(A,e,p)),w.stuffedData=new Uint32Array(D),e+=p}}else e++}return i.eofOffset=e,i},I=function(A,e,t,i,r,I,g){var n,a,o,B=(1<<e)-1,C=0,Q=0,E=Math.ceil((g-i)/r),s=4*A.length-Math.ceil(e*t/8);for(A[A.length-1]<<=8*s,n=0;n<t;n++){if(0===Q&&(o=A[C++],Q=32),Q>=e)a=o>>>Q-e&B,Q-=e;else{var f=e-Q;a=(o&B)<<f&B,a+=(o=A[C++])>>>(Q=32-f)}I[n]=a<E?i+a*r:g}return I},A),h=(g=function(A,e,t,i,r,I,g,n){var a,o,B,C,Q,E=(1<<t)-1,s=0,f=0,c=4*A.length-Math.ceil(t*i/8);if(A[A.length-1]<<=8*c,r)for(a=0;a<i;a++)0===f&&(B=A[s++],f=32),f>=t?(o=B>>>f-t&E,f-=t):(o=(B&E)<<(C=t-f)&E,o+=(B=A[s++])>>>(f=32-C)),e[a]=r[o];else for(Q=Math.ceil((n-I)/g),a=0;a<i;a++)0===f&&(B=A[s++],f=32),f>=t?(o=B>>>f-t&E,f-=t):(o=(B&E)<<(C=t-f)&E,o+=(B=A[s++])>>>(f=32-C)),e[a]=o<Q?I+o*g:n},n=function(A,e,t,i,r,I){var g,n=(1<<e)-1,a=0,o=0,B=0,C=0,Q=0,E=[],s=4*A.length-Math.ceil(e*t/8);A[A.length-1]<<=8*s;var f=Math.ceil((I-i)/r);for(o=0;o<t;o++)0===C&&(g=A[a++],C=32),C>=e?(Q=g>>>C-e&n,C-=e):(Q=(g&n)<<(B=e-C)&n,Q+=(g=A[a++])>>>(C=32-B)),E[o]=Q<f?i+Q*r:I;return E.unshift(i),E},a=function(A,e,t,i,r,I,g,n){var a,o,B,C,Q=(1<<t)-1,E=0,s=0,f=0;if(r)for(a=0;a<i;a++)0===s&&(B=A[E++],s=32,f=0),s>=t?(o=B>>>f&Q,s-=t,f+=t):(o=B>>>f&Q,s=32-(C=t-s),o|=((B=A[E++])&(1<<C)-1)<<t-C,f=C),e[a]=r[o];else{var c=Math.ceil((n-I)/g);for(a=0;a<i;a++)0===s&&(B=A[E++],s=32,f=0),s>=t?(o=B>>>f&Q,s-=t,f+=t):(o=B>>>f&Q,s=32-(C=t-s),o|=((B=A[E++])&(1<<C)-1)<<t-C,f=C),e[a]=o<c?I+o*g:n}return e},o=function(A,e,t,i,r,I){var g,n=(1<<e)-1,a=0,o=0,B=0,C=0,Q=0,E=0,s=[],f=Math.ceil((I-i)/r);for(o=0;o<t;o++)0===C&&(g=A[a++],C=32,E=0),C>=e?(Q=g>>>E&n,C-=e,E+=e):(Q=g>>>E&n,C=32-(B=e-C),Q|=((g=A[a++])&(1<<B)-1)<<e-B,E=B),s[o]=Q<f?i+Q*r:I;return s.unshift(i),s},B=function(A,e,t,i){var r,I,g,n,a=(1<<t)-1,o=0,B=0,C=4*A.length-Math.ceil(t*i/8);for(A[A.length-1]<<=8*C,r=0;r<i;r++)0===B&&(g=A[o++],B=32),B>=t?(I=g>>>B-t&a,B-=t):(I=(g&a)<<(n=t-B)&a,I+=(g=A[o++])>>>(B=32-n)),e[r]=I;return e},C=function(A,e,t,i){var r,I,g,n,a=(1<<t)-1,o=0,B=0,C=0;for(r=0;r<i;r++)0===B&&(g=A[o++],B=32,C=0),B>=t?(I=g>>>C&a,B-=t,C+=t):(I=g>>>C&a,B=32-(n=t-B),I|=((g=A[o++])&(1<<n)-1)<<t-n,C=n),e[r]=I;return e},Q={HUFFMAN_LUT_BITS_MAX:12,computeChecksumFletcher32:function(A){for(var e=65535,t=65535,i=A.length,r=Math.floor(i/2),I=0;r;){var g=r>=359?359:r;r-=g;do{e+=A[I++]<<8,t+=e+=A[I++]}while(--g);e=(65535&e)+(e>>>16),t=(65535&t)+(t>>>16)}return 1&i&&(t+=e+=A[I]<<8),((t=(65535&t)+(t>>>16))<<16|(e=(65535&e)+(e>>>16)))>>>0},readHeaderInfo:function(A,e){var t=e.ptr,i=new Uint8Array(A,t,6),r={};if(r.fileIdentifierString=String.fromCharCode.apply(null,i),0!==r.fileIdentifierString.lastIndexOf(\"Lerc2\",0))throw\"Unexpected file identifier string (expect Lerc2 ): \"+r.fileIdentifierString;t+=6;var I,g=new DataView(A,t,8),n=g.getInt32(0,!0);if(r.fileVersion=n,t+=4,n>=3&&(r.checksum=g.getUint32(4,!0),t+=4),g=new DataView(A,t,12),r.height=g.getUint32(0,!0),r.width=g.getUint32(4,!0),t+=8,n>=4?(r.numDims=g.getUint32(8,!0),t+=4):r.numDims=1,g=new DataView(A,t,40),r.numValidPixel=g.getUint32(0,!0),r.microBlockSize=g.getInt32(4,!0),r.blobSize=g.getInt32(8,!0),r.imageType=g.getInt32(12,!0),r.maxZError=g.getFloat64(16,!0),r.zMin=g.getFloat64(24,!0),r.zMax=g.getFloat64(32,!0),t+=40,e.headerInfo=r,e.ptr=t,n>=3&&(I=n>=4?52:48,this.computeChecksumFletcher32(new Uint8Array(A,t-I,r.blobSize-14))!==r.checksum))throw\"Checksum failed.\";return!0},checkMinMaxRanges:function(A,e){var t=e.headerInfo,i=this.getDataTypeArray(t.imageType),r=t.numDims*this.getDataTypeSize(t.imageType),I=this.readSubArray(A,e.ptr,i,r),g=this.readSubArray(A,e.ptr+r,i,r);e.ptr+=2*r;var n,a=!0;for(n=0;n<t.numDims;n++)if(I[n]!==g[n]){a=!1;break}return t.minValues=I,t.maxValues=g,a},readSubArray:function(A,e,t,i){var r;if(t===Uint8Array)r=new Uint8Array(A,e,i);else{var I=new ArrayBuffer(i);new Uint8Array(I).set(new Uint8Array(A,e,i)),r=new t(I)}return r},readMask:function(A,e){var t,i,r=e.ptr,I=e.headerInfo,g=I.width*I.height,n=I.numValidPixel,a=new DataView(A,r,4),o={};if(o.numBytes=a.getUint32(0,!0),r+=4,(0===n||g===n)&&0!==o.numBytes)throw\"invalid mask\";if(0===n)t=new Uint8Array(Math.ceil(g/8)),o.bitset=t,i=new Uint8Array(g),e.pixels.resultMask=i,r+=o.numBytes;else if(o.numBytes>0){t=new Uint8Array(Math.ceil(g/8));var B=(a=new DataView(A,r,o.numBytes)).getInt16(0,!0),C=2,Q=0,E=0;do{if(B>0)for(;B--;)t[Q++]=a.getUint8(C++);else for(E=a.getUint8(C++),B=-B;B--;)t[Q++]=E;B=a.getInt16(C,!0),C+=2}while(C<o.numBytes);if(-32768!==B||Q<t.length)throw\"Unexpected end of mask RLE encoding\";i=new Uint8Array(g);var s=0,f=0;for(f=0;f<g;f++)7&f?(s=t[f>>3],s<<=7&f):s=t[f>>3],128&s&&(i[f]=1);e.pixels.resultMask=i,o.bitset=t,r+=o.numBytes}return e.ptr=r,e.mask=o,!0},readDataOneSweep:function(A,e,t,i){var r,I=e.ptr,g=e.headerInfo,n=g.numDims,a=g.width*g.height,o=g.imageType,B=g.numValidPixel*Q.getDataTypeSize(o)*n,C=e.pixels.resultMask;if(t===Uint8Array)r=new Uint8Array(A,I,B);else{var E=new ArrayBuffer(B);new Uint8Array(E).set(new Uint8Array(A,I,B)),r=new t(E)}if(r.length===a*n)e.pixels.resultPixels=i?Q.swapDimensionOrder(r,a,n,t,!0):r;else{e.pixels.resultPixels=new t(a*n);var s=0,f=0,c=0,h=0;if(n>1){if(i){for(f=0;f<a;f++)if(C[f])for(h=f,c=0;c<n;c++,h+=a)e.pixels.resultPixels[h]=r[s++]}else for(f=0;f<a;f++)if(C[f])for(h=f*n,c=0;c<n;c++)e.pixels.resultPixels[h+c]=r[s++]}else for(f=0;f<a;f++)C[f]&&(e.pixels.resultPixels[f]=r[s++])}return I+=B,e.ptr=I,!0},readHuffmanTree:function(A,e){var t=this.HUFFMAN_LUT_BITS_MAX,i=new DataView(A,e.ptr,16);if(e.ptr+=16,i.getInt32(0,!0)<2)throw\"unsupported Huffman version\";var r=i.getInt32(4,!0),I=i.getInt32(8,!0),g=i.getInt32(12,!0);if(I>=g)return!1;var n=new Uint32Array(g-I);Q.decodeBits(A,e,n);var a,o,B,C,s=[];for(a=I;a<g;a++)s[o=a-(a<r?0:r)]={first:n[a-I],second:null};var f=A.byteLength-e.ptr,c=Math.ceil(f/4),h=new ArrayBuffer(4*c);new Uint8Array(h).set(new Uint8Array(A,e.ptr,f));var l,u=new Uint32Array(h),w=0,d=0;for(l=u[0],a=I;a<g;a++)(C=s[o=a-(a<r?0:r)].first)>0&&(s[o].second=l<<w>>>32-C,32-w>=C?32===(w+=C)&&(w=0,l=u[++d]):(w+=C-32,l=u[++d],s[o].second|=l>>>32-w));var D=0,y=0,k=new E;for(a=0;a<s.length;a++)void 0!==s[a]&&(D=Math.max(D,s[a].first));y=D>=t?t:D;var p,m,G,F,S,v=[];for(a=I;a<g;a++)if((C=s[o=a-(a<r?0:r)].first)>0)if(p=[C,o],C<=y)for(m=s[o].second<<y-C,G=1<<y-C,B=0;B<G;B++)v[m|B]=p;else for(m=s[o].second,S=k,F=C-1;F>=0;F--)m>>>F&1?(S.right||(S.right=new E),S=S.right):(S.left||(S.left=new E),S=S.left),0!==F||S.val||(S.val=p[1]);return{decodeLut:v,numBitsLUTQick:y,numBitsLUT:D,tree:k,stuffedData:u,srcPtr:d,bitPos:w}},readHuffman:function(A,e,t,i){var r,I,g,n,a,o,B,C,E,s=e.headerInfo.numDims,f=e.headerInfo.height,c=e.headerInfo.width,h=c*f,l=this.readHuffmanTree(A,e),u=l.decodeLut,w=l.tree,d=l.stuffedData,D=l.srcPtr,y=l.bitPos,k=l.numBitsLUTQick,p=l.numBitsLUT,m=0===e.headerInfo.imageType?128:0,G=e.pixels.resultMask,F=0;y>0&&(D++,y=0);var S,v=d[D],R=1===e.encodeMode,U=new t(h*s),L=U;if(s<2||R){for(S=0;S<s;S++)if(s>1&&(L=new t(U.buffer,h*S,h),F=0),e.headerInfo.numValidPixel===c*f)for(C=0,o=0;o<f;o++)for(B=0;B<c;B++,C++){if(I=0,a=n=v<<y>>>32-k,32-y<k&&(a=n|=d[D+1]>>>64-y-k),u[a])I=u[a][1],y+=u[a][0];else for(a=n=v<<y>>>32-p,32-y<p&&(a=n|=d[D+1]>>>64-y-p),r=w,E=0;E<p;E++)if(!(r=n>>>p-E-1&1?r.right:r.left).left&&!r.right){I=r.val,y=y+E+1;break}y>=32&&(y-=32,v=d[++D]),g=I-m,R?(g+=B>0?F:o>0?L[C-c]:F,g&=255,L[C]=g,F=g):L[C]=g}else for(C=0,o=0;o<f;o++)for(B=0;B<c;B++,C++)if(G[C]){if(I=0,a=n=v<<y>>>32-k,32-y<k&&(a=n|=d[D+1]>>>64-y-k),u[a])I=u[a][1],y+=u[a][0];else for(a=n=v<<y>>>32-p,32-y<p&&(a=n|=d[D+1]>>>64-y-p),r=w,E=0;E<p;E++)if(!(r=n>>>p-E-1&1?r.right:r.left).left&&!r.right){I=r.val,y=y+E+1;break}y>=32&&(y-=32,v=d[++D]),g=I-m,R?(B>0&&G[C-1]?g+=F:o>0&&G[C-c]?g+=L[C-c]:g+=F,g&=255,L[C]=g,F=g):L[C]=g}}else for(C=0,o=0;o<f;o++)for(B=0;B<c;B++)if(C=o*c+B,!G||G[C])for(S=0;S<s;S++,C+=h){if(I=0,a=n=v<<y>>>32-k,32-y<k&&(a=n|=d[D+1]>>>64-y-k),u[a])I=u[a][1],y+=u[a][0];else for(a=n=v<<y>>>32-p,32-y<p&&(a=n|=d[D+1]>>>64-y-p),r=w,E=0;E<p;E++)if(!(r=n>>>p-E-1&1?r.right:r.left).left&&!r.right){I=r.val,y=y+E+1;break}y>=32&&(y-=32,v=d[++D]),g=I-m,L[C]=g}e.ptr=e.ptr+4*(D+1)+(y>0?4:0),e.pixels.resultPixels=U,s>1&&!i&&(e.pixels.resultPixels=Q.swapDimensionOrder(U,h,s,t))},decodeBits:function(A,e,t,i,r){var I=e.headerInfo,Q=I.fileVersion,E=0,s=A.byteLength-e.ptr>=5?5:A.byteLength-e.ptr,f=new DataView(A,e.ptr,s),c=f.getUint8(0);E++;var h=c>>6,l=0===h?4:3-h,u=(32&c)>0,w=31&c,d=0;if(1===l)d=f.getUint8(E),E++;else if(2===l)d=f.getUint16(E,!0),E+=2;else{if(4!==l)throw\"Invalid valid pixel count type\";d=f.getUint32(E,!0),E+=4}var D,y,k,p,m,G,F,S,v,R=2*I.maxZError,U=I.numDims>1?I.maxValues[r]:I.zMax;if(u){for(e.counter.lut++,S=f.getUint8(E),E++,p=Math.ceil((S-1)*w/8),m=Math.ceil(p/4),y=new ArrayBuffer(4*m),k=new Uint8Array(y),e.ptr+=E,k.set(new Uint8Array(A,e.ptr,p)),F=new Uint32Array(y),e.ptr+=p,v=0;S-1>>>v;)v++;p=Math.ceil(d*v/8),m=Math.ceil(p/4),y=new ArrayBuffer(4*m),(k=new Uint8Array(y)).set(new Uint8Array(A,e.ptr,p)),D=new Uint32Array(y),e.ptr+=p,G=Q>=3?o(F,w,S-1,i,R,U):n(F,w,S-1,i,R,U),Q>=3?a(D,t,v,d,G):g(D,t,v,d,G)}else e.counter.bitstuffer++,v=w,e.ptr+=E,v>0&&(p=Math.ceil(d*v/8),m=Math.ceil(p/4),y=new ArrayBuffer(4*m),(k=new Uint8Array(y)).set(new Uint8Array(A,e.ptr,p)),D=new Uint32Array(y),e.ptr+=p,Q>=3?null==i?C(D,t,v,d):a(D,t,v,d,!1,i,R,U):null==i?B(D,t,v,d):g(D,t,v,d,!1,i,R,U))},readTiles:function(A,e,t,i){var r=e.headerInfo,I=r.width,g=r.height,n=I*g,a=r.microBlockSize,o=r.imageType,B=Q.getDataTypeSize(o),C=Math.ceil(I/a),E=Math.ceil(g/a);e.pixels.numBlocksY=E,e.pixels.numBlocksX=C,e.pixels.ptr=0;var s,f,c,h,l,u,w,d,D,y,k=0,p=0,m=0,G=0,F=0,S=0,v=0,R=0,U=0,L=0,b=0,M=0,N=0,x=0,J=0,q=new t(a*a),Y=g%a||a,K=I%a||a,H=r.numDims,O=e.pixels.resultMask,P=e.pixels.resultPixels,T=r.fileVersion>=5?14:15,V=r.zMax;for(m=0;m<E;m++)for(F=m!==E-1?a:Y,G=0;G<C;G++)for(L=m*I*a+G*a,b=I-(S=G!==C-1?a:K),d=0;d<H;d++){if(H>1?(y=P,L=m*I*a+G*a,P=new t(e.pixels.resultPixels.buffer,n*d*B,n),V=r.maxValues[d]):y=null,v=A.byteLength-e.ptr,f={},J=0,R=(s=new DataView(A,e.ptr,Math.min(10,v))).getUint8(0),J++,D=r.fileVersion>=5?4&R:0,U=R>>6&255,(R>>2&T)!=(G*a>>3&T))throw\"integrity issue\";if(D&&0===d)throw\"integrity issue\";if((l=3&R)>3)throw e.ptr+=J,\"Invalid block encoding (\"+l+\")\";if(2!==l)if(0===l){if(D)throw\"integrity issue\";if(e.counter.uncompressed++,e.ptr+=J,M=(M=F*S*B)<(N=A.byteLength-e.ptr)?M:N,c=new ArrayBuffer(M%B==0?M:M+B-M%B),new Uint8Array(c).set(new Uint8Array(A,e.ptr,M)),h=new t(c),x=0,O)for(k=0;k<F;k++){for(p=0;p<S;p++)O[L]&&(P[L]=h[x++]),L++;L+=b}else for(k=0;k<F;k++){for(p=0;p<S;p++)P[L++]=h[x++];L+=b}e.ptr+=x*B}else if(u=Q.getDataTypeUsed(D&&o<6?4:o,U),w=Q.getOnePixel(f,J,u,s),J+=Q.getDataTypeSize(u),3===l)if(e.ptr+=J,e.counter.constantoffset++,O)for(k=0;k<F;k++){for(p=0;p<S;p++)O[L]&&(P[L]=D?Math.min(V,y[L]+w):w),L++;L+=b}else for(k=0;k<F;k++){for(p=0;p<S;p++)P[L]=D?Math.min(V,y[L]+w):w,L++;L+=b}else if(e.ptr+=J,Q.decodeBits(A,e,q,w,d),J=0,D)if(O)for(k=0;k<F;k++){for(p=0;p<S;p++)O[L]&&(P[L]=q[J++]+y[L]),L++;L+=b}else for(k=0;k<F;k++){for(p=0;p<S;p++)P[L]=q[J++]+y[L],L++;L+=b}else if(O)for(k=0;k<F;k++){for(p=0;p<S;p++)O[L]&&(P[L]=q[J++]),L++;L+=b}else for(k=0;k<F;k++){for(p=0;p<S;p++)P[L++]=q[J++];L+=b}else{if(D)if(O)for(k=0;k<F;k++)for(p=0;p<S;p++)O[L]&&(P[L]=y[L]),L++;else for(k=0;k<F;k++)for(p=0;p<S;p++)P[L]=y[L],L++;e.counter.constant++,e.ptr+=J}}H>1&&!i&&(e.pixels.resultPixels=Q.swapDimensionOrder(e.pixels.resultPixels,n,H,t))},formatFileInfo:function(A){return{fileIdentifierString:A.headerInfo.fileIdentifierString,fileVersion:A.headerInfo.fileVersion,imageType:A.headerInfo.imageType,height:A.headerInfo.height,width:A.headerInfo.width,numValidPixel:A.headerInfo.numValidPixel,microBlockSize:A.headerInfo.microBlockSize,blobSize:A.headerInfo.blobSize,maxZError:A.headerInfo.maxZError,pixelType:Q.getPixelType(A.headerInfo.imageType),eofOffset:A.eofOffset,mask:A.mask?{numBytes:A.mask.numBytes}:null,pixels:{numBlocksX:A.pixels.numBlocksX,numBlocksY:A.pixels.numBlocksY,maxValue:A.headerInfo.zMax,minValue:A.headerInfo.zMin,noDataValue:A.noDataValue}}},constructConstantSurface:function(A,e){var t=A.headerInfo.zMax,i=A.headerInfo.zMin,r=A.headerInfo.maxValues,I=A.headerInfo.numDims,g=A.headerInfo.height*A.headerInfo.width,n=0,a=0,o=0,B=A.pixels.resultMask,C=A.pixels.resultPixels;if(B)if(I>1){if(e)for(n=0;n<I;n++)for(o=n*g,t=r[n],a=0;a<g;a++)B[a]&&(C[o+a]=t);else for(a=0;a<g;a++)if(B[a])for(o=a*I,n=0;n<I;n++)C[o+I]=r[n]}else for(a=0;a<g;a++)B[a]&&(C[a]=t);else if(I>1&&i!==t)if(e)for(n=0;n<I;n++)for(o=n*g,t=r[n],a=0;a<g;a++)C[o+a]=t;else for(a=0;a<g;a++)for(o=a*I,n=0;n<I;n++)C[o+n]=r[n];else for(a=0;a<g*I;a++)C[a]=t},getDataTypeArray:function(A){var e;switch(A){case 0:e=Int8Array;break;case 1:e=Uint8Array;break;case 2:e=Int16Array;break;case 3:e=Uint16Array;break;case 4:e=Int32Array;break;case 5:e=Uint32Array;break;case 6:default:e=Float32Array;break;case 7:e=Float64Array}return e},getPixelType:function(A){var e;switch(A){case 0:e=\"S8\";break;case 1:e=\"U8\";break;case 2:e=\"S16\";break;case 3:e=\"U16\";break;case 4:e=\"S32\";break;case 5:e=\"U32\";break;case 6:default:e=\"F32\";break;case 7:e=\"F64\"}return e},isValidPixelValue:function(A,e){if(null==e)return!1;var t;switch(A){case 0:t=e>=-128&&e<=127;break;case 1:t=e>=0&&e<=255;break;case 2:t=e>=-32768&&e<=32767;break;case 3:t=e>=0&&e<=65536;break;case 4:t=e>=-2147483648&&e<=2147483647;break;case 5:t=e>=0&&e<=4294967296;break;case 6:t=e>=-34027999387901484e22&&e<=34027999387901484e22;break;case 7:t=e>=-17976931348623157e292&&e<=17976931348623157e292;break;default:t=!1}return t},getDataTypeSize:function(A){var e=0;switch(A){case 0:case 1:e=1;break;case 2:case 3:e=2;break;case 4:case 5:case 6:e=4;break;case 7:e=8;break;default:e=A}return e},getDataTypeUsed:function(A,e){var t=A;switch(A){case 2:case 4:t=A-e;break;case 3:case 5:t=A-2*e;break;case 6:t=0===e?A:1===e?2:1;break;case 7:t=0===e?A:A-2*e+1;break;default:t=A}return t},getOnePixel:function(A,e,t,i){var r=0;switch(t){case 0:r=i.getInt8(e);break;case 1:r=i.getUint8(e);break;case 2:r=i.getInt16(e,!0);break;case 3:r=i.getUint16(e,!0);break;case 4:r=i.getInt32(e,!0);break;case 5:r=i.getUInt32(e,!0);break;case 6:r=i.getFloat32(e,!0);break;case 7:r=i.getFloat64(e,!0);break;default:throw\"the decoder does not understand this pixel type\"}return r},swapDimensionOrder:function(A,e,t,i,r){var I=0,g=0,n=0,a=0,o=A;if(t>1)if(o=new i(e*t),r)for(I=0;I<e;I++)for(a=I,n=0;n<t;n++,a+=e)o[a]=A[g++];else for(I=0;I<e;I++)for(a=I,n=0;n<t;n++,a+=e)o[g++]=A[a];return o}},E=function(A,e,t){this.val=A,this.left=e,this.right=t},{decode:function(A,e){var t=(e=e||{}).noDataValue,i=0,r={};r.ptr=e.inputOffset||0,r.pixels={},Q.readHeaderInfo(A,r);var I=r.headerInfo,g=I.fileVersion,n=Q.getDataTypeArray(I.imageType);if(g>5)throw\"unsupported lerc version 2.\"+g;Q.readMask(A,r),I.numValidPixel===I.width*I.height||r.pixels.resultMask||(r.pixels.resultMask=e.maskData);var a=I.width*I.height;r.pixels.resultPixels=new n(a*I.numDims),r.counter={onesweep:0,uncompressed:0,lut:0,bitstuffer:0,constant:0,constantoffset:0};var o,B=!e.returnPixelInterleavedDims;if(0!==I.numValidPixel)if(I.zMax===I.zMin)Q.constructConstantSurface(r,B);else if(g>=4&&Q.checkMinMaxRanges(A,r))Q.constructConstantSurface(r,B);else{var C=new DataView(A,r.ptr,2),E=C.getUint8(0);if(r.ptr++,E)Q.readDataOneSweep(A,r,n,B);else if(g>1&&I.imageType<=1&&Math.abs(I.maxZError-.5)<1e-5){var s=C.getUint8(1);if(r.ptr++,r.encodeMode=s,s>2||g<4&&s>1)throw\"Invalid Huffman flag \"+s;s?Q.readHuffman(A,r,n,B):Q.readTiles(A,r,n,B)}else Q.readTiles(A,r,n,B)}r.eofOffset=r.ptr,e.inputOffset?(o=r.headerInfo.blobSize+e.inputOffset-r.ptr,Math.abs(o)>=1&&(r.eofOffset=e.inputOffset+r.headerInfo.blobSize)):(o=r.headerInfo.blobSize-r.ptr,Math.abs(o)>=1&&(r.eofOffset=r.headerInfo.blobSize));var f={width:I.width,height:I.height,pixelData:r.pixels.resultPixels,minValue:I.zMin,maxValue:I.zMax,validPixelCount:I.numValidPixel,dimCount:I.numDims,dimStats:{minValues:I.minValues,maxValues:I.maxValues},maskData:r.pixels.resultMask};if(r.pixels.resultMask&&Q.isValidPixelValue(I.imageType,t)){var c=r.pixels.resultMask;for(i=0;i<a;i++)c[i]||(f.pixelData[i]=t);f.noDataValue=t}return r.noDataValue=t,e.returnFileInfo&&(f.fileInfo=Q.formatFileInfo(r)),f},getBandCount:function(A){for(var e=0,t=0,i={ptr:0,pixels:{}};t<A.byteLength-58;)Q.readHeaderInfo(A,i),t+=i.headerInfo.blobSize,e++,i.ptr=t;return e}}),l=(s=new ArrayBuffer(4),f=new Uint8Array(s),new Uint32Array(s)[0]=1,1===f[0]),u={decode:function(A,e){if(!l)throw\"Big endian system is not supported.\";var t,i,r=(e=e||{}).inputOffset||0,I=new Uint8Array(A,r,10),g=String.fromCharCode.apply(null,I);if(\"CntZImage\"===g.trim())t=c,i=1;else{if(\"Lerc2\"!==g.substring(0,5))throw\"Unexpected file identifier string: \"+g;t=h,i=2}for(var n,a,o,B,C,Q,E=0,s=A.byteLength-10,f=[],u={width:0,height:0,pixels:[],pixelType:e.pixelType,mask:null,statistics:[]},w=0;r<s;){var d=t.decode(A,{inputOffset:r,encodedMaskData:n,maskData:o,returnMask:0===E,returnEncodedMask:0===E,returnFileInfo:!0,returnPixelInterleavedDims:e.returnPixelInterleavedDims,pixelType:e.pixelType||null,noDataValue:e.noDataValue||null});r=d.fileInfo.eofOffset,o=d.maskData,0===E&&(n=d.encodedMaskData,u.width=d.width,u.height=d.height,u.dimCount=d.dimCount||1,u.pixelType=d.pixelType||d.fileInfo.pixelType,u.mask=o),i>1&&(o&&f.push(o),d.fileInfo.mask&&d.fileInfo.mask.numBytes>0&&w++),E++,u.pixels.push(d.pixelData),u.statistics.push({minValue:d.minValue,maxValue:d.maxValue,noDataValue:d.noDataValue,dimStats:d.dimStats})}if(i>1&&w>1){for(Q=u.width*u.height,u.bandMasks=f,(o=new Uint8Array(Q)).set(f[0]),B=1;B<f.length;B++)for(a=f[B],C=0;C<Q;C++)o[C]=o[C]&a[C];u.maskData=o}return u}};TA.exports?TA.exports=u:this.Lerc=u}();var ZA,jA,WA,zA=XA.exports,$A={env:{emscripten_notify_memory_growth:function(A){WA=new Uint8Array(jA.exports.memory.buffer)}}},Ae=function(){function A(){B(this,A)}return Q(A,[{key:\"init\",value:function(){return ZA||(ZA=\"undefined\"!=typeof fetch?fetch(\"data:application/wasm;base64,\"+ee).then((function(A){return A.arrayBuffer()})).then((function(A){return WebAssembly.instantiate(A,$A)})).then(this._init):WebAssembly.instantiate(Buffer.from(ee,\"base64\"),$A).then(this._init))}},{key:\"_init\",value:function(A){jA=A.instance,$A.env.emscripten_notify_memory_growth(0)}},{key:\"decode\",value:function(A){var e=arguments.length>1&&void 0!==arguments[1]?arguments[1]:0;if(!jA)throw new Error(\"ZSTDDecoder: Await .init() before decoding.\");var t=A.byteLength,i=jA.exports.malloc(t);WA.set(A,i),e=e||Number(jA.exports.ZSTD_findDecompressedSize(i,t));var r=jA.exports.malloc(e),I=jA.exports.ZSTD_decompress(r,e,i,t),g=WA.slice(r,r+I);return jA.exports.free(i),jA.exports.free(r),g}}]),A}(),ee=\"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IAMNACAEQQNxBEADQCACRQ0FIAAgAkF/aiICaiIDIAEgAmotAAA6AAAgA0EDcQ0ACwsgAkEDTQ0AA0AgACACQXxqIgJqIAEgAmooAgA2AgAgAkEDSw0ACwsgAkUNAgNAIAAgAkF/aiICaiABIAJqLQAAOgAAIAINAAsMAgsgAkEDTQ0AIAIhBANAIAMgASgCADYCACABQQRqIQEgA0EEaiEDIARBfGoiBEEDSw0ACyACQQNxIQILIAJFDQADQCADIAEtAAA6AAAgA0EBaiEDIAFBAWohASACQX9qIgINAAsLIAAL8wICAn8BfgJAIAJFDQAgACACaiIDQX9qIAE6AAAgACABOgAAIAJBA0kNACADQX5qIAE6AAAgACABOgABIANBfWogAToAACAAIAE6AAIgAkEHSQ0AIANBfGogAToAACAAIAE6AAMgAkEJSQ0AIABBACAAa0EDcSIEaiIDIAFB/wFxQYGChAhsIgE2AgAgAyACIARrQXxxIgRqIgJBfGogATYCACAEQQlJDQAgAyABNgIIIAMgATYCBCACQXhqIAE2AgAgAkF0aiABNgIAIARBGUkNACADIAE2AhggAyABNgIUIAMgATYCECADIAE2AgwgAkFwaiABNgIAIAJBbGogATYCACACQWhqIAE2AgAgAkFkaiABNgIAIAQgA0EEcUEYciIEayICQSBJDQAgAa0iBUIghiAFhCEFIAMgBGohAQNAIAEgBTcDGCABIAU3AxAgASAFNwMIIAEgBTcDACABQSBqIQEgAkFgaiICQR9LDQALCyAACy8BAn8gACgCBCAAKAIAQQJ0aiICLQACIQMgACACLwEAIAEgAi0AAxAIajYCACADCy8BAn8gACgCBCAAKAIAQQJ0aiICLQACIQMgACACLwEAIAEgAi0AAxAFajYCACADCx8AIAAgASACKAIEEAg2AgAgARAEGiAAIAJBCGo2AgQLCAAgAGdBH3MLugUBDX8jAEEQayIKJAACfyAEQQNNBEAgCkEANgIMIApBDGogAyAEEAsaIAAgASACIApBDGpBBBAVIgBBbCAAEAMbIAAgACAESxsMAQsgAEEAIAEoAgBBAXRBAmoQECENQVQgAygAACIGQQ9xIgBBCksNABogAiAAQQVqNgIAIAMgBGoiAkF8aiEMIAJBeWohDiACQXtqIRAgAEEGaiELQQQh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ASIDNgLE4AEgACgCvOABIQQgACABNgK84AEgACABIAJqNgK44AEgACABIAQgA2tqNgLA4AELpgEBAX8gACAAKALs4QEQFjYCyOABIABCADcD+OABIABCADcDuOABIABBwOABakIANwMAIABBqNAAaiIBQYyAgOAANgIAIABBADYCmOIBIABCADcDiOEBIABCAzcDgOEBIABBrNABakHgEikCADcCACAAQbTQAWpB6BIoAgA2AgAgACABNgIMIAAgAEGYIGo2AgggACAAQaAwajYCBCAAIABBEGo2AgALYQEBf0G4fyEDAkAgAUEDSQ0AIAIgABAhIgFBA3YiADYCCCACIAFBAXE2AgQgAiABQQF2QQNxIgM2AgACQCADQX9qIgFBAksNAAJAIAFBAWsOAgEAAgtBbA8LIAAhAwsgAwsMACAAIAEgAkEAEC4LiAQCA38CfiADEBYhBCAAQQBBKBAQIQAgBCACSwRAIAQPCyABRQRAQX8PCwJAAkAgA0EBRg0AIAEoAAAiBkGo6r5pRg0AQXYhAyAGQXBxQdDUtMIBRw0BQQghAyACQQhJDQEgAEEAQSgQECEAIAEoAAQhASAAQQE2AhQgACABrTcDAEEADwsgASACIAMQLyIDIAJLDQAgACADNgIYQXIhAyABIARqIgVBf2otAAAiAkEIcQ0AIAJBIHEiBkUEQEFwIQMgBS0AACIFQacBSw0BIAVBB3GtQgEgBUEDdkEKaq2GIgdCA4h+IAd8IQggBEEBaiEECyACQQZ2IQMgAkECdiEFAkAgAkEDcUF/aiICQQJLBEBBACECDAELAkACQAJAIAJBAWsOAgECAAsgASAEai0AACECIARBAWohBAwCCyABIARqLwAAIQIgBEECaiEEDAELIAEgBGooAAAhAiAEQQRqIQQLIAVBAXEhBQJ+AkACQAJAIANBf2oiA0ECTQRAIANBAWsOAgIDAQtCfyAGRQ0DGiABIARqMQAADAMLIAEgBGovAACtQoACfAwCCyABIARqKAAArQwBCyABIARqKQAACyEHIAAgBTYCICAAIAI2AhwgACAHNwMAQQAhAyAAQQA2AhQgACAHIAggBhsiBzcDCCAAIAdCgIAIIAdCgIAIVBs+AhALIAMLWwEBf0G4fyEDIAIQFiICIAFNBH8gACACakF/ai0AACIAQQNxQQJ0QaAeaigC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C0Egak8NAQsgByAHKQNoNwMQIAcgBykDYDcDCCAEIA0gB0EIaiAHQdwAaiAPIA4gESAQEB4hCwwBCyACIARqIQggBCAKEAcgAkERTwRAIARBEGohAgNAIAIgCkEQaiIKEAcgAkEQaiICIAhJDQALCyAIIAlrIQIgByATNgJcIAkgCCAOa0sEQCAJIAggEWtLBEBBbCELDAILIBAgAiAOayICaiIKIANqIBBNBEAgCCAKIAMQDxoMAgsgCCAKQQAgAmsQDyEIIAcgAiADaiIDNgJkIAggAmshCCAOIQILIAlBEE8EQCADIAhqIQMDQCAIIAIQByACQRBqIQIgCEEQaiIIIANJDQALDAELAkAgCUEHTQRAIAggAi0AADoAACAIIAItAAE6AAEgCCACLQACOgACIAggAi0AAzoAAyAIQQRqIAIgCUECdCIDQcAeaigCAGoiAhAXIAIgA0HgHmooAgBrIQIgBygCZCEDDAELIAggAhAMCyADQQlJDQAgAyAIaiEDIAhBCGoiCCACQQhqIgJrQQ9MBEADQCAIIAIQDCACQQhqIQIgCEEIaiIIIANJDQAMAgALAAsDQCAIIAIQByACQRBqIQIgCEEQaiIIIANJDQALCyAHQRhqEAQaIAsgDCALEAMiAhshDCAEIAQgC2ogAhshBCAFQX9qIgUNAAsgDBADDQFBbCEMIAdBGGoQBEECSQ0BQQAhCANAIAhBA0cEQCAAIAhBAnQiAmpBrNABaiACIAdqKAJENgIAIAhBAWohCAwBCwsgBygCXCEIC0G6fyEMIA8gCGsiACANIARrSw0AIAQEfyAEIAggABALIABqBUEACyABayEMCyAHQfAAaiQAIAwLkRcCFn8FfiMAQdABayIHJAAgByAAKALw4QEiCDYCvAEgASACaiESIAggACgCgOIBaiETAkACQCAFRQRAIAEhAwwBCyAAKALE4AEhESAAKALA4AEhFSAAKAK84AEhDyAAQQE2AozhAUEAIQgDQCAIQQNHBEAgByAIQQJ0IgJqIAAgAmpBrNABaigCADYCVCAIQQFqIQgMAQsLIAcgETYCZCAHIA82AmAgByABIA9rNgJoQWwhECAHQShqIAMgBBAGEAMNASAFQQQgBUEESBshFyAHQTxqIAdBKGogACgCABATIAdBxABqIAdBKGogACgCCBATIAdBzABqIAdB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IAdB0AFqJAAgEAslACAAQgA3AgAgAEEAOwEIIABBADoACyAAIAE2AgwgACACOgAKC7QFAQN/IwBBMGsiBCQAIABB/wFqIgVBfWohBgJAIAMvAQIEQCAEQRhqIAEgAhAGIgIQAw0BIARBEGogBEEYaiADEBwgBEEIaiAEQRhqIAMQHCAAIQMDQAJAIARBGGoQBCADIAZPckUEQCADIARBEGogBEEYahASOgAAIAMgBEEIaiAEQRhqEBI6AAEgBEEYahAERQ0BIANBAmohAwsgBUF+aiEFAn8DQEG6fyECIAMiASAFSw0FIAEgBEEQaiAEQRhqEBI6AAAgAUEBaiEDIARBGGoQBEEDRgRAQQIhAiAEQQhqDAILIAMgBUsNBSABIARBCGogBEEYahASOgABIAFBAmohA0EDIQIgBEEYahAEQQNHDQALIARBEGoLIQUgAyAFIARBGGoQEjoAACABIAJqIABrIQIMAwsgAyAEQRBqIARBGGoQEjoAAiADIARBCGogBEEYahASOgADIANBBGohAwwAAAsACyAEQRhqIAEgAhAGIgIQAw0AIARBEGogBEEYaiADEBwgBEEIaiAEQRhqIAMQHCAAIQMDQAJAIARBGGoQBCADIAZPckUEQCADIARBEGogBEEYahAROgAAIAMgBEEIaiAEQRhqEBE6AAEgBEEYahAERQ0BIANBAmohAwsgBUF+aiEFAn8DQEG6fyECIAMiASAFSw0EIAEgBEEQaiAEQRhqEBE6AAAgAUEBaiEDIARBGGoQBEEDRgRAQQIhAiAEQQhqDAILIAMgBUsNBCABIARBCGogBEEYahAROgABIAFBAmohA0EDIQIgBEEYahAEQQNHDQALIARBEGoLIQUgAyAFIARBGGoQEToAACABIAJqIABrIQIMAgsgAyAEQRBqIARBGGoQEToAAiADIARBCGogBEEYahAROgADIANBBGohAwwAAAsACyAEQTBqJAAgAgtpAQF/An8CQAJAIAJBB00NACABKAAAQbfIwuF+Rw0AIAAgASgABDYCmOIBQWIgAEEQaiABIAIQPiIDEAMNAhogAEKBgICAEDcDiOEBIAAgASADaiACIANrECoMAQsgACABIAIQKgtBAAsLrQMBBn8jAEGAAWsiAyQAQWIhCAJAIAJBCUkNACAAQZjQAGogAUEIaiIEIAJBeGogAEGY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wOABCwutAgIEfwF+IwBBQGoiBCQAAkACQCACQQhJDQAgASgAAEFwcUHQ1LTCAUcNACABIAIQIiEBIABCADcDCCAAQQA2AgQgACABNgIADAELIARBGGogASACEC0iAxADBEAgACADEBoMAQsgAwRAIABBuH8QGgwBCyACIAQoAjAiA2shAiABIANqIQMDQAJAIAAgAyACIARBCGoQLCIFEAMEfyAFBSACIAVBA2oiBU8NAUG4fwsQGgwCCyAGQQFqIQYgAiAFayECIAMgBWohAyAEKAIMRQ0ACyAEKAI4BEAgAkEDTQRAIABBuH8QGgwCCyADQQRqIQMLIAQoAighAiAEKQMYIQcgAEEANgIEIAAgAyABazYCACAAIAIgBmytIAcgB0J/URs3AwgLIARBQGskAAslAQF/IwBBEGsiAiQAIAIgACABEFEgAigCACEAIAJBEGokACAAC30BBH8jAEGQBGsiBCQAIARB/wE2AggCQCAEQRBqIARBCGogBEEMaiABIAIQFSIGEAMEQCAGIQUMAQtBVCEFIAQoAgwiB0EGSw0AIAMgBEEQaiAEKAIIIAcQQSIFEAMNACAAIAEgBmogAiAGayADEDwhBQsgBEGQBGokACAFC4cBAgJ/An5BABAWIQMCQANAIAEgA08EQAJAIAAoAABBcHFB0NS0wgFGBEAgACABECIiAhADRQ0BQn4PCyAAIAEQVSIEQn1WDQMgBCAFfCIFIARUIQJCfiEEIAINAyAAIAEQUiICEAMNAwsgASACayEBIAAgAmohAAwBCwtCfiAFIAEbIQQLIAQLPwIBfwF+IwBBMGsiAiQAAn5CfiACQQhqIAAgARAtDQAaQgAgAigCHEEBRg0AGiACKQMICyEDIAJBMGokACADC40BAQJ/IwBBMGsiASQAAkAgAEUNACAAKAKI4gENACABIABB/OEBaigCADYCKCABIAApAvThATcDICAAEDAgACgCqOIBIQIgASABKAIoNgIYIAEgASkDIDcDECACIAFBEGoQGyAAQQA2AqjiASABIAEoAig2AgggASABKQMgNwMAIAAgARAbCyABQTBqJAALKgECfyMAQRBrIgAkACAAQQA2AgggAEIANwMAIAAQWCEBIABBEGokACABC4cBAQN/IwBBEGsiAiQAAkAgACgCAEUgACgCBEVzDQAgAiAAKAIINgIIIAIgACkCADcDAAJ/IAIoAgAiAQRAIAIoAghBqOMJIAERBQAMAQtBqOMJECgLIgFFDQAgASAAKQIANwL04QEgAUH84QFqIAAoAgg2AgAgARBZIAEhAwsgAkEQaiQAIAMLywEBAn8jAEEgayIBJAAgAEGBgIDAADYCtOIBIABBADYCiOIBIABBADYC7OEBIABCADcDkOIBIABBADYCpOMJIABBADYC3OIBIABCADcCzOIBIABBADYCvOIBIABBADYCxOABIABCADcCnOIBIABBpOIBakIANwIAIABBrOIBakEANgIAIAFCADcCECABQgA3AhggASABKQMYNwMIIAEgASkDEDcDACABKAIIQQh2QQFxIQIgAEEANgLg4gEgACACNgKM4gEgAUEgaiQAC3YBA38jAEEwayIBJAAgAARAIAEgAEHE0AFqIgIoAgA2AiggASAAKQK80AE3AyAgACgCACEDIAEgAigCADYCGCABIAApArzQATcDECADIAFBEGoQGyABIAEoAig2AgggASABKQMgNwMAIAAgARAbCyABQTBqJAALzAEBAX8gACABKAK00AE2ApjiASAAIAEoAgQiAjYCwOABIAAgAjYCvOABIAAgAiABKAIIaiICNgK44AEgACACNgLE4AEgASgCuNABBEAgAEKBgICAEDcDiOEBIAAgAUGk0ABqNgIMIAAgAUGUIGo2AgggACABQZwwajYCBCAAIAFBDGo2AgAgAEGs0AFqIAFBqNABaigCADYCACAAQbDQAWogAUGs0AFqKAIANgIAIABBtNABaiABQbDQAWooAgA2AgAPCyAAQgA3A4jhAQs7ACACRQRAQbp/DwsgBEUEQEFsDwsgAiAEEGAEQCAAIAEgAiADIAQgBRBhDwsgACABIAIgAyAEIAUQZQtGAQF/IwBBEGsiBSQAIAVBCGogBBAOAn8gBS0ACQRAIAAgASACIAMgBBAyDAELIAAgASACIAMgBBA0CyEAIAVBEGokACAACzQAIAAgAyAEIAUQNiIFEAMEQCAFDwsgBSAESQR/IAEgAiADIAVqIAQgBWsgABA1BUG4fwsLRgEBfyMAQRBrIgUkACAFQQhqIAQQDgJ/IAUtAAkEQCAAIAEgAiADIAQQYgwBCyAAIAEgAiADIAQQNQshACAFQRBqJAAgAAtZAQF/QQ8hAiABIABJBEAgAUEEdCAAbiECCyAAQQh2IgEgAkEYbCIAQYwIaigCAGwgAEGICGooAgBqIgJBA3YgAmogAEGACGooAgAgAEGECGooAgAgAWxqSQs3ACAAIAMgBCAFQYAQEDMiBRADBEAgBQ8LIAUgBEkEfyABIAIgAyAFaiAEIAVrIAAQMgVBuH8LC78DAQN/IwBBIGsiBSQAIAVBCGogAiADEAYiAhADRQRAIAAgAWoiB0F9aiEGIAUgBBAOIARBBGohAiAFLQACIQMDQEEAIAAgBkkgBUEIahAEGwRAIAAgAiAFQQhqIAMQAkECdGoiBC8BADsAACAFQQhqIAQtAAIQASAAIAQtAANqIgQgAiAFQQhqIAMQAkECdGoiAC8BADsAACAFQQhqIAAtAAIQASAEIAAtAANqIQAMAQUgB0F+aiEEA0AgBUEIahAEIAAgBEtyRQRAIAAgAiAFQQhqIAMQAkECdGoiBi8BADsAACAFQQhqIAYtAAIQASAAIAYtAANqIQAMAQsLA0AgACAES0UEQCAAIAIgBUEIaiADEAJBAnRqIgYvAQA7AAAgBUEIaiAGLQACEAEgACAGLQADaiEADAELCwJAIAAgB08NACAAIAIgBUEIaiADEAIiA0ECdGoiAC0AADoAACAALQADQQFGBEAgBUEIaiAALQACEAEMAQsgBSgCDEEfSw0AIAVBCGogAiADQQJ0ai0AAhABIAUoAgxBIUkNACAFQSA2AgwLIAFBbCAFQQhqEAobIQILCwsgBUEgaiQAIAILkgIBBH8jAEFAaiIJJAAgCSADQTQQCyEDAkAgBEECSA0AIAMgBEECdGooAgAhCSADQTxqIAgQIyADQQE6AD8gAyACOgA+QQAhBCADKAI8IQoDQCAEIAlGDQEgACAEQQJ0aiAKNgEAIARBAWohBAwAAAsAC0EAIQkDQCAGIAlGRQRAIAMgBSAJQQF0aiIKLQABIgtBAnRqIgwoAgAhBCADQTxqIAotAABBCHQgCGpB//8DcRAjIANBAjoAPyADIAcgC2siCiACajoAPiAEQQEgASAKa3RqIQogAygCPCELA0AgACAEQQJ0aiALNgEAIARBAWoiBCAKSQ0ACyAMIAo2AgAgCUEBaiEJDAELCyADQUBrJAALowIBCX8jAEHQAGsiCSQAIAlBEGogBUE0EAsaIAcgBmshDyAHIAFrIRADQAJAIAMgCkcEQEEBIAEgByACIApBAXRqIgYtAAEiDGsiCGsiC3QhDSAGLQAAIQ4gCUEQaiAMQQJ0aiIMKAIAIQYgCyAPTwRAIAAgBkECdGogCyAIIAUgCEE0bGogCCAQaiIIQQEgCEEBShsiCCACIAQgCEECdGooAgAiCEEBdGogAyAIayAHIA4QYyAGIA1qIQgMAgsgCUEMaiAOECMgCUEBOgAPIAkgCDoADiAGIA1qIQggCSgCDCELA0AgBiAITw0CIAAgBkECdGogCzYBACAGQQFqIQYMAAALAAsgCUHQAGokAA8LIAwgCDYCACAKQQFqIQoMAAALAAs0ACAAIAMgBCAFEDYiBRADBEAgBQ8LIAUgBEkEfyABIAIgAyAFaiAEIAVrIAAQNAVBuH8LCyMAIAA/AEEQdGtB//8DakEQdkAAQX9GBEBBAA8LQQAQAEEBCzsBAX8gAgRAA0AgACABIAJBgCAgAkGAIEkbIgMQCyEAIAFBgCBqIQEgAEGAIGohACACIANrIgINAAsLCwYAIAAQAwsLqBUJAEGICAsNAQAAAAEAAAACAAAAAgBBoAgLswYBAAAAAQAAAAIAAAACAAAAJgAAAIIAAAAhBQAASgAAAGcIAAAmAAAAwAEAAIAAAABJBQAASgAAAL4IAAApAAAALAIAAIAAAABJBQAASgAAAL4IAAAvAAAAygIAAIAAAACKBQAASgAAAIQJAAA1AAAAcwMAAIAAAACdBQAASgAAAKAJAAA9AAAAgQMAAIAAAADrBQAASwAAAD4KAABEAAAAngMAAIAAAABNBgAASwAAAKoKAABLAAAAswMAAIAAAADBBgAATQAAAB8NAABNAAAAUwQAAIAAAAAjCAAAUQAAAKYPAABUAAAAmQQAAIAAAABLCQAAVwAAALESAABYAAAA2gQAAIAAAABvCQAAXQAAACMUAABUAAAARQUAAIAAAABUCgAAagAAAIwUAABqAAAArwUAAIAAAAB2CQAAfAAAAE4QAAB8AAAA0gIAAIAAAABjBwAAkQAAAJAHAACSAAAAAAAAAAEAAAABAAAABQAAAA0AAAAdAAAAPQAAAH0AAAD9AAAA/QEAAP0DAAD9BwAA/Q8AAP0fAAD9PwAA/X8AAP3/AAD9/wEA/f8DAP3/BwD9/w8A/f8fAP3/PwD9/38A/f//AP3//wH9//8D/f//B/3//w/9//8f/f//P/3//38AAAAAAQAAAAIAAAADAAAABAAAAAUAAAAGAAAABwAAAAgAAAAJAAAACgAAAAsAAAAMAAAADQAAAA4AAAAPAAAAEAAAABEAAAASAAAAEwAAABQAAAAVAAAAFgAAABcAAAAYAAAAGQAAABoAAAAbAAAAHAAAAB0AAAAeAAAAHwAAAAMAAAAEAAAABQAAAAYAAAAHAAAACAAAAAkAAAAKAAAACwAAAAwAAAANAAAADgAAAA8AAAAQAAAAEQAAABIAAAATAAAAFAAAABUAAAAWAAAAFwAAABgAAAAZAAAAGgAAABsAAAAcAAAAHQAAAB4AAAAfAAAAIAAAACEAAAAiAAAAIwAAACUAAAAnAAAAKQAAACsAAAAvAAAAMwAAADsAAABDAAAAUwAAAGMAAACDAAAAAwEAAAMCAAADBAAAAwgAAAMQAAADIAAAA0AAAAOAAAADAAEAQeAPC1EBAAAAAQAAAAEAAAABAAAAAgAAAAIAAAADAAAAAwAAAAQAAAAEAAAABQAAAAcAAAAIAAAACQAAAAoAAAALAAAADAAAAA0AAAAOAAAADwAAABAAQcQQC4sBAQAAAAIAAAADAAAABAAAAAUAAAAGAAAABwAAAAgAAAAJAAAACgAAAAsAAAAMAAAADQAAAA4AAAAPAAAAEAAAABIAAAAUAAAAFgAAABgAAAAcAAAAIAAAACgAAAAwAAAAQAAAAIAAAAAAAQAAAAIAAAAEAAAACAAAABAAAAAgAAAAQAAAAIAAAAAAAQBBkBIL5gQBAAAAAQAAAAEAAAABAAAAAgAAAAIAAAADAAAAAwAAAAQAAAAGAAAABwAAAAgAAAAJAAAACgAAAAsAAAAMAAAADQAAAA4AAAAPAAAAEAAAAAEAAAAEAAAACAAAAAAAAAABAAEBBgAAAAAAAAQAAAAAEAAABAAAAAAgAAAFAQAAAAAAAAUDAAAAAAAABQQAAAAAAAAFBgAAAAAAAAUHAAAAAAAABQkAAAAAAAAFCgAAAAAAAAUMAAAAAAAABg4AAAAAAAEFEAAAAAAAAQUUAAAAAAABBRYAAAAAAAIFHAAAAAAAAwUgAAAAAAAEBTAAAAAgAAYFQAAAAAAABwWAAAAAAAAIBgABAAAAAAoGAAQAAAAADAYAEAAAIAAABAAAAAAAAAAEAQAAAAAAAAUCAAAAIAAABQQAAAAAAAAFBQAAACAAAAUHAAAAAAAABQgAAAAgAAAFCgAAAAAAAAULAAAAAAAABg0AAAAgAAEFEAAAAAAAAQUSAAAAIAABBRYAAAAAAAIFGAAAACAAAwUgAAAAAAADBSgAAAAAAAYEQAAAABAABgRAAAAAIAAHBYAAAAAAAAkGAAIAAAAACwYACAAAMAAABAAAAAAQAAAEAQAAACAAAAUCAAAAIAAABQMAAAAgAAAFBQAAACAAAAUGAAAAIAAABQgAAAAgAAAFCQAAACAAAAULAAAAIAAABQwAAAAAAAAGDwAAACAAAQUSAAAAIAABBRQAAAAgAAIFGAAAACAAAgUcAAAAIAADBSgAAAAgAAQFMAAAAAAAEAYAAAEAAAAPBgCAAAAAAA4GAEAAAAAADQYAIABBgBcLhwIBAAEBBQAAAAAAAAUAAAAAAAAGBD0AAAAAAAkF/QEAAAAADwX9fwAAAAAVBf3/HwAAAAMFBQAAAAAABwR9AAAAAAAMBf0PAAAAABIF/f8DAAAAFwX9/38AAAAFBR0AAAAAAAgE/QAAAAAADgX9PwAAAAAUBf3/DwAAAAIFAQAAABAABwR9AAAAAAALBf0HAAAAABEF/f8BAAAAFgX9/z8AAAAEBQ0AAAAQAAgE/QAAAAAADQX9HwAAAAATBf3/BwAAAAEFAQAAABAABgQ9AAAAAAAKBf0DAAAAABAF/f8AAAAAHAX9//8PAAAbBf3//wcAABoF/f//AwAAGQX9//8BAAAYBf3//wBBkBkLhgQBAAEBBgAAAAAAAAYDAAAAAAAABAQAAAAgAAAFBQAAAAAAAAUGAAAAAAAABQgAAAAAAAAFCQAAAAAAAAULAAAAAAAABg0AAAAAAAAGEAAAAAAAAAYTAAAAAAAABhYAAAAAAAAGGQAAAAAAAAYcAAAAAAAABh8AAAAAAAAGIgAAAAAAAQYlAAAAAAABBikAAAAAAAIGLwAAAAAAAwY7AAAAAAAEBlMAAAAAAAcGgwAAAAAACQYDAgAAEAAABAQAAAAAAAAEBQAAACAAAAUGAAAAAAAABQcAAAAgAAAFCQAAAAAAAAUKAAAAAAAABgwAAAAAAAAGDwAAAAAAAAYSAAAAAAAABhUAAAAAAAAGGAAAAAAAAAYbAAAAAAAABh4AAAAAAAAGIQAAAAAAAQYjAAAAAAABBicAAAAAAAIGKwAAAAAAAwYzAAAAAAAEBkMAAAAAAAUGYwAAAAAACAYDAQAAIAAABAQAAAAwAAAEBAAAABAAAAQFAAAAIAAABQcAAAAgAAAFCAAAACAAAAUKAAAAIAAABQsAAAAAAAAGDgAAAAAAAAYRAAAAAAAABhQAAAAAAAAGFwAAAAAAAAYaAAAAAAAABh0AAAAAAAAGIAAAAAAAEAYDAAEAAAAPBgOAAAAAAA4GA0AAAAAADQYDIAAAAAAMBgMQAAAAAAsGAwgAAAAACgYDBABBpB0L2QEBAAAAAwAAAAcAAAAPAAAAHwAAAD8AAAB/AAAA/wAAAP8BAAD/AwAA/wcAAP8PAAD/HwAA/z8AAP9/AAD//wAA//8BAP//AwD//wcA//8PAP//HwD//z8A//9/AP///wD///8B////A////wf///8P////H////z////9/AAAAAAEAAAACAAAABAAAAAAAAAACAAAABAAAAAgAAAAAAAAAAQAAAAIAAAABAAAABAAAAAQAAAAEAAAABAAAAAgAAAAIAAAACAAAAAcAAAAIAAAACQAAAAoAAAALAEGgIAsDwBBQ\",te={315:\"Artist\",258:\"BitsPerSample\",265:\"CellLength\",264:\"CellWidth\",320:\"ColorMap\",259:\"Compression\",33432:\"Copyright\",306:\"DateTime\",338:\"ExtraSamples\",266:\"FillOrder\",289:\"FreeByteCounts\",288:\"FreeOffsets\",291:\"GrayResponseCurve\",290:\"GrayResponseUnit\",316:\"HostComputer\",270:\"ImageDescription\",257:\"ImageLength\",256:\"ImageWidth\",271:\"Make\",281:\"MaxSampleValue\",280:\"MinSampleValue\",272:\"Model\",254:\"NewSubfileType\",274:\"Orientation\",262:\"PhotometricInterpretation\",284:\"PlanarConfiguration\",296:\"ResolutionUnit\",278:\"RowsPerStrip\",277:\"SamplesPerPixel\",305:\"Software\",279:\"StripByteCounts\",273:\"StripOffsets\",255:\"SubfileType\",263:\"Threshholding\",282:\"XResolution\",283:\"YResolution\",326:\"BadFaxLines\",327:\"CleanFaxData\",343:\"ClipPath\",328:\"ConsecutiveBadFaxLines\",433:\"Decode\",434:\"DefaultImageColor\",269:\"DocumentName\",336:\"DotRange\",321:\"HalftoneHints\",346:\"Indexed\",347:\"JPEGTables\",285:\"PageName\",297:\"PageNumber\",317:\"Predictor\",319:\"PrimaryChromaticities\",532:\"ReferenceBlackWhite\",339:\"SampleFormat\",340:\"SMinSampleValue\",341:\"SMaxSampleValue\",559:\"StripRowCounts\",330:\"SubIFDs\",292:\"T4Options\",293:\"T6Options\",325:\"TileByteCounts\",323:\"TileLength\",324:\"TileOffsets\",322:\"TileWidth\",301:\"TransferFunction\",318:\"WhitePoint\",344:\"XClipPathUnits\",286:\"XPosition\",529:\"YCbCrCoefficients\",531:\"YCbCrPositioning\",530:\"YCbCrSubSampling\",345:\"YClipPathUnits\",287:\"YPosition\",37378:\"ApertureValue\",40961:\"ColorSpace\",36868:\"DateTimeDigitized\",36867:\"DateTimeOriginal\",34665:\"Exif IFD\",36864:\"ExifVersion\",33434:\"ExposureTime\",41728:\"FileSource\",37385:\"Flash\",40960:\"FlashpixVersion\",33437:\"FNumber\",42016:\"ImageUniqueID\",37384:\"LightSource\",37500:\"MakerNote\",37377:\"ShutterSpeedValue\",37510:\"UserComment\",33723:\"IPTC\",34675:\"ICC Profile\",700:\"XMP\",42112:\"GDAL_METADATA\",42113:\"GDAL_NODATA\",34377:\"Photoshop\",33550:\"ModelPixelScale\",33922:\"ModelTiepoint\",34264:\"ModelTransformation\",34735:\"GeoKeyDirectory\",34736:\"GeoDoubleParams\",34737:\"GeoAsciiParams\",50674:\"LercParameters\"},ie={};for(var re in te)te.hasOwnProperty(re)&&(ie[te[re]]=parseInt(re,10));ie.BitsPerSample,ie.ExtraSamples,ie.SampleFormat,ie.StripByteCounts,ie.StripOffsets,ie.StripRowCounts,ie.TileByteCounts,ie.TileOffsets,ie.SubIFDs;var Ie={1:\"BYTE\",2:\"ASCII\",3:\"SHORT\",4:\"LONG\",5:\"RATIONAL\",6:\"SBYTE\",7:\"UNDEFINED\",8:\"SSHORT\",9:\"SLONG\",10:\"SRATIONAL\",11:\"FLOAT\",12:\"DOUBLE\",13:\"IFD\",16:\"LONG8\",17:\"SLONG8\",18:\"IFD8\"},ge={};for(var ne in Ie)Ie.hasOwnProperty(ne)&&(ge[Ie[ne]]=parseInt(ne,10));var ae=1,oe=0,Be=1,Ce=2,Qe={1024:\"GTModelTypeGeoKey\",1025:\"GTRasterTypeGeoKey\",1026:\"GTCitationGeoKey\",2048:\"GeographicTypeGeoKey\",2049:\"GeogCitationGeoKey\",2050:\"GeogGeodeticDatumGeoKey\",2051:\"GeogPrimeMeridianGeoKey\",2052:\"GeogLinearUnitsGeoKey\",2053:\"GeogLinearUnitSizeGeoKey\",2054:\"GeogAngularUnitsGeoKey\",2055:\"GeogAngularUnitSizeGeoKey\",2056:\"GeogEllipsoidGeoKey\",2057:\"GeogSemiMajorAxisGeoKey\",2058:\"GeogSemiMinorAxisGeoKey\",2059:\"GeogInvFlatteningGeoKey\",2060:\"GeogAzimuthUnitsGeoKey\",2061:\"GeogPrimeMeridianLongGeoKey\",2062:\"GeogTOWGS84GeoKey\",3072:\"ProjectedCSTypeGeoKey\",3073:\"PCSCitationGeoKey\",3074:\"ProjectionGeoKey\",3075:\"ProjCoordTransGeoKey\",3076:\"ProjLinearUnitsGeoKey\",3077:\"ProjLinearUnitSizeGeoKey\",3078:\"ProjStdParallel1GeoKey\",3079:\"ProjStdParallel2GeoKey\",3080:\"ProjNatOriginLongGeoKey\",3081:\"ProjNatOriginLatGeoKey\",3082:\"ProjFalseEastingGeoKey\",3083:\"ProjFalseNorthingGeoKey\",3084:\"ProjFalseOriginLongGeoKey\",3085:\"ProjFalseOriginLatGeoKey\",3086:\"ProjFalseOriginEastingGeoKey\",3087:\"ProjFalseOriginNorthingGeoKey\",3088:\"ProjCenterLongGeoKey\",3089:\"ProjCenterLatGeoKey\",3090:\"ProjCenterEastingGeoKey\",3091:\"ProjCenterNorthingGeoKey\",3092:\"ProjScaleAtNatOriginGeoKey\",3093:\"ProjScaleAtCenterGeoKey\",3094:\"ProjAzimuthAngleGeoKey\",3095:\"ProjStraightVertPoleLongGeoKey\",3096:\"ProjRectifiedGridAngleGeoKey\",4096:\"VerticalCSTypeGeoKey\",4097:\"VerticalCitationGeoKey\",4098:\"VerticalDatumGeoKey\",4099:\"VerticalUnitsGeoKey\"},Ee={};for(var se in Qe)Qe.hasOwnProperty(se)&&(Ee[Qe[se]]=parseInt(se,10));function fe(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var ce=new Ae,he=function(A){s(t,w);var e=fe(t);function t(A){var i;return B(this,t),(i=e.call(this)).planarConfiguration=void 0!==A.PlanarConfiguration?A.PlanarConfiguration:1,i.samplesPerPixel=void 0!==A.SamplesPerPixel?A.SamplesPerPixel:1,i.addCompression=A.LercParameters[ae],i}return Q(t,[{key:\"decodeBlock\",value:function(A){switch(this.addCompression){case oe:break;case Be:A=YA(new Uint8Array(A)).buffer;break;case Ce:A=ce.decode(new Uint8Array(A)).buffer;break;default:throw new Error(\"Unsupported LERC additional compression method identifier: \".concat(this.addCompression))}return zA.decode(A,{returnPixelInterleavedDims:1===this.planarConfiguration}).pixels[0].buffer}}]),t}(),le=Object.freeze({__proto__:null,zstd:ce,default:he});function ue(A){var e=function(){if(\"undefined\"==typeof Reflect||!Reflect.construct)return!1;if(Reflect.construct.sham)return!1;if(\"function\"==typeof Proxy)return!0;try{return Boolean.prototype.valueOf.call(Reflect.construct(Boolean,[],(function(){}))),!0}catch(A){return!1}}();return function(){var t,i=c(A);if(e){var r=c(this).constructor;t=Reflect.construct(i,arguments,r)}else t=i.apply(this,arguments);return f(this,t)}}var we=function(A){s(I,w);var t,i=ue(I);function I(){var A;if(B(this,I),A=i.call(this),\"undefined\"==typeof createImageBitmap)throw new Error(\"Cannot decode WebImage as `createImageBitmap` is not available\");if(\"undefined\"==typeof document&&\"undefined\"==typeof OffscreenCanvas)throw new Error(\"Cannot decode WebImage as neither `document` nor `OffscreenCanvas` is not available\");return A}return Q(I,[{key:\"decode\",value:(t=e(r.mark((function A(e,t){var i,I,g,n;return r.wrap((function(A){for(;;)switch(A.prev=A.next){case 0:return i=new Blob([t]),A.next=3,createImageBitmap(i);case 3:return I=A.sent,\"undefined\"!=typeof document?((g=document.createElement(\"canvas\")).width=I.width,g.height=I.height):g=new OffscreenCanvas(I.width,I.height),(n=g.getContext(\"2d\")).drawImage(I,0,0),A.abrupt(\"return\",n.getImageData(0,0,I.width,I.height).data.buffer);case 8:case\"end\":return A.stop()}}),A)}))),function(A,e){return t.apply(this,arguments)})}]),I}(),de=Object.freeze({__proto__:null,default:we});";
+            return new Worker$1(typeof Buffer !== 'undefined' 
               ? 'data:application/javascript;base64,' + Buffer.from(source, 'binary').toString('base64')
               : URL.createObjectURL(new Blob([source], {type: 'application/javascript'})));
           }

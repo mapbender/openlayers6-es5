@@ -1,3 +1,7 @@
+## 7.5.2.0
+* Update to [Openlayers 7.5.2](https://github.com/openlayers/openlayers/releases/tag/v7.5.2)
+* Expose all formats from ol.formats
+
 ## 7.3.0.0
 * Update to [Openlayers 7.3.0](https://github.com/openlayers/openlayers/releases/tag/v7.3.0)
 
