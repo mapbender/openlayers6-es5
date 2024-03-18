@@ -46,7 +46,19 @@ import {
     GML as format_GML,
     KML as format_KML,
     WFS as format_WFS,
-    WKT as format_WKT
+    WKT as format_WKT,
+    EsriJSON as format_EsriJSON,
+    GPX as format_GPX,
+    IGC as format_IGC,
+    IIIFInfo as format_IIIFInfo,
+    MVT as format_MVT,
+    OWS as format_OWS,
+    Polyline as format_Polyline,
+    TopoJSON as format_TopoJSON,
+    WKB as format_WKB,
+    WMSCapabilities as format_WMSCapabilities,
+    WMSGetFeatureInfo as format_WMSGetFeatureInfo,
+    WMTSCapabilities as format_WMTSCapabilities,
 } from "ol/format.js";
 import * as nsFormat_filter from "ol/format/filter.js";
 
@@ -160,6 +172,18 @@ var ol = {
         KML: format_KML,
         WFS: format_WFS,
         WKT: format_WKT,
+        EsriJSON: format_EsriJSON,
+        GPX: format_GPX,
+        IGC: format_IGC,
+        IIIFInfo: format_IIIFInfo,
+        MVT: format_MVT,
+        OWS: format_OWS,
+        Polyline: format_Polyline,
+        TopoJSON: format_TopoJSON,
+        WKB: format_WKB,
+        WMSCapabilities: format_WMSCapabilities,
+        WMSGetFeatureInfo: format_WMSGetFeatureInfo,
+        WMTSCapabilities: format_WMTSCapabilities,
         filter: nsFormat_filter
     },
     geom: Object.assign({}, nsGeom, {
