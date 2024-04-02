@@ -46886,7 +46886,7 @@ var ol = (function () {
     },
   };
 
-  var GML2$1 = GML2;
+  var format_GML2 = GML2;
 
   /**
    * @module ol/format/GML3
@@ -47904,7 +47904,7 @@ var ol = (function () {
     'http://www.opengis.net/gml': {
       'pos': makeReplacer(GML3.prototype.readFlatPos),
       'posList': makeReplacer(GML3.prototype.readFlatPosList),
-      'coordinates': makeReplacer(GML2$1.prototype.readFlatCoordinates),
+      'coordinates': makeReplacer(format_GML2.prototype.readFlatCoordinates),
     },
   };
 
@@ -48142,7 +48142,7 @@ var ol = (function () {
     },
   };
 
-  var GML3$1 = GML3;
+  var format_GML3 = GML3;
 
   /**
    * @module ol/format/GML
@@ -48158,7 +48158,7 @@ var ol = (function () {
    *     Optional configuration object.
    * @api
    */
-  const GML = GML3$1;
+  const GML = format_GML3;
 
   /**
    * Encode an array of features in GML 3.1.1 Simple Features.
@@ -55973,7 +55973,7 @@ var ol = (function () {
    *            version 3.2.1.
    * @api
    */
-  class GML32 extends GML3$1 {
+  class GML32 extends format_GML3 {
     /**
      * @param {import("./GMLBase.js").Options} [options] Optional configuration object.
      */
@@ -56013,9 +56013,9 @@ var ol = (function () {
    */
   GML32.prototype.GEOMETRY_FLAT_COORDINATES_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'pos': makeReplacer(GML3$1.prototype.readFlatPos),
-      'posList': makeReplacer(GML3$1.prototype.readFlatPosList),
-      'coordinates': makeReplacer(GML2$1.prototype.readFlatCoordinates),
+      'pos': makeReplacer(format_GML3.prototype.readFlatPos),
+      'posList': makeReplacer(format_GML3.prototype.readFlatPosList),
+      'coordinates': makeReplacer(format_GML2.prototype.readFlatCoordinates),
     },
   };
 
@@ -56025,8 +56025,8 @@ var ol = (function () {
    */
   GML32.prototype.FLAT_LINEAR_RINGS_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'interior': GML3$1.prototype.interiorParser,
-      'exterior': GML3$1.prototype.exteriorParser,
+      'interior': format_GML3.prototype.interiorParser,
+      'exterior': format_GML3.prototype.exteriorParser,
     },
   };
 
@@ -56044,9 +56044,9 @@ var ol = (function () {
       'Polygon': makeReplacer(GMLBase$1.prototype.readPolygon),
       'MultiPolygon': makeReplacer(GMLBase$1.prototype.readMultiPolygon),
       'Surface': makeReplacer(GML32.prototype.readSurface),
-      'MultiSurface': makeReplacer(GML3$1.prototype.readMultiSurface),
+      'MultiSurface': makeReplacer(format_GML3.prototype.readMultiSurface),
       'Curve': makeReplacer(GML32.prototype.readCurve),
-      'MultiCurve': makeReplacer(GML3$1.prototype.readMultiCurve),
+      'MultiCurve': makeReplacer(format_GML3.prototype.readMultiCurve),
       'Envelope': makeReplacer(GML32.prototype.readEnvelope),
     },
   };
@@ -56057,8 +56057,8 @@ var ol = (function () {
    */
   GML32.prototype.MULTICURVE_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'curveMember': makeArrayPusher(GML3$1.prototype.curveMemberParser),
-      'curveMembers': makeArrayPusher(GML3$1.prototype.curveMemberParser),
+      'curveMember': makeArrayPusher(format_GML3.prototype.curveMemberParser),
+      'curveMembers': makeArrayPusher(format_GML3.prototype.curveMemberParser),
     },
   };
 
@@ -56068,8 +56068,8 @@ var ol = (function () {
    */
   GML32.prototype.MULTISURFACE_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'surfaceMember': makeArrayPusher(GML3$1.prototype.surfaceMemberParser),
-      'surfaceMembers': makeArrayPusher(GML3$1.prototype.surfaceMemberParser),
+      'surfaceMember': makeArrayPusher(format_GML3.prototype.surfaceMemberParser),
+      'surfaceMembers': makeArrayPusher(format_GML3.prototype.surfaceMemberParser),
     },
   };
 
@@ -56080,7 +56080,7 @@ var ol = (function () {
   GML32.prototype.CURVEMEMBER_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
       'LineString': makeArrayPusher(GMLBase$1.prototype.readLineString),
-      'Curve': makeArrayPusher(GML3$1.prototype.readCurve),
+      'Curve': makeArrayPusher(format_GML3.prototype.readCurve),
     },
   };
 
@@ -56091,7 +56091,7 @@ var ol = (function () {
   GML32.prototype.SURFACEMEMBER_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
       'Polygon': makeArrayPusher(GMLBase$1.prototype.readPolygon),
-      'Surface': makeArrayPusher(GML3$1.prototype.readSurface),
+      'Surface': makeArrayPusher(format_GML3.prototype.readSurface),
     },
   };
 
@@ -56101,7 +56101,7 @@ var ol = (function () {
    */
   GML32.prototype.SURFACE_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'patches': makeReplacer(GML3$1.prototype.readPatch),
+      'patches': makeReplacer(format_GML3.prototype.readPatch),
     },
   };
 
@@ -56111,7 +56111,7 @@ var ol = (function () {
    */
   GML32.prototype.CURVE_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'segments': makeReplacer(GML3$1.prototype.readSegment),
+      'segments': makeReplacer(format_GML3.prototype.readSegment),
     },
   };
 
@@ -56121,8 +56121,8 @@ var ol = (function () {
    */
   GML32.prototype.ENVELOPE_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'lowerCorner': makeArrayPusher(GML3$1.prototype.readFlatPosList),
-      'upperCorner': makeArrayPusher(GML3$1.prototype.readFlatPosList),
+      'lowerCorner': makeArrayPusher(format_GML3.prototype.readFlatPosList),
+      'upperCorner': makeArrayPusher(format_GML3.prototype.readFlatPosList),
     },
   };
 
@@ -56132,7 +56132,7 @@ var ol = (function () {
    */
   GML32.prototype.PATCHES_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
-      'PolygonPatch': makeReplacer(GML3$1.prototype.readPolygonPatch),
+      'PolygonPatch': makeReplacer(format_GML3.prototype.readPolygonPatch),
     },
   };
 
@@ -56143,7 +56143,7 @@ var ol = (function () {
   GML32.prototype.SEGMENTS_PARSERS = {
     'http://www.opengis.net/gml/3.2': {
       'LineStringSegment': makeArrayExtender(
-        GML3$1.prototype.readLineStringSegment
+        format_GML3.prototype.readLineStringSegment
       ),
     },
   };
@@ -56231,8 +56231,8 @@ var ol = (function () {
    */
   GML32.prototype.RING_SERIALIZERS = {
     'http://www.opengis.net/gml/3.2': {
-      'exterior': makeChildAppender(GML3$1.prototype.writeRing),
-      'interior': makeChildAppender(GML3$1.prototype.writeRing),
+      'exterior': makeChildAppender(format_GML3.prototype.writeRing),
+      'interior': makeChildAppender(format_GML3.prototype.writeRing),
     },
   };
 
@@ -56252,10 +56252,10 @@ var ol = (function () {
   GML32.prototype.SURFACEORPOLYGONMEMBER_SERIALIZERS = {
     'http://www.opengis.net/gml/3.2': {
       'surfaceMember': makeChildAppender(
-        GML3$1.prototype.writeSurfaceOrPolygonMember
+        format_GML3.prototype.writeSurfaceOrPolygonMember
       ),
       'polygonMember': makeChildAppender(
-        GML3$1.prototype.writeSurfaceOrPolygonMember
+        format_GML3.prototype.writeSurfaceOrPolygonMember
       ),
     },
   };
@@ -56265,7 +56265,7 @@ var ol = (function () {
    */
   GML32.prototype.POINTMEMBER_SERIALIZERS = {
     'http://www.opengis.net/gml/3.2': {
-      'pointMember': makeChildAppender(GML3$1.prototype.writePointMember),
+      'pointMember': makeChildAppender(format_GML3.prototype.writePointMember),
     },
   };
 
@@ -56275,10 +56275,10 @@ var ol = (function () {
   GML32.prototype.LINESTRINGORCURVEMEMBER_SERIALIZERS = {
     'http://www.opengis.net/gml/3.2': {
       'lineStringMember': makeChildAppender(
-        GML3$1.prototype.writeLineStringOrCurveMember
+        format_GML3.prototype.writeLineStringOrCurveMember
       ),
       'curveMember': makeChildAppender(
-        GML3$1.prototype.writeLineStringOrCurveMember
+        format_GML3.prototype.writeLineStringOrCurveMember
       ),
     },
   };
@@ -56288,28 +56288,28 @@ var ol = (function () {
    */
   GML32.prototype.GEOMETRY_SERIALIZERS = {
     'http://www.opengis.net/gml/3.2': {
-      'Curve': makeChildAppender(GML3$1.prototype.writeCurveOrLineString),
-      'MultiCurve': makeChildAppender(GML3$1.prototype.writeMultiCurveOrLineString),
+      'Curve': makeChildAppender(format_GML3.prototype.writeCurveOrLineString),
+      'MultiCurve': makeChildAppender(format_GML3.prototype.writeMultiCurveOrLineString),
       'Point': makeChildAppender(GML32.prototype.writePoint),
-      'MultiPoint': makeChildAppender(GML3$1.prototype.writeMultiPoint),
-      'LineString': makeChildAppender(GML3$1.prototype.writeCurveOrLineString),
+      'MultiPoint': makeChildAppender(format_GML3.prototype.writeMultiPoint),
+      'LineString': makeChildAppender(format_GML3.prototype.writeCurveOrLineString),
       'MultiLineString': makeChildAppender(
-        GML3$1.prototype.writeMultiCurveOrLineString
+        format_GML3.prototype.writeMultiCurveOrLineString
       ),
-      'LinearRing': makeChildAppender(GML3$1.prototype.writeLinearRing),
-      'Polygon': makeChildAppender(GML3$1.prototype.writeSurfaceOrPolygon),
+      'LinearRing': makeChildAppender(format_GML3.prototype.writeLinearRing),
+      'Polygon': makeChildAppender(format_GML3.prototype.writeSurfaceOrPolygon),
       'MultiPolygon': makeChildAppender(
-        GML3$1.prototype.writeMultiSurfaceOrPolygon
+        format_GML3.prototype.writeMultiSurfaceOrPolygon
       ),
-      'Surface': makeChildAppender(GML3$1.prototype.writeSurfaceOrPolygon),
+      'Surface': makeChildAppender(format_GML3.prototype.writeSurfaceOrPolygon),
       'MultiSurface': makeChildAppender(
-        GML3$1.prototype.writeMultiSurfaceOrPolygon
+        format_GML3.prototype.writeMultiSurfaceOrPolygon
       ),
-      'Envelope': makeChildAppender(GML3$1.prototype.writeEnvelope),
+      'Envelope': makeChildAppender(format_GML3.prototype.writeEnvelope),
     },
   };
 
-  var GML32$1 = GML32;
+  var format_GML32 = GML32;
 
   /**
    * @module ol/format/filter/Filter
@@ -57547,9 +57547,9 @@ var ol = (function () {
    * @type {Object<string, object>}
    */
   const GML_FORMATS = {
-    '2.0.0': GML32$1,
-    '1.1.0': GML3$1,
-    '1.0.0': GML2$1,
+    '2.0.0': format_GML32,
+    '1.1.0': format_GML3,
+    '1.0.0': format_GML2,
   };
 
   /**
@@ -58092,11 +58092,11 @@ var ol = (function () {
     const child = createElementNS(featureNS, featureType);
     node.appendChild(child);
     if (gmlVersion === 2) {
-      GML2$1.prototype.writeFeatureElement(child, feature, objectStack);
+      format_GML2.prototype.writeFeatureElement(child, feature, objectStack);
     } else if (gmlVersion === 3) {
-      GML3$1.prototype.writeFeatureElement(child, feature, objectStack);
+      format_GML3.prototype.writeFeatureElement(child, feature, objectStack);
     } else {
-      GML32$1.prototype.writeFeatureElement(child, feature, objectStack);
+      format_GML32.prototype.writeFeatureElement(child, feature, objectStack);
     }
   }
 
@@ -58223,11 +58223,11 @@ var ol = (function () {
           'function'
       ) {
         if (gmlVersion === 2) {
-          GML2$1.prototype.writeGeometryElement(value, pair.value, objectStack);
+          format_GML2.prototype.writeGeometryElement(value, pair.value, objectStack);
         } else if (gmlVersion === 3) {
-          GML3$1.prototype.writeGeometryElement(value, pair.value, objectStack);
+          format_GML3.prototype.writeGeometryElement(value, pair.value, objectStack);
         } else {
-          GML32$1.prototype.writeGeometryElement(value, pair.value, objectStack);
+          format_GML32.prototype.writeGeometryElement(value, pair.value, objectStack);
         }
       } else {
         writeStringTextNode(value, pair.value);
@@ -61080,7 +61080,7 @@ var ol = (function () {
        * @private
        * @type {GML2}
        */
-      this.gmlFormat_ = new GML2$1();
+      this.gmlFormat_ = new format_GML2();
 
       /**
        * @private
@@ -106071,6 +106071,9 @@ void main(void) {
       format: {
           GeoJSON: format_GeoJSON,
           GML: format_GML,
+          GML2: format_GML2,
+          GML3: format_GML3,
+          GML32: format_GML32,
           KML: format_KML,
           WFS: format_WFS,
           WKT: format_WKT,

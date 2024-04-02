@@ -60,6 +60,9 @@ import {
     WMSGetFeatureInfo as format_WMSGetFeatureInfo,
     WMTSCapabilities as format_WMTSCapabilities,
 } from "ol/format.js";
+import format_GML2 from "ol/format/GML2";
+import format_GML3 from "ol/format/GML3";
+import format_GML32 from "ol/format/GML32";
 import * as nsFormat_filter from "ol/format/filter.js";
 
 import * as interaction0 from "ol/interaction.js";
@@ -169,6 +172,9 @@ var ol = {
     format: {
         GeoJSON: format_GeoJSON,
         GML: format_GML,
+        GML2: format_GML2,
+        GML3: format_GML3,
+        GML32: format_GML32,
         KML: format_KML,
         WFS: format_WFS,
         WKT: format_WKT,
