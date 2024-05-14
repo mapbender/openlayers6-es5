@@ -1,3 +1,7 @@
+## 9.1.0.0
+* Update to [Openlayers 9.1.0](https://github.com/openlayers/openlayers/releases/tag/v9.1.0)
+* Removed legacy alias ol.PluggableMap. Use ol.Map instead
+
 ## 7.5.2.0
 * Update to [Openlayers 7.5.2](https://github.com/openlayers/openlayers/releases/tag/v7.5.2)
 * Expose all formats from ol.formats

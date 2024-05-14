@@ -1,45 +1,42 @@
-// Import (parts of) Openlayers 6 and reexport them in a ~nested namespace structure similar to Openlayers 4
+// Import (parts of) Openlayers 9 and reexport them in a ~nested namespace structure similar to Openlayers 4
 
-import {default as AssertionError} from "ol/AssertionError.js";
-import {default as Collection} from "ol/Collection.js";
-import {default as Disposable} from "ol/Disposable.js";
-import {default as Feature} from "ol/Feature.js";
-import {default as Geolocation} from "ol/Geolocation.js";
-import {default as Graticule} from "ol/layer/Graticule.js";
-import {default as Image} from "ol/Image.js";
-import {default as ImageBase} from "ol/ImageBase.js";
-import {default as ImageCanvas} from "ol/ImageCanvas.js";
-import {default as ImageTile} from "ol/ImageTile.js";
-import {default as Kinetic} from "ol/Kinetic.js";
-import {default as Map} from "ol/Map.js";
-import {default as MapBrowserEvent} from "ol/MapBrowserEvent.js";
-import {default as MapBrowserEventHandler} from "ol/MapBrowserEventHandler.js";
-import {default as MapEvent} from "ol/MapEvent.js";
-import {default as olObject} from "ol/Object.js";
-import {default as Observable} from "ol/Observable.js";
-import {default as Overlay} from "ol/Overlay.js";
-import {default as Tile} from "ol/Tile.js";
-import {default as TileCache} from "ol/TileCache.js";
-import {default as TileQueue} from "ol/TileQueue.js";
-import {default as TileRange} from "ol/TileRange.js";
-import {default as VectorRenderTile} from "ol/VectorRenderTile.js";
-import {default as VectorTile} from "ol/VectorTile.js";
-import {default as View} from "ol/View.js";
+import {default as Collection} from "ol/Collection";
+import {default as Disposable} from "ol/Disposable";
+import {default as Feature} from "ol/Feature";
+import {default as Geolocation} from "ol/Geolocation";
+import {default as Graticule} from "ol/layer/Graticule";
+import {default as Image} from "ol/Image";
+import {default as ImageCanvas} from "ol/ImageCanvas";
+import {default as ImageTile} from "ol/ImageTile";
+import {default as Kinetic} from "ol/Kinetic";
+import {default as Map} from "ol/Map";
+import {default as MapBrowserEvent} from "ol/MapBrowserEvent";
+import {default as MapBrowserEventHandler} from "ol/MapBrowserEventHandler";
+import {default as MapEvent} from "ol/MapEvent";
+import {default as olObject} from "ol/Object";
+import {default as Observable} from "ol/Observable";
+import {default as Overlay} from "ol/Overlay";
+import {default as Tile} from "ol/Tile";
+import {default as TileCache} from "ol/TileCache";
+import {default as TileQueue} from "ol/TileQueue";
+import {default as TileRange} from "ol/TileRange";
+import {default as VectorRenderTile} from "ol/VectorRenderTile";
+import {default as VectorTile} from "ol/VectorTile";
+import {default as View} from "ol/View";
 
-// @todo: imported VERSION is always "latest". Substitute with a proper version number
-import {getUid, VERSION} from "ol/util.js";
+import {getUid, VERSION} from "ol/util";
 
-import * as nsCoordinate from "ol/coordinate.js";
-import * as nsControl from "ol/control.js";
+import * as nsCoordinate from "ol/coordinate";
+import * as nsControl from "ol/control";
 
-import * as nsExtent from "ol/extent.js";
-import * as nsEvents from "ol/events.js";
-import * as nsEvents_Event from "ol/events/Event.js";
-import * as nsEvents_condition from "ol/events/condition.js";
+import * as nsExtent from "ol/extent";
+import * as nsEvents from "ol/events";
+import * as nsEvents_Event from "ol/events/Event";
+import * as nsEvents_condition from "ol/events/condition";
 
-import * as nsGeom from "ol/geom.js";
-import * as geom_Polygon from "ol/geom/Polygon.js";
-import * as nsLoadingstrategy from 'ol/loadingstrategy';
+import * as nsGeom from "ol/geom";
+import * as geom_Polygon from "ol/geom/Polygon";
+import * as nsLoadingStrategy from 'ol/loadingstrategy';
 // namespace "format": cherry-pick classes; skip, particularly, broken MVT format (imports don't work)
 import {
     GeoJSON as format_GeoJSON,
@@ -59,35 +56,36 @@ import {
     WMSCapabilities as format_WMSCapabilities,
     WMSGetFeatureInfo as format_WMSGetFeatureInfo,
     WMTSCapabilities as format_WMTSCapabilities,
-} from "ol/format.js";
+} from "ol/format";
 import format_GML2 from "ol/format/GML2";
 import format_GML3 from "ol/format/GML3";
 import format_GML32 from "ol/format/GML32";
-import * as nsFormat_filter from "ol/format/filter.js";
+import * as nsFormat_filter from "ol/format/filter";
 
-import * as interaction0 from "ol/interaction.js";
-import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw.js";
-import * as nsLayer from "ol/layer.js";
-import * as proj0 from "ol/proj.js";
-import * as proj_proj4 from "ol/proj/proj4.js";
-import * as nsSource from "ol/source.js";
-import * as nsSphere from "ol/sphere.js";
-import * as style0 from "ol/style.js";
-import {createDefaultStyle as style_Style_createDefaultStyle} from "ol/style/Style.js";
-import {createEditingStyle as style_Style_createEditingStyle} from "ol/style/Style.js";
-import * as style_expressions from "ol/style/expressions.js";
-import {default as tilegrid_WMTS} from "ol/tilegrid/WMTS.js";
+import * as interaction0 from "ol/interaction";
+import {createBox as interaction_Draw_createBox} from "ol/interaction/Draw";
+import {getRequestUrl} from "ol/source/wms";
+import * as nsLayer from "ol/layer";
+import * as proj0 from "ol/proj";
+import * as proj_proj4 from "ol/proj/proj4";
+import * as nsSource from "ol/source";
+import * as nsSphere from "ol/sphere";
+import * as style0 from "ol/style";
+import {createDefaultStyle as style_Style_createDefaultStyle} from "ol/style/Style";
+import {createEditingStyle as style_Style_createEditingStyle} from "ol/style/Style";
+import * as style_expressions from "ol/expr/expression";
+import {default as tileGrid_WMTS} from "ol/tilegrid/WMTS";
 
-var nsInteraction = {};
+const nsInteraction = {};
 Object.assign(nsInteraction, interaction0);
 nsInteraction.Draw.createBox = interaction_Draw_createBox;
 
-var nsProj = {};
+const nsProj = {};
 Object.assign(nsProj, proj0, {
     proj4: proj_proj4
 });
 
-var nsStyle = {};
+const nsStyle = {};
 Object.assign(nsStyle, style0, {
     expressions: style_expressions,
     IconAnchorUnits: {
@@ -126,16 +124,14 @@ Object.assign(nsStyle.Style, {
 });
 
 
-var ol = {
+const ol = {
     // top-level classes
-    AssertionError: AssertionError,
     Collection: Collection,
     Disposable: Disposable,
     Feature: Feature,
     Geolocation: Geolocation,
     Graticule: Graticule,
     Image: Image,
-    ImageBase: ImageBase,
     ImageCanvas: ImageCanvas,
     ImageTile: ImageTile,
     Kinetic: Kinetic,
@@ -146,7 +142,6 @@ var ol = {
     Object: olObject,
     Observable: Observable,
     Overlay: Overlay,
-    PluggableMap: Map,      /** Legacy alias; no longer defined in Openlayers 7 */
     Tile: Tile,
     TileCache: TileCache,
     TileQueue: TileQueue,
@@ -202,9 +197,12 @@ var ol = {
     sphere: nsSphere,
     style: nsStyle,
     tilegrid: {
-        WMTS: tilegrid_WMTS
+        WMTS: tileGrid_WMTS
     },
-	loadingstrategy: nsLoadingstrategy
+    loadingstrategy: nsLoadingStrategy,
+    util: {
+        getRequestUrl: getRequestUrl
+    }
 };
 // dirty solution?
 if (window.ol) {
@@ -213,4 +211,5 @@ if (window.ol) {
     window.ol = ol;
 }
 
+// noinspection JSUnusedGlobalSymbols: default export is used by rollup
 export default ol;
