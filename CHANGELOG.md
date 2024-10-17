@@ -1,3 +1,7 @@
+## 10.2.0.0
+* Update to [Openlayers 10.2.0](https://github.com/openlayers/openlayers/releases/tag/v10.2.0)
+* Expose ol.render.toContext
+
 ## 9.1.0.0
 * Update to [Openlayers 9.1.0](https://github.com/openlayers/openlayers/releases/tag/v9.1.0)
 * Removed legacy alias ol.PluggableMap. Use ol.Map instead

@@ -75,6 +75,7 @@ import {createDefaultStyle as style_Style_createDefaultStyle} from "ol/style/Sty
 import {createEditingStyle as style_Style_createEditingStyle} from "ol/style/Style";
 import * as style_expressions from "ol/expr/expression";
 import {default as tileGrid_WMTS} from "ol/tilegrid/WMTS";
+import {toContext} from "ol/render";
 
 const nsInteraction = {};
 Object.assign(nsInteraction, interaction0);
@@ -196,6 +197,9 @@ const ol = {
     source: nsSource,
     sphere: nsSphere,
     style: nsStyle,
+    render: {
+      toContext: toContext,
+    },
     tilegrid: {
         WMTS: tileGrid_WMTS
     },
