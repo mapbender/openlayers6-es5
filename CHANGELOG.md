@@ -1,3 +1,7 @@
+## 10.6.1.0
+* Update to [Openlayers 10.6.1](https://github.com/openlayers/openlayers/releases/tag/v10.6.0)
+* Expose ol.layer.WebGLVectorTile
+
 ## 10.2.0.0
 * Update to [Openlayers 10.2.0](https://github.com/openlayers/openlayers/releases/tag/v10.2.0)
 * Expose ol.render.toContext

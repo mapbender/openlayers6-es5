@@ -17,7 +17,7 @@ import {default as olObject} from "ol/Object";
 import {default as Observable} from "ol/Observable";
 import {default as Overlay} from "ol/Overlay";
 import {default as Tile} from "ol/Tile";
-import {default as TileCache} from "ol/TileCache";
+import {default as WebGLVectorTile} from "ol/layer/WebGLVectorTile";
 import {default as TileQueue} from "ol/TileQueue";
 import {default as TileRange} from "ol/TileRange";
 import {default as VectorRenderTile} from "ol/VectorRenderTile";
@@ -144,11 +144,11 @@ const ol = {
     Observable: Observable,
     Overlay: Overlay,
     Tile: Tile,
-    TileCache: TileCache,
     TileQueue: TileQueue,
     TileRange: TileRange,
     VectorRenderTile: VectorRenderTile,
     VectorTile: VectorTile,
+    WebGLVectorTile: WebGLVectorTile,
     View: View,
     // globals (from util)
     getUid: getUid,
@@ -192,7 +192,7 @@ const ol = {
         Polygon: geom_Polygon
     }),
     interaction: nsInteraction,
-    layer: nsLayer,
+    layer: {...nsLayer, WebGLVectorTile: WebGLVectorTile},
     proj: nsProj,
     source: nsSource,
     sphere: nsSphere,
