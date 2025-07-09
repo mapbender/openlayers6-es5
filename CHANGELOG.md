@@ -1,3 +1,6 @@
+## 10.6.1.1
+* Add [ol-mapbox-style](https://openlayers.org/ol-mapbox-style/) library and expose MapboxVectorLayer and applyStyle function
+
 ## 10.6.1.0
 * Update to [Openlayers 10.6.1](https://github.com/openlayers/openlayers/releases/tag/v10.6.0)
 * Expose ol.layer.WebGLVectorTile

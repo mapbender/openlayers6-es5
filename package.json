@@ -7,10 +7,11 @@
     "build": "rollup --config rollup-config.mjs"
   },
   "devDependencies": {
+    "ol": "^10.6.1",
+    "ol-mapbox-style": "^13.0.1",
+    "rollup": "^4.44.2",
     "@rollup/plugin-commonjs": "^28.0.6",
     "@rollup/plugin-node-resolve": "^16.0.1",
-    "ol": "^10.6.1",
-    "rollup": "^4.44.2",
     "@rollup/plugin-terser": "^0.4.4"
   }
 }

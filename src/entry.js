@@ -23,6 +23,7 @@ import {default as TileRange} from "ol/TileRange";
 import {default as VectorRenderTile} from "ol/VectorRenderTile";
 import {default as VectorTile} from "ol/VectorTile";
 import {default as View} from "ol/View";
+import {applyStyle as applyMapboxStyle, MapboxVectorLayer as MapboxVector} from "ol-mapbox-style";
 
 import {getUid, VERSION} from "ol/util";
 
@@ -192,7 +193,11 @@ const ol = {
         Polygon: geom_Polygon
     }),
     interaction: nsInteraction,
-    layer: {...nsLayer, WebGLVectorTile: WebGLVectorTile},
+    layer: {
+        ...nsLayer,
+        WebGLVectorTile: WebGLVectorTile,
+        MapboxVector: MapboxVector,
+    },
     proj: nsProj,
     source: nsSource,
     sphere: nsSphere,
@@ -205,7 +210,8 @@ const ol = {
     },
     loadingstrategy: nsLoadingStrategy,
     util: {
-        getRequestUrl: getRequestUrl
+        getRequestUrl: getRequestUrl,
+        applyMapboxStyle: applyMapboxStyle
     }
 };
 // dirty solution?
