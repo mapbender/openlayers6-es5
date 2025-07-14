@@ -16,6 +16,7 @@ import {default as MapEvent} from "ol/MapEvent";
 import {default as olObject} from "ol/Object";
 import {default as Observable} from "ol/Observable";
 import {default as Overlay} from "ol/Overlay";
+import {toFeature} from "ol/render/Feature";
 import {default as Tile} from "ol/Tile";
 import {default as WebGLVectorTile} from "ol/layer/WebGLVectorTile";
 import {default as TileQueue} from "ol/TileQueue";
@@ -204,6 +205,7 @@ const ol = {
     style: nsStyle,
     render: {
       toContext: toContext,
+      toFeature: toFeature,
     },
     tilegrid: {
         WMTS: tileGrid_WMTS

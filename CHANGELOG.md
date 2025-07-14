@@ -1,3 +1,6 @@
+## 10.6.1.2
+* Expose render.toFeature function
+
 ## 10.6.1.1
 * Add [ol-mapbox-style](https://openlayers.org/ol-mapbox-style/) library and expose MapboxVectorLayer and applyStyle function
 
