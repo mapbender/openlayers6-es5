@@ -1,3 +1,10 @@
+## 10.8.0.0
+* Update to [Openlayers 10.8.0](https://github.com/openlayers/openlayers/releases/tag/v10.8.0)
+* Expose ol.source.OGCMap
+* Update ol-mapbox-style to 13.3.0
+* Expose full ol-mapbox-style API under `ol.mapboxStyle` namespace (apply, applyBackground, applyStyle, addMapboxLayer, removeMapboxLayer, updateMapboxLayer, updateMapboxSource, getLayer, getLayers, getMapboxLayer, getSource, getFeatureState, setFeatureState, getStyleForLayer, recordStyleLayer, renderTransparent, stylefunction, styleConfig, MapboxVectorLayer)
+* `ol.util.applyMapboxStyle` kept for backwards compatibility
+
 ## 10.6.1.2
 * Expose render.toFeature function
 
