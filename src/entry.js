@@ -24,7 +24,27 @@ import {default as TileRange} from "ol/TileRange";
 import {default as VectorRenderTile} from "ol/VectorRenderTile";
 import {default as VectorTile} from "ol/VectorTile";
 import {default as View} from "ol/View";
-import {applyStyle as applyMapboxStyle, MapboxVectorLayer as MapboxVector} from "ol-mapbox-style";
+import {
+    applyStyle as applyMapboxStyle,
+    MapboxVectorLayer as MapboxVector,
+    apply as mapboxApply,
+    applyBackground as mapboxApplyBackground,
+    addMapboxLayer,
+    removeMapboxLayer,
+    updateMapboxLayer,
+    updateMapboxSource,
+    getLayer as getMapboxLayerFromMap,
+    getLayers as getMapboxLayersFromMap,
+    getMapboxLayer,
+    getSource as getMapboxSource,
+    getFeatureState as getMapboxFeatureState,
+    setFeatureState as setMapboxFeatureState,
+    getStyleForLayer,
+    recordStyleLayer,
+    renderTransparent,
+    stylefunction,
+    styleConfig,
+} from "ol-mapbox-style";
 
 import {getUid, VERSION} from "ol/util";
 
@@ -71,6 +91,7 @@ import * as nsLayer from "ol/layer";
 import * as proj0 from "ol/proj";
 import * as proj_proj4 from "ol/proj/proj4";
 import * as nsSource from "ol/source";
+import {default as OGCMap} from "ol/source/OGCMap";
 import * as nsSphere from "ol/sphere";
 import * as style0 from "ol/style";
 import {createDefaultStyle as style_Style_createDefaultStyle} from "ol/style/Style";
@@ -200,7 +221,10 @@ const ol = {
         MapboxVector: MapboxVector,
     },
     proj: nsProj,
-    source: nsSource,
+    source: {
+        ...nsSource,
+        OGCMap: OGCMap,
+    },
     sphere: nsSphere,
     style: nsStyle,
     render: {
@@ -211,6 +235,27 @@ const ol = {
         WMTS: tileGrid_WMTS
     },
     loadingstrategy: nsLoadingStrategy,
+    mapboxStyle: {
+        apply: mapboxApply,
+        applyBackground: mapboxApplyBackground,
+        applyStyle: applyMapboxStyle,
+        addMapboxLayer: addMapboxLayer,
+        removeMapboxLayer: removeMapboxLayer,
+        updateMapboxLayer: updateMapboxLayer,
+        updateMapboxSource: updateMapboxSource,
+        getLayer: getMapboxLayerFromMap,
+        getLayers: getMapboxLayersFromMap,
+        getMapboxLayer: getMapboxLayer,
+        getSource: getMapboxSource,
+        getFeatureState: getMapboxFeatureState,
+        setFeatureState: setMapboxFeatureState,
+        getStyleForLayer: getStyleForLayer,
+        recordStyleLayer: recordStyleLayer,
+        renderTransparent: renderTransparent,
+        stylefunction: stylefunction,
+        styleConfig: styleConfig,
+        MapboxVectorLayer: MapboxVector,
+    },
     util: {
         getRequestUrl: getRequestUrl,
         applyMapboxStyle: applyMapboxStyle
