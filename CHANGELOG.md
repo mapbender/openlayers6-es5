@@ -1,3 +1,7 @@
+## 10.9.0.0
+* Update to [Openlayers 10.9.0](https://github.com/openlayers/openlayers/releases/tag/v10.9.0)
+
+
 ## 10.8.0.0
 * Update to [Openlayers 10.8.0](https://github.com/openlayers/openlayers/releases/tag/v10.8.0)
 * Expose ol.source.OGCMap
